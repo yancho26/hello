@@ -1,0 +1,8 @@
+# Данните на практиката никога не влизат в хранилището.
+data/
+demo-data/
+*.local.json
+
+node_modules/
+.DS_Store
+*.log

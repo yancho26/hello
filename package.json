@@ -1,0 +1,15 @@
+{
+  "name": "detska-konsultacia",
+  "version": "1.0.0",
+  "description": "Платформа за проследяване на деца пациенти в общопрактикуваща лекарска практика",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/",
+    "demo": "node scripts/demo-data.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
