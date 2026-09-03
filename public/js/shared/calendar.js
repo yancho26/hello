@@ -35,6 +35,8 @@ export const GROUPS = {
  *   minIntervalM    минимален интервал в месеци след предходния прием от серията
  *   mandatory       задължителна по календара
  *   optIn           препоръчителна — включва се за конкретно дете по преценка
+ *   optInGroup      обединява препоръчителните дози в една отметка (цялата серия)
+ *   expireMonths    след колко месеца дейността престава да е приложима
  *   note            пояснение, което се показва до реда
  */
 
@@ -154,50 +156,90 @@ export const DEFAULT_VACCINES = [
   {
     id: 'rota-1', group: 'vaccine', name: 'Ротавирус — I прием', short: 'Рота I',
     protects: 'ротавирусен гастроентерит', dueMonths: 2, minMonths: 1.5, graceMonths: 1,
-    series: 'rota', doseNo: 1, mandatory: false, optIn: true,
+    series: 'rota', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'rota',
     note: 'Препоръчителна. Първият прием задължително преди 15-седмична възраст.',
   },
   {
     id: 'rota-2', group: 'vaccine', name: 'Ротавирус — II прием', short: 'Рота II',
     protects: 'ротавирусен гастроентерит', dueMonths: 3, minMonths: 2.5, graceMonths: 1,
-    series: 'rota', doseNo: 2, minIntervalM: 1, mandatory: false, optIn: true,
+    series: 'rota', doseNo: 2, minIntervalM: 1, mandatory: false, optIn: true, optInGroup: 'rota',
     note: 'Препоръчителна. Курсът приключва до 8-месечна възраст.',
   },
   {
     id: 'menb-1', group: 'vaccine', name: 'Менингококи B — I прием', short: 'Мен. B I',
     protects: 'инвазивна менингококова инфекция серогрупа B',
     dueMonths: 3, minMonths: 2, graceMonths: 2,
-    series: 'menb', doseNo: 1, mandatory: false, optIn: true, note: 'Препоръчителна.',
+    series: 'menb', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'menb', note: 'Препоръчителна.',
   },
   {
     id: 'menb-2', group: 'vaccine', name: 'Менингококи B — II прием', short: 'Мен. B II',
     protects: 'инвазивна менингококова инфекция серогрупа B',
     dueMonths: 5, minMonths: 4, graceMonths: 2,
-    series: 'menb', doseNo: 2, minIntervalM: 2, mandatory: false, optIn: true, note: 'Препоръчителна.',
+    series: 'menb', doseNo: 2, minIntervalM: 2, mandatory: false, optIn: true, optInGroup: 'menb', note: 'Препоръчителна.',
   },
   {
     id: 'hepa-1', group: 'vaccine', name: 'Хепатит А — I прием', short: 'Хеп. А I',
     protects: 'вирусен хепатит А', dueMonths: 13, minMonths: 12, graceMonths: 6,
-    series: 'hepa', doseNo: 1, mandatory: false, optIn: true, note: 'Препоръчителна.',
+    series: 'hepa', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'hepa', note: 'Препоръчителна.',
   },
   {
     id: 'hepa-2', group: 'vaccine', name: 'Хепатит А — II прием', short: 'Хеп. А II',
     protects: 'вирусен хепатит А', dueMonths: 19, minMonths: 18, graceMonths: 6,
-    series: 'hepa', doseNo: 2, minIntervalM: 6, mandatory: false, optIn: true, note: 'Препоръчителна.',
+    series: 'hepa', doseNo: 2, minIntervalM: 6, mandatory: false, optIn: true, optInGroup: 'hepa', note: 'Препоръчителна.',
   },
   {
     id: 'hpv-1', group: 'vaccine', name: 'HPV — I прием', short: 'HPV I',
-    protects: 'онкогенни човешки папиломни вируси', dueMonths: 132, minMonths: 108, graceMonths: 24,
-    series: 'hpv', doseNo: 1, mandatory: false, optIn: true,
-    note: 'Препоръчителна, по национална програма. Двудозова схема до 15 г.',
+    protects: 'онкогенни човешки папиломни вируси', dueMonths: 108, minMonths: 108, graceMonths: 36,
+    series: 'hpv', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'hpv',
+    note: 'Препоръчителна, по национална програма. От май 2025 г. европейските '
+      + 'препоръки, както и Американската академия по педиатрия, поставят началото '
+      + 'на 9-годишна възраст — по-ранното начало дава по-добър имунен отговор и '
+      + 'по-висока завършваемост. Двудозова схема при начало преди 15 г. '
+      + 'Прилага се и на момчета, и на момичета.',
   },
   {
     id: 'hpv-2', group: 'vaccine', name: 'HPV — II прием', short: 'HPV II',
-    protects: 'онкогенни човешки папиломни вируси', dueMonths: 138, minMonths: 114, graceMonths: 24,
-    series: 'hpv', doseNo: 2, minIntervalM: 6, mandatory: false, optIn: true,
+    protects: 'онкогенни човешки папиломни вируси', dueMonths: 114, minMonths: 114, graceMonths: 36,
+    series: 'hpv', doseNo: 2, minIntervalM: 6, mandatory: false, optIn: true, optInGroup: 'hpv',
     note: 'Препоръчителна. Най-малко 6 месеца след първия прием.',
   },
+  {
+    id: 'rsv-nirsevimab', group: 'vaccine', name: 'РСВ — низевимаб', short: 'РСВ',
+    protects: 'респираторно-синцитиален вирус', dueMonths: 0, minMonths: 0, graceMonths: 5,
+    series: 'rsv', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'rsv',
+    note: 'Дълго действащо моноклонално антитяло за всички кърмачета през първия им '
+      + 'РСВ сезон, по възможност още преди изписване от родилното. Към 2025 г. 16 от '
+      + '23 страни в ЕС/ЕИП имат национални програми. Прилага се сезонно (есен–зима).',
+  },
+  {
+    id: 'menacwy', group: 'vaccine', name: 'Менингококи ACWY', short: 'Мен. ACWY',
+    protects: 'инвазивна менингококова инфекция серогрупи A, C, W, Y',
+    dueMonths: 132, minMonths: 12, graceMonths: 24,
+    series: 'menacwy', doseNo: 1, mandatory: false, optIn: true, optInGroup: 'menacwy',
+    note: 'Препоръчителна в юношеска възраст; по-рано — при повишен риск, пътуване '
+      + 'или живот в колектив.',
+  },
 ];
+
+/** Ежегодна имунизация — една дефиниция дава по един запис за всяка година. */
+function buildAnnualFlu() {
+  const items = [];
+  for (let m = 6; m <= 216; m += 12) {
+    const years = Math.floor(m / 12);
+    items.push({
+      id: 'flu-' + m, group: 'vaccine',
+      name: `Грипна ваксина — ${m < 12 ? '6 мес.' : years + ' г.'}`,
+      short: `Грип ${m < 12 ? '6 м.' : years + ' г.'}`,
+      protects: 'сезонен грип',
+      dueMonths: m, minMonths: Math.max(6, m - 1), graceMonths: 5, expireMonths: 9,
+      mandatory: false, optIn: true, optInGroup: 'flu',
+      note: m === 6
+        ? 'Ежегодна имунизация от навършени 6 месеца. При първа имунизация под 9 г. — две дози с интервал 4 седмици.'
+        : 'Прилага се преди началото на грипния сезон.',
+    });
+  }
+  return items;
+}
 
 /** Профилактични прегледи по честотата от Наредба № 8 за диспансеризация и
  *  профилактични прегледи при лица под 18 години. */
@@ -230,16 +272,74 @@ export function buildCheckups() {
     const y = Math.floor(m / 12), rest = m % 12;
     const label = rest ? `${y} г. ${rest} мес.` : `${y} г.`;
     push(m, `Профилактичен преглед — ${label}`,
-      m === 36 ? 'Проверка на зрение и слух. Измерване на артериално налягане.'
-        : m === 60 ? 'Оценка на училищна готовност.'
-          : 'Антропометрия, физикален статус, зъбен статус.');
+      m === 36 ? 'Проверка на зрение и слух. Първо измерване на артериално налягане — от 3 г. се измерва ежегодно.'
+        : m === 60 ? 'Оценка на училищна готовност. Артериално налягане.'
+          : 'Антропометрия, артериално налягане, физикален статус, зъбен статус.');
   }
   // 7–18 години — веднъж годишно.
   for (let y = 8; y <= 18; y++) {
     push(y * 12, `Профилактичен преглед — ${y} г.`,
-      y === 12 ? 'Оценка на пубертетното развитие. Артериално налягане.'
+      y === 12 ? 'Оценка на пубертетното развитие. Артериално налягане. Скрининг за депресия и тревожност.'
         : 'Антропометрия, артериално налягане, физикален статус, гръбначен стълб.');
   }
+  return items;
+}
+
+/* --------------------- скрининг на развитието и психичното здраве ---------------------
+ *
+ * Съставено по периодичната схема Bright Futures на Американската академия по
+ * педиатрия и по препоръките на европейските педиатрични дружества:
+ *   • скрининг на развитието със стандартизиран инструмент — на 9, 18 и 30 месеца;
+ *   • скрининг за разстройство от аутистичния спектър (M-CHAT-R/F) — на 18 и 24 месеца;
+ *   • скрининг за следродилна депресия у майката — на прегледите в 1, 2, 4 и 6 месец;
+ *   • оценка за депресия и тревожност — ежегодно от 12 години, а по преценка от 8.
+ *
+ * Тези дейности имат срок на валидност: пропуснат скрининг на 9 месеца не се
+ * извършва на 3 години, затова изтича и не задръства списъка със задачи. */
+function buildDevelopmentScreenings() {
+  const items = [];
+
+  for (const m of [9, 18, 30]) {
+    items.push({
+      id: 'dev-screen-' + m, group: 'screening',
+      name: `Скрининг на развитието — ${m} мес.`, short: `Развитие ${m} м.`,
+      dueMonths: m, minMonths: m - 1, graceMonths: 2, expireMonths: 9, mandatory: false,
+      note: 'Стандартизиран инструмент за оценка на психомоторното развитие '
+        + '(напр. ASQ-3 или PEDS), а не само общо впечатление от прегледа.',
+    });
+  }
+
+  for (const m of [18, 24]) {
+    items.push({
+      id: 'asd-screen-' + m, group: 'screening',
+      name: `Скрининг за аутистичен спектър — ${m} мес.`, short: `Аутизъм ${m} м.`,
+      dueMonths: m, minMonths: m - 1, graceMonths: 2, expireMonths: 9, mandatory: false,
+      note: 'Въпросник M-CHAT-R/F. При положителен резултат — уточняващо интервю '
+        + 'и насочване, без изчакване до следващия преглед.',
+    });
+  }
+
+  for (const m of [1, 2, 4, 6]) {
+    items.push({
+      id: 'maternal-mood-' + m, group: 'screening',
+      name: `Скрининг за следродилна депресия у майката — ${m} мес.`,
+      short: `Майка ${m} м.`,
+      dueMonths: m, minMonths: m - 0.5, graceMonths: 1, expireMonths: 3, mandatory: false,
+      note: 'Скалата на Единбург (EPDS) при прегледа на детето. Състоянието на '
+        + 'майката пряко влияе върху развитието и храненето на кърмачето.',
+    });
+  }
+
+  for (let y = 12; y <= 18; y++) {
+    items.push({
+      id: 'mood-screen-' + y, group: 'screening',
+      name: `Скрининг за депресия и тревожност — ${y} г.`, short: `Настроение ${y} г.`,
+      dueMonths: y * 12, minMonths: y * 12 - 2, graceMonths: 4, expireMonths: 12, mandatory: false,
+      note: 'Ежегодно от 12-годишна възраст със стандартизиран въпросник (напр. PHQ-9 '
+        + 'за юноши), с оценка на суициден риск при положителен резултат.',
+    });
+  }
+
   return items;
 }
 
@@ -266,17 +366,73 @@ export const DEFAULT_SCREENINGS = [
     note: 'Скрининг за желязодефицитна анемия в кърмаческа възраст.',
   },
   {
-    id: 'vision-screen', group: 'screening', name: 'Офталмологичен преглед', short: 'Зрение',
-    dueMonths: 36, minMonths: 30, graceMonths: 12, expireMonths: 36, mandatory: false,
-    note: 'Скрининг за амблиопия и рефракционни аномалии.',
+    id: 'vitamin-d', group: 'screening', name: 'Профилактика с витамин D', short: 'Витамин D',
+    dueMonths: 0.5, minMonths: 0, graceMonths: 1, expireMonths: 6, mandatory: false,
+    note: '400 IU дневно за всяко кърмаче от първите дни, независимо от начина на '
+      + 'хранене, и през цялата първа година. Отбележете, че е обсъдено с родителя.',
+  },
+  {
+    id: 'vision-screen', group: 'screening', name: 'Офталмологичен преглед', short: 'Зрение 3 г.',
+    dueMonths: 36, minMonths: 30, graceMonths: 12, expireMonths: 18, mandatory: false,
+    note: 'Скрининг за амблиопия и рефракционни аномалии. Колкото по-рано се открие '
+      + 'амблиопия, толкова по-добър е резултатът от лечението.',
+  },
+  {
+    id: 'vision-screen-5', group: 'screening', name: 'Зрителна острота преди училище', short: 'Зрение 5 г.',
+    dueMonths: 60, minMonths: 54, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Проверка на зрителната острота преди постъпване в училище.',
+  },
+  {
+    id: 'vision-screen-10', group: 'screening', name: 'Зрителна острота — 10 г.', short: 'Зрение 10 г.',
+    dueMonths: 120, minMonths: 114, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Възрастта, в която най-често се проявява късогледство.',
+  },
+  {
+    id: 'hearing-screen-6', group: 'screening', name: 'Аудиометрия — 6 г.', short: 'Слух 6 г.',
+    dueMonths: 72, minMonths: 66, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Тонална аудиометрия при постъпване в училище.',
+  },
+  {
+    id: 'hearing-screen-12', group: 'screening', name: 'Аудиометрия — 12 г.', short: 'Слух 12 г.',
+    dueMonths: 144, minMonths: 138, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Включително високите честоти 6000–8000 Hz — за ранно откриване на '
+      + 'увреждане от шум и слушалки.',
+  },
+  {
+    id: 'lipids-9', group: 'screening', name: 'Липиден профил — 9–11 г.', short: 'Липиди 9 г.',
+    dueMonths: 114, minMonths: 108, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Еднократен универсален скрининг между 9 и 11 години — преди пубертетното '
+      + 'понижаване на липидите. По-рано и по-често при фамилна обремененост, '
+      + 'затлъстяване или диабет.',
+  },
+  {
+    id: 'lipids-17', group: 'screening', name: 'Липиден профил — 17–21 г.', short: 'Липиди 17 г.',
+    dueMonths: 204, minMonths: 198, graceMonths: 12, expireMonths: 24, mandatory: false,
+    note: 'Втори универсален скрининг в късна юношеска възраст.',
   },
 ];
 
 /** Пълният календар по подразбиране. */
 export function defaultSchedule() {
-  return [...DEFAULT_VACCINES, ...buildCheckups(), ...DEFAULT_SCREENINGS]
-    .map(item => ({ ...item }));
+  return [
+    ...DEFAULT_VACCINES,
+    ...buildAnnualFlu(),
+    ...buildCheckups(),
+    ...DEFAULT_SCREENINGS,
+    ...buildDevelopmentScreenings(),
+  ].map(item => ({ ...item }));
 }
+
+/** Наименования на препоръчителните серии, показвани като една отметка. */
+export const OPT_IN_GROUPS = {
+  rota: { label: 'Ротавирус', note: 'Двудозова схема в първите месеци.' },
+  menb: { label: 'Менингококи B', note: 'Препоръчителна в кърмаческа възраст.' },
+  menacwy: { label: 'Менингококи ACWY', note: 'Препоръчителна в юношеска възраст.' },
+  hepa: { label: 'Хепатит А', note: 'Двудозова схема след първата година.' },
+  hpv: { label: 'HPV', note: 'От 9-годишна възраст, за момчета и момичета.' },
+  rsv: { label: 'РСВ (низевимаб)', note: 'През първия РСВ сезон на кърмачето.' },
+  flu: { label: 'Грипна ваксина (ежегодно)', note: 'Всяка есен от навършени 6 месеца.' },
+};
 
 /** Причини за отвод — предлагат се в падащо меню. */
 export const DEFERRAL_REASONS = [

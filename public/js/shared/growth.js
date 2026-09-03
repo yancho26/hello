@@ -7,7 +7,48 @@
  * защото разпределението там е силно скосено — реализирана е в zScore(). */
 
 import { WHO_LMS } from './who-data.js';
-import { ageInMonthsExact } from './dates.js';
+import { ageInMonthsExact, DAYS_PER_MONTH } from './dates.js';
+import { assessBloodPressure } from './bp.js';
+
+/* ------------------------ коригирана възраст при недоносеност ------------------------
+ *
+ * При родено преди срок дете растежът се оценява по коригирана възраст —
+ * хронологичната възраст минус седмиците, недостигащи до 40-а гестационна
+ * седмица. Практиката е на Американската академия по педиатрия и на
+ * европейските дружества: корекция до навършени 24 месеца (при много
+ * недоносени — до 36).
+ *
+ * Имунизациите, обратно, се прилагат по ХРОНОЛОГИЧНА възраст — недоносеното
+ * дете получава ваксините си на същата календарна възраст като доносеното.
+ * Смесването на двете е класическа грешка, затова корекцията тук се прилага
+ * само към растежа. */
+
+export const PRETERM_WEEKS = 37;
+export const CORRECT_UNTIL_MONTHS = 24;
+
+export function isPreterm(gestWeeks) {
+  return Number.isFinite(gestWeeks) && gestWeeks > 0 && gestWeeks < PRETERM_WEEKS;
+}
+
+/** Колко месеца се изваждат от хронологичната възраст. */
+export function correctionMonths(gestWeeks) {
+  if (!isPreterm(gestWeeks)) return 0;
+  return ((40 - gestWeeks) * 7) / DAYS_PER_MONTH;
+}
+
+/**
+ * Коригирана възраст за оценка на растежа.
+ * @returns {{months, corrected, beforeTerm}} — `corrected` показва дали е приложена
+ *   корекция; `beforeTerm` е вярно, ако детето още не е достигнало term-еквивалент,
+ *   когато стандартите на СЗО не са приложими.
+ */
+export function growthAge(chronologicalMonths, gestWeeks) {
+  if (!isPreterm(gestWeeks) || chronologicalMonths > CORRECT_UNTIL_MONTHS) {
+    return { months: chronologicalMonths, corrected: false, beforeTerm: false };
+  }
+  const months = chronologicalMonths - correctionMonths(gestWeeks);
+  return { months: Math.max(0, months), corrected: true, beforeTerm: months < 0 };
+}
 
 /** Дефиниция на показателите, които приложението следи. */
 export const INDICATORS = {
@@ -188,15 +229,32 @@ export function bmi(weightKg, heightCm) {
   return weightKg / (m * m);
 }
 
-/** Обработва списък с измервания и добавя възраст, ИТМ и оценки. */
+/** Обработва списък с измервания и добавя възраст, ИТМ, налягане и оценки. */
 export function analyseMeasurements(patient, measurements) {
   const sex = patient.sex === 'f' ? 'f' : 'm';
+  const gestWeeks = patient.birth ? Number(patient.birth.gestWeeks) : null;
+
   return (measurements || [])
     .slice()
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
     .map(m => {
-      const ageMonths = ageInMonthsExact(patient.birthDate, m.date);
-      const row = { ...m, ageMonths, assessments: {} };
+      const chronological = ageInMonthsExact(patient.birthDate, m.date);
+      const age = growthAge(chronological, gestWeeks);
+      const ageMonths = age.months;
+
+      const row = {
+        ...m,
+        ageMonths,
+        chronologicalMonths: chronological,
+        ageCorrected: age.corrected,
+        beforeTerm: age.beforeTerm,
+        assessments: {},
+      };
+
+      // Преди достигане на термин стандартите на СЗО не важат — за тези
+      // измервания се показват само стойностите, без персентили.
+      if (age.beforeTerm) return row;
+
       if (m.weight > 0) row.assessments.weight = assess('weight', sex, ageMonths, m.weight);
       if (m.height > 0) row.assessments.height = assess('height', sex, ageMonths, m.height);
       if (m.head > 0) row.assessments.head = assess('head', sex, ageMonths, m.head);
@@ -204,8 +262,184 @@ export function analyseMeasurements(patient, measurements) {
         row.bmi = bmi(m.weight, m.height);
         row.assessments.bmi = assess('bmi', sex, ageMonths, row.bmi);
       }
+      if (m.systolic > 0 && m.diastolic > 0) {
+        row.assessments.bp = assessBloodPressure(sex, chronological / 12, m.systolic, m.diastolic);
+      }
       return row;
     });
+}
+
+/* ------------------------- изоставане в растежа ---------------------------
+ *
+ * Праговете следват указанието на NICE „Faltering growth: recognition and
+ * management“ (NG75). Един „персентилен интервал“ на растежните карти
+ * съответства на две трети от стандартното отклонение (0.67 z), затова
+ * спадът се измерва директно в z-единици.
+ *
+ * Колко интервала будят тревога зависи от теглото при раждане:
+ *   под 9-и персентил      → спад с 1 интервал
+ *   между 9-и и 91-ви      → спад с 2 интервала
+ *   над 91-ви персентил    → спад с 3 интервала
+ * Отделен повод за оценка е тегло под 2-ри персентил за възрастта.
+ */
+
+export const CENTILE_SPACE_Z = 2 / 3;
+const Z_9TH = -1.3408;
+const Z_91ST = 1.3408;
+const Z_2ND = -2.0537;
+
+/** Колко персентилни интервала спад са повод за тревога при това тегло при раждане. */
+export function falteringThresholdSpaces(birthWeightZ) {
+  if (birthWeightZ === null || birthWeightZ === undefined || !Number.isFinite(birthWeightZ)) return 2;
+  if (birthWeightZ < Z_9TH) return 1;
+  if (birthWeightZ > Z_91ST) return 3;
+  return 2;
+}
+
+/**
+ * Търси изоставане в растежа и други находки в поредицата измервания.
+ * @returns {Array<{type, severity, title, detail}>}
+ */
+export function growthConcerns(patient, analysed) {
+  const findings = [];
+  const rows = (analysed || []).filter(r => !r.beforeTerm);
+  if (!rows.length) return findings;
+
+  const sex = patient.sex === 'f' ? 'f' : 'm';
+  const birth = patient.birth || {};
+
+  // Тегло при раждане — определя прага за спад.
+  let birthWeightZ = null;
+  if (birth.weight > 0) {
+    const gestWeeks = Number(birth.gestWeeks);
+    // При недоносено тегло при раждане не се сравнява със стандарта за термин.
+    if (!isPreterm(gestWeeks)) birthWeightZ = zScore('weight', sex, 0, Number(birth.weight));
+  }
+  const thresholdSpaces = falteringThresholdSpaces(birthWeightZ);
+
+  const weights = rows.filter(r => r.assessments.weight);
+  if (weights.length >= 2) {
+    const latest = weights[weights.length - 1];
+    let peak = weights[0];
+    for (const r of weights.slice(0, -1)) {
+      if (r.assessments.weight.z > peak.assessments.weight.z) peak = r;
+    }
+    const drop = peak.assessments.weight.z - latest.assessments.weight.z;
+    const spaces = drop / CENTILE_SPACE_Z;
+    if (spaces >= thresholdSpaces) {
+      findings.push({
+        type: 'weight_faltering',
+        severity: 2,
+        title: 'Изоставане в наддаването на тегло',
+        detail: `Теглото е паднало с ${spaces.toFixed(1)} персентилни интервала спрямо `
+          + `най-високата стойност (${formatDateLike(peak.date)}). При тегло при раждане `
+          + `${birthWeightZ === null ? 'извън обхвата на сравнение' : describeCentile(birthWeightZ)} `
+          + `прагът за оценка е ${thresholdSpaces} ${thresholdSpaces === 1 ? 'интервал' : 'интервала'} (NICE NG75).`,
+        spaces, from: peak.date, to: latest.date,
+      });
+    }
+  }
+
+  // Текущо тегло под 2-ри персентил.
+  const last = weights[weights.length - 1];
+  if (last && last.assessments.weight.z < Z_2ND) {
+    findings.push({
+      type: 'weight_below_2nd',
+      severity: 2,
+      title: 'Тегло под 2-ри персентил',
+      detail: `Последното измерване е на ${Math.round(last.assessments.weight.percentile * 10) / 10}-и `
+        + 'персентил за възрастта — повод за клинична оценка независимо от динамиката.',
+    });
+  }
+
+  // Обиколка на главата — рязко пресичане на персентили и в двете посоки.
+  const heads = rows.filter(r => r.assessments.head);
+  if (heads.length >= 2) {
+    const first = heads[0].assessments.head.z;
+    const lastHead = heads[heads.length - 1].assessments.head.z;
+    const change = lastHead - first;
+    if (Math.abs(change) >= 2 * CENTILE_SPACE_Z) {
+      findings.push({
+        type: 'head_crossing',
+        severity: 2,
+        title: change > 0 ? 'Ускорен растеж на обиколката на главата' : 'Изоставане в обиколката на главата',
+        detail: `Пресечени са ${(Math.abs(change) / CENTILE_SPACE_Z).toFixed(1)} персентилни интервала `
+          + 'между първото и последното измерване — изисква оценка.',
+      });
+    }
+  }
+
+  // Бързо покачване на ИТМ — ранен белег за наднормено тегло.
+  const bmis = rows.filter(r => r.assessments.bmi);
+  if (bmis.length >= 2) {
+    const lastBmi = bmis[bmis.length - 1];
+    const yearAgo = bmis.filter(r => lastBmi.ageMonths - r.ageMonths >= 9);
+    if (yearAgo.length) {
+      const ref = yearAgo[yearAgo.length - 1];
+      const rise = lastBmi.assessments.bmi.z - ref.assessments.bmi.z;
+      if (rise >= 2 * CENTILE_SPACE_Z && lastBmi.assessments.bmi.z > 0) {
+        findings.push({
+          type: 'bmi_rise',
+          severity: 1,
+          title: 'Бързо покачване на индекса на телесна маса',
+          detail: `ИТМ се е покачил с ${(rise / CENTILE_SPACE_Z).toFixed(1)} персентилни интервала `
+            + 'от предходната година — повод за разговор за хранене и движение.',
+        });
+      }
+    }
+  }
+
+  // Отклонения в последното измерване по стандартните прагове на СЗО.
+  const lastRow = rows[rows.length - 1];
+  for (const [key, a] of Object.entries(lastRow.assessments)) {
+    if (!a || key === 'bp' || a.severity < 2) continue;
+    findings.push({
+      type: 'indicator_' + key,
+      severity: 2,
+      title: `${INDICATORS[key] ? INDICATORS[key].short : key}: ${a.label}`,
+      detail: `Последно измерване — ${Math.round(a.percentile * 10) / 10}-и персентил (z ${a.z.toFixed(2)}).`,
+    });
+  }
+  if (lastRow.assessments.bp && lastRow.assessments.bp.severity >= 1) {
+    findings.push({
+      type: 'blood_pressure',
+      severity: lastRow.assessments.bp.severity,
+      title: 'Артериално налягане — ' + lastRow.assessments.bp.label,
+      detail: `Измерено ${lastRow.systolic}/${lastRow.diastolic} mmHg при скринингов праг `
+        + `${lastRow.assessments.bp.threshold.systolic}/${lastRow.assessments.bp.threshold.diastolic} mmHg`
+        + (lastRow.assessments.bp.which ? ` — над прага е ${lastRow.assessments.bp.which}` : '')
+        + '. Единично измерване не поставя диагноза: потвърдете с повторни измервания '
+        + 'в поне два отделни дни и сверете с пълните персентилни таблици, които отчитат и ръста.',
+    });
+  }
+
+  return findings;
+}
+
+/* При недоносено дете теглото при раждане не се сравнява със стандарта за
+ * доносени, затова прагът остава по подразбиране — два персентилни интервала. */
+function describeCentile(z) {
+  if (z < Z_9TH) return 'под 9-и персентил';
+  if (z > Z_91ST) return 'над 91-ви персентил';
+  return 'между 9-и и 91-ви персентил';
+}
+
+function formatDateLike(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).split('-');
+  return `${d}.${m}.${y}`;
+}
+
+/* --------------------------- прогнозен ръст --------------------------------
+ *
+ * Целеви (средно родителски) ръст по класическата формула на Tanner:
+ * при момче — средното от ръстовете на родителите плюс 6.5 см, при момиче —
+ * минус 6.5 см. Границите ±8.5 см покриват около 95% от децата. */
+export function midParentalHeight(sex, motherCm, fatherCm) {
+  const m = Number(motherCm), f = Number(fatherCm);
+  if (!(m > 100) || !(f > 100)) return null;
+  const mid = (m + f) / 2 + (sex === 'f' ? -6.5 : 6.5);
+  return { target: mid, low: mid - 8.5, high: mid + 8.5 };
 }
 
 /** Перцентилни криви за графика: за всеки перцентил — точки по възраст. */

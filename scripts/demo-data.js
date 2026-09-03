@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Store, hashPin } from '../lib/store.js';
 import { addDays, addMonths, today } from '../public/js/shared/dates.js';
 import { computePlan } from '../public/js/shared/schedule.js';
-import { lmsAt, valueAtZ } from '../public/js/shared/growth.js';
+import { correctionMonths, lmsAt, valueAtZ } from '../public/js/shared/growth.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
@@ -51,6 +51,21 @@ function makeEgn(birthISO, sex, serial) {
   const weights = [2, 4, 8, 5, 10, 9, 7, 3, 6];
   const sum = weights.reduce((acc, w, i) => acc + w * Number(base[i]), 0);
   return base + String((sum % 11) % 10);
+}
+
+/** Данни при раждане; около 8% от децата са недоносени. */
+function birthData() {
+  const preterm = rnd() < 0.08;
+  const gestWeeks = preterm ? Math.floor(between(29, 37)) : Math.floor(between(37, 41));
+  const scale = preterm ? (gestWeeks - 24) / 16 : 1;
+  return {
+    weight: +(between(2.6, 4.1) * (preterm ? 0.45 + scale * 0.5 : 1)).toFixed(2),
+    height: +(between(47, 54) * (preterm ? 0.78 + scale * 0.2 : 1)).toFixed(0),
+    head: +(between(33, 36) * (preterm ? 0.82 + scale * 0.16 : 1)).toFixed(0),
+    gestWeeks,
+    apgar: preterm ? '7/9' : '9/10',
+    delivery: preterm || rnd() < 0.3 ? 'секцио' : 'нормално',
+  };
 }
 
 function measurementFor(sex, ageMonths, zShift) {
@@ -116,26 +131,27 @@ function main() {
       phone: '08' + Math.floor(between(70000000, 99999999)),
       address: 'гр. София',
       doctorId: rnd() < 0.6 ? 'demo-doc-1' : 'demo-doc-2',
+      parentHeights: rnd() < 0.7
+        ? { mother: Math.round(between(155, 178)), father: Math.round(between(168, 192)) }
+        : { mother: null, father: null },
       contacts: [{ name: 'майка на ' + name.split(' ')[0], relation: 'майка', phone: '08' + Math.floor(between(70000000, 99999999)) }],
       allergies: rnd() < 0.12 ? [pick(['пеницилин', 'краве мляко', 'яйчен белтък', 'полени'])] : [],
       conditions: rnd() < 0.1 ? [pick(['бронхиална астма', 'атопичен дерматит', 'желязодефицитна анемия'])] : [],
       notes: '',
-      birth: {
-        weight: +between(2.6, 4.1).toFixed(2),
-        height: +between(47, 54).toFixed(0),
-        head: +between(33, 36).toFixed(0),
-        gestWeeks: Math.floor(between(37, 41)),
-        apgar: '9/10',
-        delivery: rnd() < 0.3 ? 'секцио' : 'нормално',
-      },
+      birth: birthData(),
       records: {},
-      optIn: rnd() < 0.3 ? ['rota-1', 'rota-2'] : [],
+      optIn: [
+        ...(rnd() < 0.3 ? ['rota-1', 'rota-2'] : []),
+        ...(rnd() < 0.15 ? ['menb-1', 'menb-2'] : []),
+      ],
       measurements: [],
       visits: [],
       reminders: [],
       createdAt: new Date().toISOString(),
     };
 
+    // Част от децата са родени преди срок — растежът им се оценява по
+    // коригирана възраст, а имунизациите по хронологична.
     // Изпълнение на календара: повечето деца са редовни, някои изостават.
     const diligence = rnd();
     const plan = computePlan(patient, store.schedule, { asOf: t });
@@ -176,7 +192,10 @@ function main() {
     }
 
     // Измервания — на профилактичните прегледи.
+    // При част от децата се задава отклонение в динамиката, за да личи как
+    // изглеждат изоставане в растежа и покачване на ИТМ в реален регистър.
     const zShift = between(-1.4, 1.4);
+    const drift = rnd() < 0.10 ? -between(0.9, 2.2) : rnd() < 0.08 ? between(0.9, 1.8) : 0;
     const stops = ageMonths <= 12
       ? [1, 2, 3, 4, 6, 9, 12]
       : ageMonths <= 60
@@ -184,11 +203,24 @@ function main() {
         : [1, 6, 12, 24, 48, 72, 96, 120, 144, 168, 192];
     for (const m of stops) {
       if (m > ageMonths) break;
-      const meas = measurementFor(sex, m, zShift);
+      const progress = stops.length > 1 ? stops.indexOf(m) / (stops.length - 1) : 0;
+      // При недоносено дете реалният размер отговаря на коригираната възраст,
+      // затова примерните стойности се генерират по нея.
+      const growthMonths = m <= 24
+        ? Math.max(0, m - correctionMonths(patient.birth.gestWeeks)) : m;
+      const meas = measurementFor(sex, growthMonths, zShift + drift * progress);
+      // Артериално налягане се измерва от 3-годишна възраст.
+      const bp = m >= 36
+        ? {
+          systolic: Math.round(90 + m * 0.14 + between(-6, 9) + (drift > 0 ? 8 : 0)),
+          diastolic: Math.round(52 + m * 0.09 + between(-5, 7) + (drift > 0 ? 5 : 0)),
+        }
+        : { systolic: null, diastolic: null };
       patient.measurements.push({
         id: `demo-m-${i}-${m}`,
         date: addDays(addMonths(birthDate, m), Math.floor(between(0, 9))),
         weight: meas.weight, height: meas.height, head: meas.head,
+        systolic: bp.systolic, diastolic: bp.diastolic,
         note: '', doctorId: patient.doctorId,
       });
     }

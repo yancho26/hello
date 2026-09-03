@@ -76,9 +76,10 @@ export async function renderPatients(host) {
 }
 
 function patientRow(p, host) {
-  const attention = p.counts.overdue > 0;
+  const attention = p.counts.overdue > 0 || p.growthConcerns > 0;
   const alerts = [];
   if (p.allergies && p.allergies.length) alerts.push(badge('alert', '⚠ алергия'));
+  if (p.growthConcerns) alerts.push(badge('alert', '📉 растеж'));
   if (p.conditions && p.conditions.length) alerts.push(badge('', p.conditions[0]));
 
   return h('tr.clickable' + (attention ? '.attention' : ''), {
@@ -159,6 +160,10 @@ export function openPatientForm(patient = null, onSaved = null) {
       weight: b.birthWeight, height: b.birthHeight, head: b.birthHead,
       gestWeeks: data.gestWeeks, delivery: data.delivery, apgar: data.apgar,
     };
+    const ph = decimalFields(data, ['motherHeight', 'fatherHeight']);
+    data.parentHeights = { mother: ph.motherHeight, father: ph.fatherHeight };
+    delete data.motherHeight;
+    delete data.fatherHeight;
     for (const k of ['birthWeight', 'birthHeight', 'birthHead', 'gestWeeks', 'delivery', 'apgar']) delete data[k];
 
     try {
@@ -266,6 +271,17 @@ export function openPatientForm(patient = null, onSaved = null) {
           }))),
           h('div', null, field('Апгар', input({ name: 'apgar', value: birth.apgar || '', placeholder: '9/10' }))),
           h('div', null, field('Раждане', input({ name: 'delivery', value: birth.delivery || '', placeholder: 'нормално / секцио' }))),
+
+          h('div.full', null, h('h3', { style: { marginTop: '6px' } }, 'Ръст на родителите',
+            h('span.small.muted', { style: { fontWeight: '400' } }, ' — за изчисляване на целевия ръст'))),
+          h('div', null, field('Майка (см)', numberInput({
+            name: 'motherHeight', min: 120, max: 220,
+            value: (patient && patient.parentHeights && patient.parentHeights.mother) ?? '',
+          }))),
+          h('div', null, field('Баща (см)', numberInput({
+            name: 'fatherHeight', min: 120, max: 220,
+            value: (patient && patient.parentHeights && patient.parentHeights.father) ?? '',
+          }))),
 
           h('div.full', null, field('Бележки',
             h('textarea', { name: 'notes', rows: 3 }, patient ? patient.notes || '' : '')))));

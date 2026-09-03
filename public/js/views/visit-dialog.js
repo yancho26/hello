@@ -6,7 +6,8 @@
 
 import { api } from '../api.js';
 import { field, h, input, modal, normaliseDecimal, numberInput, toast } from '../ui/components.js';
-import { formatDate, today } from '../shared/dates.js';
+import { daysBetween, formatDate, today } from '../shared/dates.js';
+import { BP_FROM_YEARS } from '../shared/bp.js';
 import { ACTIONABLE } from '../shared/schedule.js';
 
 const GROUP_ICON = { vaccine: '💉', checkup: '🩺', screening: '🔬' };
@@ -38,6 +39,9 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
   // едно невнимателно натискане не бива да „изпълни“ двайсет ваксини наведнъж.
   const dueNow = candidates.filter(e => ACTIONABLE.has(e.status));
   const preselect = dueNow.length <= 5;
+  // Артериално налягане се измерва ежегодно от 3-годишна възраст.
+  const ageYears = daysBetween(data.patient.birthDate, today()) / 365.25;
+  const showBp = ageYears >= BP_FROM_YEARS;
 
   let form;
   const checks = [];
@@ -95,9 +99,11 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
     const weight = normaliseDecimal(fd.get('weight'));
     const height = normaliseDecimal(fd.get('height'));
     const head = normaliseDecimal(fd.get('head'));
-    if (weight || height || head) {
+    const systolic = normaliseDecimal(fd.get('systolic'));
+    const diastolic = normaliseDecimal(fd.get('diastolic'));
+    if (weight || height || head || systolic || diastolic) {
       try {
-        await api.addMeasurement(patientId, { date, weight, height, head });
+        await api.addMeasurement(patientId, { date, weight, height, head, systolic, diastolic });
       } catch (err) {
         failed.push('измерване: ' + err.message);
       }
@@ -131,11 +137,14 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
         h('div', { style: { maxHeight: '300px', overflowY: 'auto', marginBottom: '14px' } },
           candidates.map(rowFor)),
         h('h3', { style: { marginBottom: '4px' } }, 'Измервания',
-          h('span.small.muted', { style: { fontWeight: '400' } }, ' — по желание')),
+          h('span.small.muted', { style: { fontWeight: '400' } },
+            showBp ? ' — по желание; налягането се измерва ежегодно от 3 г.' : ' — по желание')),
         h('div.form-grid', null,
           h('div', null, field('Тегло (кг)', numberInput({ name: 'weight', min: 0.3, max: 200 }))),
           h('div', null, field('Ръст (см)', numberInput({ name: 'height', min: 20, max: 230 }))),
-          h('div', null, field('Обиколка глава (см)', numberInput({ name: 'head', min: 20, max: 70 })))));
+          h('div', null, field('Обиколка глава (см)', numberInput({ name: 'head', min: 20, max: 70 }))),
+          showBp ? h('div', null, field('Систолно (mmHg)', numberInput({ name: 'systolic', min: 50, max: 250 }))) : null,
+          showBp ? h('div', null, field('Диастолно (mmHg)', numberInput({ name: 'diastolic', min: 20, max: 160 }))) : null));
       return form;
     },
     actions: (close) => [

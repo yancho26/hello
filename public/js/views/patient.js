@@ -8,8 +8,9 @@ import {
 } from '../ui/components.js';
 import { growthChart } from '../ui/charts.js';
 import { formatAge, formatDate, formatDateShort, relativeDays, today } from '../shared/dates.js';
-import { INDICATORS } from '../shared/growth.js';
+import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm } from '../shared/growth.js';
 import { ACTIONABLE } from '../shared/schedule.js';
+import { OPT_IN_GROUPS } from '../shared/calendar.js';
 import { openPatientForm } from './patients.js';
 import { deferDialog, markDoneDialog, refuseDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
@@ -77,6 +78,13 @@ function patientHeader({ p, data, reload }) {
     alerts.push(h('div.alert-strip.warn', null, 'Досието е в архив.',
       p.archivedReason ? ' ' + p.archivedReason : ''));
   }
+  const severe = (data.concerns || []).filter(c => c.severity >= 2);
+  if (severe.length) {
+    alerts.push(h('div.alert-strip', null,
+      h('div', null,
+        h('strong', null, 'Растеж: ' + severe.map(c => c.title).join('; ')),
+        h('div.small', { style: { fontWeight: '400' } }, 'Подробности в раздел „Растеж“.'))));
+  }
 
   return h('div', null,
     h('div.card', null, h('div.body', null,
@@ -93,7 +101,9 @@ function patientHeader({ p, data, reload }) {
             fact('Роден', formatDate(p.birthDate)),
             fact('ЕГН', p.egn || '—'),
             fact('Телефон', p.phone || '—'),
-            fact('Личен лекар', doctor ? doctor.name : '—'))),
+            fact('Личен лекар', doctor ? doctor.name : '—'),
+            p.birth && isPreterm(Number(p.birth.gestWeeks))
+              ? fact('Гестационна възраст', p.birth.gestWeeks + ' с.') : null)),
         h('div', null, coverageRing(data.summary.coverage)),
         h('div.row.tight.no-print', null,
           h('button.btn.sm.primary', {
@@ -204,6 +214,30 @@ function vaccinesTab(ctx) {
   const mandatory = vaccines.filter(e => !e.optIn);
   const chosen = vaccines.filter(e => e.optIn);
 
+  // Препоръчителните ваксини се включват по серии, а не доза по доза:
+  // лекарят решава „това дете ще се ваксинира срещу ротавирус“, а не
+  // отделно за всеки прием.
+  const groups = new Map();
+  for (const item of recommended) {
+    const key = item.optInGroup || item.id;
+    if (!groups.has(key)) groups.set(key, { key, items: [], meta: OPT_IN_GROUPS[key] });
+    groups.get(key).items.push(item);
+  }
+
+  const toggle = async (group, on, checkbox) => {
+    const set = new Set(p.optIn || []);
+    for (const item of group.items) {
+      if (on) set.add(item.id); else set.delete(item.id);
+    }
+    try {
+      await api.setOptIn(p.id, [...set]);
+      await reload();
+    } catch (err) {
+      toast(err.message, 'error');
+      checkbox.checked = !on;
+    }
+  };
+
   return h('div.stack', null,
     card('Задължителни имунизации', {
       icon: '💉', tight: true,
@@ -220,25 +254,20 @@ function vaccinesTab(ctx) {
     card('Избор на препоръчителни имунизации', { icon: '☑' },
       h('p.small.muted', null,
         'Отбележете кои препоръчителни ваксини се прилагат на това дете. '
-        + 'Само отбелязаните влизат в напомнянията.'),
-      h('div.grid.cols-2', null, recommended.map(item =>
-        h('label.check', null,
-          h('input', {
-            type: 'checkbox', checked: optIn.has(item.id),
-            onchange: async (e) => {
-              const set = new Set(p.optIn || []);
-              if (e.target.checked) set.add(item.id); else set.delete(item.id);
-              try {
-                await api.setOptIn(p.id, [...set]);
-                await reload();
-              } catch (err) {
-                toast(err.message, 'error');
-                e.target.checked = !e.target.checked;
-              }
-            },
-          }),
-          h('span', null, h('strong', null, item.name),
-            item.protects ? h('div.tiny.dim', null, item.protects) : null))))));
+        + 'Само отбелязаните влизат в напомнянията. Отметката включва цялата серия.'),
+      h('div.grid.cols-2', null, [...groups.values()].map(group => {
+        const on = group.items.every(i => optIn.has(i.id));
+        const box = h('input', { type: 'checkbox', checked: on });
+        box.addEventListener('change', () => toggle(group, box.checked, box));
+        const label = group.meta ? group.meta.label : group.items[0].name;
+        const protects = group.items[0].protects;
+        return h('label.check', null, box,
+          h('span', null,
+            h('strong', null, label),
+            h('span.tiny.dim', null, group.items.length > 1 ? ` · ${group.items.length} приема` : ''),
+            protects ? h('div.tiny.dim', null, protects) : null,
+            group.meta && group.meta.note ? h('div.tiny.dim', null, group.meta.note) : null));
+      }))));
 }
 
 /* --------------------------- прегледи по календар ---------------------------- */
@@ -344,6 +373,9 @@ function ageLabel(months) {
 function growthTab(ctx) {
   const { p, data, reload } = ctx;
   const growth = data.growth || [];
+  const concerns = data.concerns || [];
+  const preterm = p.birth && isPreterm(Number(p.birth.gestWeeks));
+  const target = data.targetHeight;
 
   const charts = Object.values(INDICATORS).map(ind => {
     const points = growth
@@ -366,11 +398,16 @@ function growthTab(ctx) {
   const rows = [...growth].reverse().map(m => h('tr', null,
     h('td.nowrap', null,
       h('div', null, formatDate(m.date)),
-      h('div.tiny.dim', null, formatAge(p.birthDate, m.date))),
+      h('div.tiny.dim', null, formatAge(p.birthDate, m.date)),
+      m.ageCorrected
+        ? h('div.tiny', { style: { color: 'var(--brand)' } },
+          'коригирана: ' + fmtNum(Math.round(m.ageMonths * 10) / 10) + ' мес.')
+        : null),
     valueCell(m.weight, 'кг', m.assessments.weight),
     valueCell(m.height, 'см', m.assessments.height),
     valueCell(m.head, 'см', m.assessments.head),
     valueCell(m.bmi ? +m.bmi.toFixed(1) : null, '', m.assessments.bmi),
+    bpCell(m),
     h('td.small.muted', null, m.note || ''),
     h('td.actions.no-print', null, h('button.btn.xs.danger', {
       onclick: async () => {
@@ -392,18 +429,42 @@ function growthTab(ctx) {
       h('div.grow'),
       h('span.small.muted', null, 'Кривите следват стандартите на СЗО (перцентили 3–97).')),
 
+    concerns.length ? h('div.stack', null, concerns.map(c =>
+      h('div.alert-strip' + (c.severity >= 2 ? '' : '.warn'), null,
+        h('div', null,
+          h('strong', null, c.title),
+          h('div.small', { style: { fontWeight: '400' } }, c.detail))))) : null,
+
+    preterm ? h('div.alert-strip.info', null,
+      h('div', null,
+        h('strong', null, `Родено на ${p.birth.gestWeeks} гестационна седмица. `),
+        'Растежът се оценява по ',
+        h('strong', null, 'коригирана възраст'),
+        ` до навършени ${CORRECT_UNTIL_MONTHS} месеца. `,
+        'Имунизациите обаче се прилагат по хронологична възраст — недоносеното дете '
+        + 'получава ваксините си на същата календарна възраст като доносеното.')) : null,
+
+    target ? h('div.alert-strip.info', null,
+      h('div', null,
+        h('strong', null, 'Целеви (средно родителски) ръст: '),
+        `${target.target.toFixed(0)} см `,
+        h('span.small', { style: { fontWeight: '400' } },
+          `(очакван диапазон ${target.low.toFixed(0)}–${target.high.toFixed(0)} см)`))) : null,
+
     charts.length
       ? h('div.charts', null, charts)
       : card(null, {}, empty('Добавете измерване, за да се начертаят кривите.', '📈')),
 
     growth.length
       ? card('Записани измервания', { tight: true },
-        table(['Дата', 'Тегло', 'Ръст', 'Глава', 'ИТМ', 'Бележка', ''], rows))
+        table(['Дата', 'Тегло', 'Ръст', 'Глава', 'ИТМ', 'Налягане', 'Бележка', ''], rows))
       : null,
 
     growth.length ? h('p.tiny.muted', null,
       'Стойностите за тегло и обиколка на главата се оценяват до 5-годишна възраст, '
-      + 'ръстът и ИТМ — до 19 години. От 24-месечна възраст ръстът се измерва в изправено положение.') : null);
+      + 'ръстът и ИТМ — до 19 години. От 24-месечна възраст ръстът се измерва в изправено положение. '
+      + 'Артериалното налягане се сравнява със скрининговата таблица на Американската академия '
+      + 'по педиатрия (2017); стойност над прага изисква повторни измервания в различни дни.') : null);
 }
 
 function valueCell(value, unit, assessment) {
@@ -418,13 +479,22 @@ function valueCell(value, unit, assessment) {
       : null);
 }
 
+function bpCell(m) {
+  if (!(m.systolic > 0) || !(m.diastolic > 0)) return h('td.dim', null, '—');
+  const a = m.assessments.bp;
+  return h('td.nowrap', null,
+    h('span.mono', { style: { fontWeight: '600' } }, `${m.systolic}/${m.diastolic}`),
+    a ? h('div.tiny', null, h('span.z-pill.s' + a.severity, null, a.label)) : null);
+}
+
 const fmtNum = (v) => (Math.round(v * 100) / 100).toString().replace('.', ',');
 
 function addMeasurementDialog(ctx) {
   const { p, reload } = ctx;
   let form;
   const submit = async (close) => {
-    const data = decimalFields(Object.fromEntries(new FormData(form)), ['weight', 'height', 'head']);
+    const data = decimalFields(Object.fromEntries(new FormData(form)),
+      ['weight', 'height', 'head', 'systolic', 'diastolic']);
     try {
       await api.addMeasurement(p.id, data);
       toast('Измерването е записано.', 'ok');
@@ -443,6 +513,9 @@ function addMeasurementDialog(ctx) {
         h('div', null, field('Тегло (кг)', numberInput({ name: 'weight', min: 0.3, max: 200, placeholder: 'напр. 8,4' }))),
         h('div', null, field('Ръст / дължина (см)', numberInput({ name: 'height', min: 20, max: 230, placeholder: 'напр. 68,5' }))),
         h('div', null, field('Обиколка на главата (см)', numberInput({ name: 'head', min: 20, max: 70 }))),
+        h('div', null, field('Систолно налягане', numberInput({ name: 'systolic', min: 50, max: 250, placeholder: 'mmHg' }),
+          'От 3-годишна възраст — ежегодно.')),
+        h('div', null, field('Диастолно налягане', numberInput({ name: 'diastolic', min: 20, max: 160, placeholder: 'mmHg' }))),
         h('div.full', null, field('Бележка', input({ name: 'note' }))));
       return form;
     },
