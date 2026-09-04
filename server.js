@@ -170,12 +170,27 @@ const server = http.createServer(async (req, res) => {
     const session = store.getSession(token);
     const doctor = session ? store.doctor(session.doctorId) : null;
 
-    // Защита срещу заявки от чужди страници: приемаме само същия източник.
+    /* Защита срещу заявки от чужди страници: приемаме само същия източник.
+     *
+     * Зад обратно прокси (Codespaces, nginx, тунел) браузърът праща Origin с
+     * външния адрес, а до сървъра стига Host на вътрешния — затова се приема
+     * и съвпадение с X-Forwarded-Host. Това не отслабва защитата: чужда
+     * страница не може да зададе такава заглавка без preflight заявка, а на
+     * нея сървърът не отговаря с CORS разрешение и браузърът я спира. */
     if (req.method !== 'GET') {
       const origin = req.headers.origin;
       if (origin) {
-        const host = req.headers.host;
-        if (new URL(origin).host !== host) {
+        let originHost = '';
+        try {
+          originHost = new URL(origin).host;
+        } catch {
+          send(403, { error: 'Заявка с неразбираем източник.' });
+          return;
+        }
+        const allowed = [req.headers.host, req.headers['x-forwarded-host']]
+          .filter(Boolean)
+          .flatMap(v => String(v).split(',').map(h => h.trim()));
+        if (!allowed.includes(originHost)) {
           send(403, { error: 'Заявка от друг източник.' });
           return;
         }

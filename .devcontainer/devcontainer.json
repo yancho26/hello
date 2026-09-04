@@ -1,0 +1,25 @@
+{
+  "name": "Детска консултация — демонстрация",
+
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" }
+  },
+
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Детска консултация",
+      "onAutoForward": "openBrowser"
+    }
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  "postAttachCommand": "bash .devcontainer/start.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["dbaeumer.vscode-eslint"]
+    }
+  }
+}
