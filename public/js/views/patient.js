@@ -15,6 +15,7 @@ import { openPatientForm } from './patients.js';
 import { deferDialog, markDoneDialog, refuseDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
 import { printImmunisationCard } from './print.js';
+import { developmentTab } from './development.js';
 
 let activeTab = 'overview';
 
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'vaccines', label: 'Имунизации' },
   { id: 'checkups', label: 'Профилактични прегледи' },
   { id: 'growth', label: 'Растеж' },
+  { id: 'development', label: 'Развитие' },
   { id: 'visits', label: 'Прегледи' },
   { id: 'reminders', label: 'Напомняния' },
 ];
@@ -41,7 +43,11 @@ export async function renderPatient(host, id) {
   const tabBar = h('div.tabs.no-print', null, TABS.map(t => {
     const n = t.id === 'vaccines' ? vaccines.filter(e => ACTIONABLE.has(e.status)).length
       : t.id === 'checkups' ? checkups.filter(e => ACTIONABLE.has(e.status)).length
-        : t.id === 'reminders' ? (p.reminders || []).filter(r => !r.done).length : 0;
+        : t.id === 'reminders' ? (p.reminders || []).filter(r => !r.done).length
+          : t.id === 'development'
+            ? (data.development && data.development.dueCheckpoint && !data.development.dueDone ? 1 : 0)
+              + (data.development ? data.development.concerns.filter(c => c.severity >= 2).length : 0)
+            : 0;
     return h('button' + (activeTab === t.id ? '.active' : ''), {
       onclick: () => { activeTab = t.id; renderTab(); },
     }, t.label, n ? h('span.n', null, n) : null);
@@ -54,7 +60,7 @@ export async function renderPatient(host, id) {
     }
     const view = {
       overview: overviewTab, vaccines: vaccinesTab, checkups: checkupsTab,
-      growth: growthTab, visits: visitsTab, reminders: remindersTab,
+      growth: growthTab, development: developmentTab, visits: visitsTab, reminders: remindersTab,
     }[activeTab] || overviewTab;
     mount(content, view(ctx));
   };
@@ -84,6 +90,14 @@ function patientHeader({ p, data, reload }) {
       h('div', null,
         h('strong', null, 'Растеж: ' + severe.map(c => c.title).join('; ')),
         h('div.small', { style: { fontWeight: '400' } }, 'Подробности в раздел „Растеж“.'))));
+  }
+  const devSevere = data.development
+    ? data.development.concerns.filter(c => c.severity >= 2) : [];
+  if (devSevere.length) {
+    alerts.push(h('div.alert-strip', null,
+      h('div', null,
+        h('strong', null, devSevere.map(c => c.title).join('; ')),
+        h('div.small', { style: { fontWeight: '400' } }, 'Подробности в раздел „Развитие“.'))));
   }
 
   return h('div', null,
@@ -175,6 +189,13 @@ function overviewTab(ctx) {
           h('p.muted.small', null, 'Още няма записани измервания.'),
           h('button.btn.sm.primary', { onclick: () => addMeasurementDialog(ctx) }, '＋ Добави измерване'))),
 
+    card('Нервно-психическо развитие', {
+      icon: '🧠',
+      actions: h('button.btn.sm', {
+        onclick: () => { activeTab = 'development'; renderTabFromOverview(ctx); },
+      }, 'Подробно'),
+    }, developmentOverview(ctx)),
+
     card('Последни прегледи', { icon: '🩺', tight: true },
       (p.visits || []).length
         ? h('div.body', null, h('div.timeline', null,
@@ -183,6 +204,32 @@ function overviewTab(ctx) {
               h('div.small', null, h('strong', null, formatDate(v.date)), ' · ', v.type),
               v.diagnosis ? h('div.small', null, v.diagnosis, v.icd ? ` (${v.icd})` : '') : null))))
         : empty('Няма записани прегледи.', '·')));
+}
+
+function developmentOverview({ data }) {
+  const dev = data.development;
+  if (!dev) return h('p.muted.small', null, 'Няма данни.');
+  const latest = dev.latest;
+  return h('div', null,
+    latest
+      ? h('div', null,
+        h('div.muted.small', null,
+          `Последна оценка: ${formatDate(latest.record.date)} · лист за ${devAgeLabel(latest.record.checkpoint)}`),
+        h('div.row.tight', { style: { marginTop: '6px' } },
+          badge(latest.action.severity >= 2 ? 'overdue' : latest.action.severity === 1 ? 'due' : 'done',
+            latest.action.label),
+          h('span.small.muted', null, `${latest.met} от ${latest.total} етапа`)))
+      : h('p.muted.small', { style: { marginBottom: '6px' } }, 'Още няма попълнен контролен лист.'),
+    dev.dueCheckpoint && !dev.dueDone
+      ? h('div.small', { style: { marginTop: '8px' } },
+        '📋 Предстои листът за ', h('strong', null, devAgeLabel(dev.dueCheckpoint.ageMonths)))
+      : null);
+}
+
+function devAgeLabel(months) {
+  if (months < 12) return months + ' мес.';
+  const y = Math.floor(months / 12), rest = months % 12;
+  return rest ? `${y} г. ${rest} мес.` : `${y} г.`;
 }
 
 function renderTabFromOverview(ctx) {

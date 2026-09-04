@@ -76,10 +76,11 @@ export async function renderPatients(host) {
 }
 
 function patientRow(p, host) {
-  const attention = p.counts.overdue > 0 || p.growthConcerns > 0;
+  const attention = p.counts.overdue > 0 || p.growthConcerns > 0 || p.developmentConcerns > 0;
   const alerts = [];
   if (p.allergies && p.allergies.length) alerts.push(badge('alert', '⚠ алергия'));
   if (p.growthConcerns) alerts.push(badge('alert', '📉 растеж'));
+  if (p.developmentConcerns) alerts.push(badge('alert', '🧠 развитие'));
   if (p.conditions && p.conditions.length) alerts.push(badge('', p.conditions[0]));
 
   return h('tr.clickable' + (attention ? '.attention' : ''), {

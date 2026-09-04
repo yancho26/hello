@@ -56,6 +56,9 @@ export const api = {
   addMeasurement: (id, data) => request('POST', `/api/patients/${id}/measurements`, data),
   deleteMeasurement: (id, mid) => request('DELETE', `/api/patients/${id}/measurements/${mid}`),
 
+  addDevelopment: (id, data) => request('POST', `/api/patients/${id}/development`, data),
+  deleteDevelopment: (id, devId) => request('DELETE', `/api/patients/${id}/development/${devId}`),
+
   addVisit: (id, data) => request('POST', `/api/patients/${id}/visits`, data),
   deleteVisit: (id, vid) => request('DELETE', `/api/patients/${id}/visits/${vid}`),
 

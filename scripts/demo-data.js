@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { Store, hashPin } from '../lib/store.js';
 import { addDays, addMonths, today } from '../public/js/shared/dates.js';
 import { computePlan } from '../public/js/shared/schedule.js';
+import { CHECKPOINTS, checkpointFor } from '../public/js/shared/development.js';
 import { correctionMonths, lmsAt, valueAtZ } from '../public/js/shared/growth.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -147,6 +148,7 @@ function main() {
       measurements: [],
       visits: [],
       reminders: [],
+      development: [],
       createdAt: new Date().toISOString(),
     };
 
@@ -246,6 +248,43 @@ function main() {
       });
     }
 
+    // Оценки на нервно-психическото развитие по контролните листове.
+    const devMonths = correctionMonths(patient.birth.gestWeeks);
+    const devConcern = rnd() < 0.12;
+    // Отклонението е в една област за цялото дете, а не различна всеки път.
+    const weakDomain = devConcern ? pick(['language', 'social', 'motor']) : null;
+    for (const cp of CHECKPOINTS) {
+      const corrected = cp.ageMonths <= 24 ? cp.ageMonths + devMonths : cp.ageMonths;
+      if (corrected > ageMonths) break;
+      if (diligence < 0.15 || rnd() < 0.2) continue;   // не всяко посещение е документирано
+      const answers = {};
+      for (const item of cp.items) {
+        if (weakDomain && item.domain === weakDomain && cp.ageMonths >= 12 && rnd() < 0.5) {
+          answers[item.id] = rnd() < 0.7 ? 'not_yet' : 'unsure';
+        } else {
+          answers[item.id] = rnd() < 0.04 ? 'unsure' : 'yes';
+        }
+      }
+      const rec = {
+        id: `demo-dev-${i}-${cp.ageMonths}`,
+        date: addDays(addMonths(birthDate, Math.round(corrected)), Math.floor(between(0, 10))),
+        checkpoint: cp.ageMonths,
+        answers,
+        screening: cp.screening.length && rnd() < 0.7
+          ? {
+            tool: cp.screening.includes('autism') && rnd() < 0.5 ? 'mchat' : 'asq3',
+            result: weakDomain && rnd() < 0.4 ? 'positive' : rnd() < 0.1 ? 'borderline' : 'negative',
+            score: '', note: '',
+          }
+          : null,
+        lostSkills: false,
+        parentConcern: weakDomain ? rnd() < 0.5 : rnd() < 0.05,
+        action: '', note: '',
+        doctorId: patient.doctorId,
+      };
+      if (rec.date <= t) patient.development.push(rec);
+    }
+
     if (rnd() < 0.18) {
       patient.reminders.push({
         id: 'demo-r-' + i,
@@ -263,9 +302,10 @@ function main() {
   const counts = store.patients.reduce((acc, p) => {
     acc.measurements += p.measurements.length;
     acc.visits += p.visits.length;
+    acc.development += p.development.length;
     acc.records += Object.keys(p.records).length;
     return acc;
-  }, { measurements: 0, visits: 0, records: 0 });
+  }, { measurements: 0, visits: 0, records: 0, development: 0 });
 
   console.log(`
 Готово. Създаден е примерен регистър в ${DATA_DIR}:
@@ -274,6 +314,7 @@ function main() {
   ${counts.records} отбелязани дейности
   ${counts.measurements} измервания
   ${counts.visits} прегледа
+  ${counts.development} оценки на развитието
   2 потребителя (д-р Иванова — без ПИН, д-р Стоянов — ПИН 1234)
 
 Стартирайте с:  npm start
