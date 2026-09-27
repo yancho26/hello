@@ -412,7 +412,138 @@ export const DEFAULT_SCREENINGS = [
   },
 ];
 
-/** Пълният календар по подразбиране. */
+/* ------------------------------- възрастни -------------------------------
+ *
+ * Профилактика на лица над 18 г. по Наредба № 8 (ежегоден профилактичен
+ * преглед), Наредба № 15 (реимунизация срещу тетанус и дифтерия на 25 г. и на
+ * всеки 10 години), Препоръката на Съвета на ЕС от 2022 г. за скрининг на
+ * рак (гърда, шийка на матката, дебело черво) и ESC 2021 (оценка на
+ * сърдечно-съдовия риск). Ваксините срещу грип, пневмококи, COVID-19 и РСВ —
+ * по препоръките на ECDC и европейските имунизационни комитети; при
+ * хронични заболявания се дължат и преди 65 г.
+ *
+ * Полета, специфични за възрастни:
+ *   track       'adult' — прилага се от 18 г. независимо от регистрацията
+ *   recur       { fromMonths, toMonths, everyMonths } — повтаряща се дейност;
+ *               всяко повторение има собствен запис (id@месеци)
+ *   seasonal    { month, day, validMonths } — всеки сезон (id@година)
+ *   fromMonths  от каква възраст (за сезонните)
+ *   riskFromMonths  от каква възраст при хронично заболяване с повишен риск
+ *   sex         'm' | 'f' — само за единия пол
+ *   closesWith  кодове на изследвания или скали, които я отбелязват като направена
+ */
+export const ADULT_ITEMS = [
+  {
+    id: 'ad-checkup', track: 'adult', group: 'checkup', name: 'Профилактичен преглед', short: 'Профилактичен преглед',
+    recur: { fromMonths: 228, toMonths: 1200, everyMonths: 12 }, graceMonths: 3, mandatory: true,
+    note: 'Ежегодно (Наредба № 8): анамнеза, физикален статус, АН, ИТМ и обиколка на талията, оценка на риска.',
+  },
+  {
+    id: 'ad-glucose', track: 'adult', group: 'screening', name: 'Кръвна захар / HbA1c', short: 'Глюкоза',
+    recur: { fromMonths: 480, toMonths: 1200, everyMonths: 36 }, graceMonths: 6, mandatory: true,
+    closesWith: ['glucose', 'hba1c'],
+    note: 'От 40 г. на всеки 3 години; ежегодно при FINDRISC ≥12, предиабет или затлъстяване.',
+  },
+  {
+    id: 'ad-cvrisk-m', track: 'adult', sex: 'm', group: 'screening', name: 'Липиден профил и сърдечно-съдов риск (SCORE2)', short: 'Липиди, SCORE2',
+    recur: { fromMonths: 480, toMonths: 1068, everyMonths: 60 }, graceMonths: 6, mandatory: true, closesWith: ['ldl', 'tchol'],
+    note: 'ESC 2021: оценка на риска на всеки 5 години при мъже над 40 г.',
+  },
+  {
+    id: 'ad-cvrisk-f', track: 'adult', sex: 'f', group: 'screening', name: 'Липиден профил и сърдечно-съдов риск (SCORE2)', short: 'Липиди, SCORE2',
+    recur: { fromMonths: 600, toMonths: 1068, everyMonths: 60 }, graceMonths: 6, mandatory: true, closesWith: ['ldl', 'tchol'],
+    note: 'ESC 2021: оценка на риска на всеки 5 години при жени над 50 г. или след менопауза.',
+  },
+  {
+    id: 'ad-fit', track: 'adult', group: 'screening', name: 'Скрининг за рак на дебелото черво (FIT)', short: 'FIT',
+    recur: { fromMonths: 600, toMonths: 888, everyMonths: 24 }, graceMonths: 6, mandatory: true, closesWith: ['fit'],
+    note: 'Имунохимичен тест за окултно кървене, 50–74 г., на 2 години (Съвет на ЕС, 2022). Положителен — колоноскопия.',
+  },
+  {
+    id: 'ad-mammo', track: 'adult', sex: 'f', group: 'screening', name: 'Мамография', short: 'Мамография',
+    recur: { fromMonths: 600, toMonths: 828, everyMonths: 24 }, graceMonths: 6, mandatory: true, closesWith: ['mammo'],
+    note: '50–69 г. на 2 години (Съвет на ЕС, 2022; по преценка и 45–74 г.).',
+  },
+  {
+    id: 'ad-cervical-cyto', track: 'adult', sex: 'f', group: 'screening', name: 'Цитонамазка', short: 'Цитонамазка',
+    recur: { fromMonths: 300, toMonths: 348, everyMonths: 36 }, graceMonths: 6, mandatory: true, closesWith: ['cervical'],
+    note: '25–29 г. — цитология на 3 години.',
+  },
+  {
+    id: 'ad-cervical-hpv', track: 'adult', sex: 'f', group: 'screening', name: 'HPV тест / цитонамазка', short: 'HPV тест',
+    recur: { fromMonths: 360, toMonths: 780, everyMonths: 60 }, graceMonths: 6, mandatory: true, closesWith: ['cervical'],
+    note: '30–65 г. — първичен HPV тест на 5 години (Съвет на ЕС, 2022); където няма — цитология на 3 години.',
+  },
+  {
+    id: 'ad-phq', track: 'adult', group: 'screening', name: 'Скрининг за депресия и тревожност (PHQ-4)', short: 'PHQ-4',
+    recur: { fromMonths: 228, toMonths: 1200, everyMonths: 12 }, graceMonths: 3, mandatory: false, closesWith: ['phq4', 'phq9', 'gad7'],
+    note: 'Кратък скрининг при профилактичния преглед; при положителен — PHQ-9 и GAD-7.',
+  },
+  {
+    id: 'ad-audit', track: 'adult', group: 'screening', name: 'Употреба на алкохол (AUDIT-C)', short: 'AUDIT-C',
+    recur: { fromMonths: 228, toMonths: 1200, everyMonths: 36 }, graceMonths: 6, mandatory: false, closesWith: ['auditc'],
+    note: 'Скрининг и кратка интервенция при рискова употреба (СЗО).',
+  },
+  {
+    id: 'ad-falls', track: 'adult', group: 'screening', name: 'Риск от падане', short: 'Падане',
+    recur: { fromMonths: 780, toMonths: 1200, everyMonths: 12 }, graceMonths: 3, mandatory: false, closesWith: ['falls'],
+    note: 'От 65 г. ежегодно — трите въпроса на STEADI.',
+  },
+  {
+    id: 'ad-cognition', track: 'adult', group: 'screening', name: 'Когнитивна оценка (Mini-Cog)', short: 'Mini-Cog',
+    recur: { fromMonths: 900, toMonths: 1200, everyMonths: 12 }, graceMonths: 3, mandatory: false, closesWith: ['minicog'],
+    note: 'От 75 г. ежегодно или по-рано при оплаквания от паметта.',
+  },
+  {
+    id: 'ad-dxa', track: 'adult', sex: 'f', group: 'screening', name: 'Остеопороза — DXA / FRAX', short: 'DXA',
+    dueMonths: 780, graceMonths: 12, expireMonths: 120, mandatory: false, closesWith: ['dxa'],
+    note: 'Жени от 65 г.; по-рано при рискови фактори (кортикостероиди, фрактура, ниско тегло).',
+  },
+  {
+    id: 'ad-td', track: 'adult', group: 'vaccine', name: 'Td — реимунизация (тетанус, дифтерия)', short: 'Td',
+    protects: 'тетанус и дифтерия',
+    recur: { fromMonths: 300, toMonths: 1140, everyMonths: 120 }, graceMonths: 6, mandatory: true,
+    note: 'На 25 г. и на всеки 10 години (Наредба № 15). По преценка — Tdap (и срещу коклюш).',
+  },
+  {
+    id: 'ad-flu', track: 'adult', group: 'vaccine', name: 'Грипна ваксина', short: 'Грип',
+    protects: 'сезонен грип',
+    seasonal: { month: 10, day: 1, validMonths: 6 }, fromMonths: 780, riskFromMonths: 216, graceMonths: 2, mandatory: false,
+    note: 'Всяка есен от 65 г.; по-рано при хронично заболяване (диабет, ССЗ, ХОББ, астма, ХБЗ).',
+  },
+  {
+    id: 'ad-covid', track: 'adult', group: 'vaccine', name: 'COVID-19 — сезонна доза', short: 'COVID-19',
+    protects: 'COVID-19',
+    seasonal: { month: 10, day: 1, validMonths: 6 }, fromMonths: 780, riskFromMonths: 216, graceMonths: 2, mandatory: false,
+    note: 'Есенна доза с актуализирана ваксина от 65 г. и при повишен риск (ECDC/EMA).',
+  },
+  {
+    id: 'ad-pcv', track: 'adult', group: 'vaccine', name: 'Пневмококова ваксина (PCV20/PCV21)', short: 'Пневмококи',
+    protects: 'пневмококови инфекции', dueMonths: 780, riskFromMonths: 216, graceMonths: 6, mandatory: false,
+    note: 'Еднократно от 65 г.; по-рано при хронично сърдечно, белодробно, бъбречно заболяване или диабет.',
+  },
+  {
+    id: 'ad-rsv', track: 'adult', group: 'vaccine', name: 'РСВ ваксина', short: 'РСВ',
+    protects: 'респираторно-синцитиален вирус', dueMonths: 900, riskFromMonths: 720, graceMonths: 6, mandatory: false,
+    note: 'Еднократно от 75 г.; 60–74 г. при повишен риск (ХОББ, СН, диабет, ХБЗ).',
+  },
+  {
+    id: 'ad-zoster-1', track: 'adult', group: 'vaccine', name: 'Херпес зостер — I доза', short: 'Зостер I',
+    protects: 'херпес зостер и постхерпетична невралгия', dueMonths: 600, graceMonths: 24, mandatory: false,
+    optIn: true, optInGroup: 'zoster', series: 'zoster', doseNo: 1,
+    note: 'Рекомбинантна ваксина от 50 г.; две дози.',
+  },
+  {
+    id: 'ad-zoster-2', track: 'adult', group: 'vaccine', name: 'Херпес зостер — II доза', short: 'Зостер II',
+    protects: 'херпес зостер и постхерпетична невралгия', dueMonths: 602, graceMonths: 24, mandatory: false,
+    optIn: true, optInGroup: 'zoster', series: 'zoster', doseNo: 2, minIntervalM: 2,
+    note: '2–6 месеца след първата доза.',
+  },
+];
+
+export const isAdultItem = (item) => item.track === 'adult';
+
+/** Пълният календар по подразбиране — деца и възрастни. */
 export function defaultSchedule() {
   return [
     ...DEFAULT_VACCINES,
@@ -420,7 +551,13 @@ export function defaultSchedule() {
     ...buildCheckups(),
     ...DEFAULT_SCREENINGS,
     ...buildDevelopmentScreenings(),
-  ].map(item => ({ ...item }));
+    ...ADULT_ITEMS,
+  ].map(item => JSON.parse(JSON.stringify(item)));
+}
+
+/** Календарът за възрастни — за добавяне към вече съществуващ календар при обновяване. */
+export function defaultAdultSchedule() {
+  return ADULT_ITEMS.map(item => JSON.parse(JSON.stringify(item)));
 }
 
 /** Наименования на препоръчителните серии, показвани като една отметка. */
@@ -432,6 +569,7 @@ export const OPT_IN_GROUPS = {
   hpv: { label: 'HPV', note: 'От 9-годишна възраст, за момчета и момичета.' },
   rsv: { label: 'РСВ (низевимаб)', note: 'През първия РСВ сезон на кърмачето.' },
   flu: { label: 'Грипна ваксина (ежегодно)', note: 'Всяка есен от навършени 6 месеца.' },
+  zoster: { label: 'Херпес зостер', note: 'Две дози от 50 г.' },
 };
 
 /** Причини за отвод — предлагат се в падащо меню. */

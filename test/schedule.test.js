@@ -187,7 +187,14 @@ test('календарът по подразбиране е свързан ко�
     assert.ok(item.id && !ids.has(item.id), `дублиран код: ${item.id}`);
     ids.add(item.id);
     assert.ok(item.name, 'липсва наименование');
-    assert.ok(Number.isFinite(item.dueMonths), `невалиден срок при ${item.id}`);
+    if (item.recur) {
+      const { fromMonths, toMonths, everyMonths } = item.recur;
+      assert.ok(fromMonths >= 216 && toMonths > fromMonths && everyMonths > 0, `невалидно повторение при ${item.id}`);
+    } else if (item.seasonal) {
+      assert.ok(item.seasonal.month >= 1 && item.seasonal.month <= 12 && item.seasonal.validMonths > 0, `невалиден сезон при ${item.id}`);
+    } else {
+      assert.ok(Number.isFinite(item.dueMonths), `невалиден срок при ${item.id}`);
+    }
     assert.ok(['vaccine', 'checkup', 'screening'].includes(item.group), `невалидна група при ${item.id}`);
     if (item.minMonths !== undefined) {
       assert.ok(item.minMonths <= item.dueMonths, `${item.id}: минималната възраст е след срока`);
