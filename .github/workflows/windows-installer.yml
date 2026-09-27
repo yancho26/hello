@@ -8,6 +8,9 @@ name: Windows инсталатор
 
 on:
   push:
+    # Без изрично изброени клонове GitHub пуска проверката само за етикетите.
+    branches: ['**']
+    tags: ['v*']
     paths:
       - 'desktop/**'
       - 'installer/**'
@@ -19,7 +22,6 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/windows-installer.yml'
-    tags: ['v*']
   workflow_dispatch:
 
 permissions:
