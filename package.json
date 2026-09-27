@@ -1,6 +1,6 @@
 {
   "name": "detska-konsultacia",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Платформа за проследяване на деца пациенти в общопрактикуваща лекарска практика",
   "type": "module",
   "private": true,
