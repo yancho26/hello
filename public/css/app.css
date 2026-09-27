@@ -439,3 +439,18 @@ svg.growth .point.danger { fill: var(--danger); }
   a { text-decoration: none; color: inherit; }
   .page-break { break-before: page; }
 }
+
+/* Пътища и адреси в „Настройки → Данни“ */
+code.path {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 6px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.address-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.address-row { align-items: center; gap: 8px; }
+.address-row code.path { font-size: 15px; padding: 4px 10px; }

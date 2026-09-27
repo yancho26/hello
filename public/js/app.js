@@ -19,6 +19,8 @@ export const state = {
   schedule: [],
   settings: { horizonDays: 30 },
   scheduleById: new Map(),
+  /* Адреси и папки на сървъра — показват се в „Настройки → Данни“. */
+  server: null,
 };
 
 const VIEWS = [
@@ -287,6 +289,7 @@ async function start() {
   state.doctors = boot.doctors;
   state.schedule = boot.schedule;
   state.settings = boot.settings;
+  state.server = boot.server || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 
   shell();
@@ -302,6 +305,7 @@ export async function refreshBootstrap() {
   state.doctors = boot.doctors;
   state.schedule = boot.schedule;
   state.settings = boot.settings;
+  state.server = boot.server || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 }
 

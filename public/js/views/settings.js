@@ -324,11 +324,42 @@ async function dataTab(rerender) {
     },
   });
 
+  const srv = state.server || {};
+  const where = srv.dataDir
+    ? h('code.path', null, srv.dataDir)
+    : 'папка „data“ до програмата';
+  const backups = srv.backupDir ? h('code.path', null, srv.backupDir) : '„data/backups“';
+
+  const copy = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Копирано.', 'ok');
+    } catch {
+      toast('Маркирайте адреса и го копирайте ръчно.');
+    }
+  };
+  const addressRow = (url) => h('div.row.address-row', null,
+    h('code.path', null, url),
+    h('button.btn.sm', { onclick: () => copy(url), title: 'Копирай адреса' }, 'Копирай'));
+
+  const connection = srv.port ? card('Връзка от другите компютри', { icon: '🖧' },
+    h('p.small', null,
+      'Програмата работи на този компютър. От другите компютри в кабинета отворете в браузъра '
+      + (srv.addresses?.length > 1 ? 'един от адресите:' : 'адреса:')),
+    srv.addresses?.length
+      ? h('div.address-list', null, srv.addresses.map(addressRow))
+      : h('p.small.muted', null, 'Компютърът не е свързан към локална мрежа.'),
+    h('p.small.muted', { style: { marginBottom: 0 } },
+      'Ако адресът не се отваря от друг компютър: мрежата в Windows трябва да е „Частна“ (Private), '
+      + 'а двата компютъра — в една и съща мрежа. Този компютър трябва да е включен, докато другите работят.')) : null;
+
   return h('div.stack', null,
+    connection,
     card('Резервни копия', { icon: '💾' },
       h('p.small.muted', null,
-        'Сървърът прави автоматично копие всеки ден при първата промяна и пази последните 60 дни '
-        + 'в папка „data/backups“. Свалете копие и извън компютъра — на външен диск или защитена папка.'),
+        'Сървърът прави автоматично копие всеки ден при първата промяна и пази последните 60 дни в ',
+        backups,
+        '. Свалете копие и извън компютъра — на външен диск или защитена папка.'),
       h('div.row', null,
         h('button.btn.primary', { onclick: doExport }, '⬇ Свали пълно копие (JSON)'),
         h('button.btn', { onclick: () => fileInput.click() }, '⬆ Възстанови от файл'),
@@ -336,11 +367,13 @@ async function dataTab(rerender) {
 
     card('Къде се пазят данните', { icon: '🔒' },
       h('p.small', null,
-        'Всички данни стоят на компютъра, на който работи програмата — в папка „data“ до нея. '
+        'Всички данни стоят на компютъра, на който работи програмата — в ', where, '. '
         + 'Нищо не се изпраща в интернет и няма външни услуги.'),
-      h('p.small.muted', { style: { marginBottom: 0 } },
+      h('p.small.muted', { style: srv.version ? null : { marginBottom: 0 } },
         'Данните за деца пациенти са лични данни за здравословно състояние. Достъпът до компютъра, '
-        + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.')));
+        + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.'),
+      srv.version ? h('p.small.muted', { style: { marginBottom: 0 } },
+        `Версия ${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}.`) : null));
 }
 
 /* ---------------------------------- журнал ----------------------------------- */

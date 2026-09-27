@@ -6,3 +6,7 @@ demo-data/
 node_modules/
 .DS_Store
 *.log
+
+# Сглобяване на инсталатора за Windows
+build/
+dist/
