@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-/* Сглобява инсталатора за Windows:
+/* Сглобява инсталатора и файла за обновяване за Windows:
  *
- *   dist/DetskaKonsultacia-Setup-<версия>.exe
+ *   dist/DetskaKonsultacia-Setup-<версия>.exe    пълен инсталатор
+ *   dist/DetskaKonsultacia-Update-<версия>.exe   обновяване на инсталирана програма
  *
  * Стъпки:
  *   1. esbuild събира desktop/main.js и сървъра в един CommonJS файл;
@@ -10,7 +11,7 @@
  *      сменят се иконата и данните за версията, премахва се подписът на
  *      Node.js (вече не съответства), вгражда се blob-ът (postject) и
  *      програмата се отбелязва като графична — без черен прозорец;
- *   4. NSIS (makensis) прави инсталатора от installer/installer.nsi.
+ *   4. NSIS (makensis) прави двата файла от installer/installer.nsi.
  *
  * Работи под Linux, macOS и Windows. Нужни са: npm install (esbuild, postject,
  * resedit) и NSIS — `apt install nsis`, `brew install makensis` или
@@ -350,23 +351,33 @@ if (args.has('--linux-test')) {
 }
 
 if (!args.has('--exe-only')) {
-  step('Инсталатор (NSIS)');
   fs.mkdirSync(DIST, { recursive: true });
-  const outFile = path.join(DIST, `DetskaKonsultacia-Setup-${VERSION}.exe`);
-  execFileSync(findMakensis(), [
-    '-V2', '-INPUTCHARSET', 'UTF8',
-    `-DVERSION=${VERSION}`,
-    `-DSOURCE_DIR=${winDir}`,
-    `-DICON=${path.join(ROOT, 'desktop', 'icon.ico')}`,
-    `-DWELCOME=${path.join(ROOT, 'installer', 'welcome.bmp')}`,
-    `-DREADME=${path.join(ROOT, 'installer', 'readme.txt')}`,
-    `-DOUTFILE=${outFile}`,
-    path.join(ROOT, 'installer', 'installer.nsi'),
-  ], { stdio: 'inherit' });
-  const data = fs.readFileSync(outFile);
-  const sum = sha256(data);
-  fs.writeFileSync(path.join(DIST, 'SHA256SUMS.txt'), `${sum}  ${path.basename(outFile)}\n`);
-  console.log(`\n✓ ${rel(outFile)} (${(data.length / 1048576).toFixed(1)} MB)\n  SHA-256 ${sum}`);
+  // По-стари сглобки не остават до новите — в dist е само текущата версия.
+  for (const f of fs.readdirSync(DIST)) {
+    if (/^DetskaKonsultacia-(Setup|Update)-.*\.exe$/.test(f)) fs.rmSync(path.join(DIST, f));
+  }
+  const makensis = findMakensis();
+  const sums = [];
+  for (const kind of ['Setup', 'Update']) {
+    step(kind === 'Setup' ? 'Пълен инсталатор (NSIS)' : 'Файл за обновяване (NSIS)');
+    const outFile = path.join(DIST, `DetskaKonsultacia-${kind}-${VERSION}.exe`);
+    execFileSync(makensis, [
+      '-V2', '-INPUTCHARSET', 'UTF8',
+      `-DVERSION=${VERSION}`,
+      `-DSOURCE_DIR=${winDir}`,
+      `-DICON=${path.join(ROOT, 'desktop', 'icon.ico')}`,
+      `-DWELCOME=${path.join(ROOT, 'installer', 'welcome.bmp')}`,
+      `-DREADME=${path.join(ROOT, 'installer', 'readme.txt')}`,
+      `-DOUTFILE=${outFile}`,
+      ...(kind === 'Update' ? ['-DUPDATE'] : []),
+      path.join(ROOT, 'installer', 'installer.nsi'),
+    ], { stdio: 'inherit' });
+    const data = fs.readFileSync(outFile);
+    const sum = sha256(data);
+    sums.push(`${sum}  ${path.basename(outFile)}`);
+    console.log(`  ✓ ${rel(outFile)} (${(data.length / 1048576).toFixed(1)} MB)\n    SHA-256 ${sum}`);
+  }
+  fs.writeFileSync(path.join(DIST, 'SHA256SUMS.txt'), sums.join('\n') + '\n');
 } else {
   console.log(`\n✓ ${rel(exePath)}`);
 }

@@ -30,13 +30,30 @@ export function toast(message, kind = '') {
  */
 export function modal({ title, body, actions, wide = false, onClose }) {
   const overlay = h('div.overlay');
+  /* Щом в прозореца е въведено нещо, случаен клик извън него не го затваря,
+   * а Esc иска второ натискане — за да не се губят попълнени данни. */
+  let dirty = false;
+  let escArmed = 0;
   const close = (result) => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
     if (onClose) onClose(result);
   };
+  const warn = h('div.unsaved-warn', { hidden: true },
+    'Има въведени данни. Натиснете Esc още веднъж, за да затворите без запис.');
   const onKey = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); close(); }
+    if (e.key !== 'Escape') return;
+    // Само най-горният прозорец реагира.
+    const overlays = document.querySelectorAll('.overlay');
+    if (overlays[overlays.length - 1] !== overlay) return;
+    e.stopPropagation();
+    if (dirty && Date.now() - escArmed > 3000) {
+      escArmed = Date.now();
+      warn.hidden = false;
+      setTimeout(() => { warn.hidden = true; }, 3000);
+      return;
+    }
+    close();
   };
 
   const box = h('div.modal' + (wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true' },
@@ -44,10 +61,21 @@ export function modal({ title, body, actions, wide = false, onClose }) {
       h('h2', null, title),
       h('button.icon-btn', { onclick: () => close(), title: 'Затваряне', type: 'button' }, '✕')),
     h('div.body', null, typeof body === 'function' ? body(close) : body),
+    warn,
     actions ? h('footer', null, actions(close)) : null);
+  box.addEventListener('input', () => { dirty = true; });
 
   overlay.appendChild(box);
-  overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener('mousedown', (e) => {
+    if (e.target !== overlay) return;
+    if (dirty) {
+      box.classList.remove('nudge');
+      void box.offsetWidth; // рестартира анимацията
+      box.classList.add('nudge');
+      return;
+    }
+    close();
+  });
   document.addEventListener('keydown', onKey);
   document.body.appendChild(overlay);
 
@@ -187,7 +215,7 @@ export function stat(value, label, opts = {}) {
 }
 
 export function empty(message, icon = '✓') {
-  return h('div.empty', null, h('div.big', null, icon), h('div', null, message));
+  return h('div.empty', null, icon ? h('div.big', null, icon) : null, h('div', null, message));
 }
 
 export function loading(message = 'Зареждане…') {

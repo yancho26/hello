@@ -1,8 +1,17 @@
 /* Връзка със сървъра. Всички грешки идват като съобщения на български. */
 
+import { markDown, markUp } from './connection.js';
+
 class ApiError extends Error {
   constructor(status, message) { super(message); this.status = status; }
 }
+
+/* Когато сесията изтече (или е изтекло времето без активност), сървърът
+ * отговаря с 401 — връщаме потребителя към екрана за вход. */
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
+
+const PUBLIC = new Set(['/api/state', '/api/login', '/api/setup', '/api/logout']);
 
 async function request(method, path, body) {
   let res;
@@ -14,13 +23,18 @@ async function request(method, path, body) {
       credentials: 'same-origin',
     });
   } catch {
-    throw new ApiError(0, 'Няма връзка със сървъра на практиката. Проверете дали програмата работи.');
+    markDown();
+    throw new ApiError(0, 'Няма връзка с програмата. Проверете дали тя работи на компютъра, на който е инсталирана.');
   }
+  markUp();
 
   const text = await res.text();
   let data = null;
   if (text) {
     try { data = JSON.parse(text); } catch { data = null; }
+  }
+  if (res.status === 401 && onUnauthorized && !PUBLIC.has(path.split('?')[0])) {
+    onUnauthorized();
   }
   if (!res.ok) {
     throw new ApiError(res.status, (data && data.error) || `Грешка ${res.status}.`);
@@ -51,6 +65,7 @@ export const api = {
 
   setRecord: (id, itemId, data) => request('PUT', `/api/patients/${id}/records/${itemId}`, data),
   clearRecord: (id, itemId) => request('DELETE', `/api/patients/${id}/records/${itemId}`),
+  addHistory: (id, data) => request('POST', `/api/patients/${id}/records`, data),
   setOptIn: (id, optIn) => request('PUT', `/api/patients/${id}/optin`, { optIn }),
 
   addMeasurement: (id, data) => request('POST', `/api/patients/${id}/measurements`, data),
@@ -78,6 +93,9 @@ export const api = {
   addScheduleItem: (data) => request('POST', '/api/schedule', data),
   deleteScheduleItem: (itemId) => request('DELETE', `/api/schedule/${itemId}`),
   resetSchedule: () => request('POST', '/api/schedule/reset', {}),
+
+  stopProgram: () => request('POST', '/api/system/stop', {}),
+  copyBackupNow: () => request('POST', '/api/backup/extra', {}),
 
   exportAll: () => request('GET', '/api/export'),
   importAll: (data) => request('POST', '/api/import', data),

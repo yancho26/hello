@@ -104,7 +104,9 @@ function main() {
     { id: 'demo-doc-1', name: 'д-р Мария Иванова', role: 'Общопрактикуващ лекар', pin: null, active: true },
     { id: 'demo-doc-2', name: 'д-р Петър Стоянов', role: 'Общопрактикуващ лекар', pin: hashPin('1234'), active: true },
   ];
-  store.data.settings = { horizonDays: 30, requireLogin: false };
+  store.data.settings = { horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '' };
+  // Примерните данни са „нови“ — без прозорец „Какво е новото“ при първото отваряне.
+  store.data.appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
   store.data.patients = [];
 
   const t = today();

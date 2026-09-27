@@ -279,10 +279,11 @@ async function main() {
   }
 
   const version = appVersion();
+  try { store.noteAppVersion(version); } catch (err) { console.error('[версия]', err.message); }
   const token = crypto.randomBytes(24).toString('hex');
   let stopping = false;
 
-  const shutdown = (reason, exitCode = 0) => {
+  const shutdown = async (reason, exitCode = 0) => {
     if (stopping) return;
     stopping = true;
     console.log(`Спиране (${reason}). Записване на данните…`);
@@ -290,9 +291,14 @@ async function main() {
     try {
       if (readJson(CONTROL_FILE)?.token === token) fs.unlinkSync(CONTROL_FILE);
     } catch { /* няма значение */ }
-    server.close(() => process.exit(exitCode));
+    server.close();
     server.closeAllConnections?.();
-    setTimeout(() => process.exit(exitCode), 3000).unref();
+    // Последно копие във външната папка — но не повече от 8 секунди.
+    if (store.settings.extraBackupDir) {
+      const status = await Promise.race([store.copyToExtra('shutdown'), sleep(8000)]);
+      console.log(status?.ok ? `Външно копие: ${status.file}` : 'Външното копие не е направено при спиране.');
+    }
+    process.exit(exitCode);
   };
 
   const server = createAppServer({
@@ -300,6 +306,7 @@ async function main() {
     serveStatic: staticSource(),
     info: () => ({
       version,
+      previousVersion: store.data.previousVersion || null,
       edition: IS_WINDOWS && IS_SEA ? 'windows' : 'node',
       port,
       dataDir,

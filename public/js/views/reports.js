@@ -74,7 +74,7 @@ export async function renderReports(host) {
         byItemRows.length
           ? table(['Имунизация', { label: 'Поставени', class: 'right' },
             { label: 'Дължими', class: 'right' }, 'Обхват'], byItemRows)
-          : empty('Няма достатъчно данни.', '·')),
+          : empty('Няма достатъчно данни.', null)),
       card('Възрастова структура', { icon: '👶', tight: true },
         table(['Възраст', { label: 'Деца', class: 'right' }, ''], ageRows))),
 

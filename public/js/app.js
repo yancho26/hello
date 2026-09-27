@@ -1,7 +1,10 @@
 /* Начало на приложението: вписване, навигация, общо състояние. */
 
-import { api } from './api.js';
-import { avatar, card, field, h, input, loading, modal, mount, toast } from './ui/components.js';
+import { api, setUnauthorizedHandler } from './api.js';
+import { avatar, card, confirmDialog, field, h, input, loading, modal, mount, toast } from './ui/components.js';
+import { showStoppedScreen } from './connection.js';
+import { startIdleLogout } from './idle.js';
+import { maybeShowWhatsNew } from './whats-new.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderPatients } from './views/patients.js';
 import { renderPatient } from './views/patient.js';
@@ -78,7 +81,8 @@ function shell() {
   let searchTimer = null;
   const searchInput = h('input', {
     type: 'search',
-    placeholder: 'Търсене по име, ЕГН или телефон…',
+    placeholder: 'Търсене…',
+    title: 'Търсене по име, ЕГН или телефон (клавиш /)',
     'aria-label': 'Търсене на дете',
     oninput: (e) => {
       const q = e.target.value;
@@ -109,7 +113,7 @@ function shell() {
 
   const header = h('header.app', null,
     h('div.brand', null,
-      h('span.mark', null, '🧸'),
+      h('img.mark', { src: '/favicon.svg', alt: '', width: 34, height: 34 }),
       h('div', null,
         h('div.name', null, 'Детска консултация'),
         h('div.sub', null, state.practice.name))),
@@ -125,9 +129,57 @@ function shell() {
     }, '＋ Ново дете'),
     h('button.user-chip', { onclick: userMenu },
       avatar(state.doctor ? state.doctor.name : '?'),
-      h('span', null, state.doctor ? state.doctor.name : 'Вход')));
+      h('span', null, state.doctor ? state.doctor.name : 'Вход')),
+    canStopHere()
+      ? h('button.btn.icon.power.no-print', {
+        onclick: stopProgram,
+        title: 'Спиране на програмата',
+        'aria-label': 'Спиране на програмата',
+      }, powerIcon())
+      : null);
 
   mount(root, header, h('main', null, h('div#view')));
+}
+
+/* ------------------------------ спиране на програмата ------------------------ */
+
+/** Бутонът се показва само на компютъра, на който работи програмата. */
+export function canStopHere() {
+  return !!(state.server && state.server.canStop && state.server.local);
+}
+
+function powerIcon() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', '18');
+  svg.setAttribute('height', '18');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', 'M12 3v8 M6.3 6.3a8 8 0 1 0 11.4 0');
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', '2.2');
+  path.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(path);
+  return svg;
+}
+
+export async function stopProgram() {
+  const ok = await confirmDialog({
+    title: 'Спиране на програмата',
+    message: 'Програмата ще спре и за другите компютри в кабинета. Всички данни вече са записани. '
+      + 'За да я стартирате отново, щракнете два пъти върху иконата „Детска консултация“ на работния плот.',
+    confirmLabel: 'Спри програмата',
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await api.stopProgram();
+    showStoppedScreen();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 function userMenu() {
@@ -140,7 +192,17 @@ function userMenu() {
         h('dt', null, 'Колеги'), h('dd', null, state.doctors.filter(d => d.active).length)),
       h('div.row', null,
         h('button.btn', { onclick: () => { location.hash = '#/settings'; document.querySelector('.overlay').remove(); } },
-          'Настройки'))),
+          'Настройки')),
+      state.server && state.server.canStop
+        ? h('div.menu-section', null,
+          h('div.lbl', null, 'Програмата'),
+          canStopHere()
+            ? h('button.btn.danger', {
+              onclick: () => { document.querySelector('.overlay').remove(); stopProgram(); },
+            }, '⏻ Спри програмата')
+            : h('p.small.muted', { style: { margin: 0 } },
+              'Програмата работи на друг компютър в кабинета и може да бъде спряна само от него.'))
+        : null),
     actions: (close) => [
       h('button.btn', { onclick: () => close() }, 'Затвори'),
       h('button.btn.danger', {
@@ -267,6 +329,10 @@ function keyboardShortcuts() {
 
 async function start() {
   mount(root, h('main', null, loading('Свързване с данните на практиката…')));
+  setUnauthorizedHandler(() => {
+    // Сесията е изтекла: връщаме към екрана за вход, без да губим адреса.
+    if (!document.querySelector('.login-doctors')) location.reload();
+  });
 
   let info;
   try {
@@ -290,12 +356,16 @@ async function start() {
   state.schedule = boot.schedule;
   state.settings = boot.settings;
   state.server = boot.server || null;
+  state.extraBackup = boot.extraBackup || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 
   shell();
   keyboardShortcuts();
   window.addEventListener('hashchange', route);
   route();
+
+  if (state.settings.requireLogin && info.doctor) startIdleLogout(Number(state.settings.autoLogoutMinutes) || 0);
+  maybeShowWhatsNew(state.server);
 }
 
 /** Презарежда календара и настройките след промяна в „Настройки“. */
@@ -306,6 +376,7 @@ export async function refreshBootstrap() {
   state.schedule = boot.schedule;
   state.settings = boot.settings;
   state.server = boot.server || null;
+  state.extraBackup = boot.extraBackup || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 }
 

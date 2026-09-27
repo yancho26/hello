@@ -14,6 +14,7 @@ import { OPT_IN_GROUPS } from '../shared/calendar.js';
 import { openPatientForm } from './patients.js';
 import { deferDialog, markDoneDialog, refuseDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
+import { historyDialog } from './history-dialog.js';
 import { printImmunisationCard } from './print.js';
 import { developmentTab } from './development.js';
 
@@ -159,18 +160,31 @@ function overviewTab(ctx) {
 
   const next = data.plan.filter(e => e.status === 'soon').slice(0, 5);
 
-  return h('div.grid.cols-2', null,
+  const overdueVaccines = actionable.filter(e => e.group === 'vaccine' && e.status === 'overdue');
+  const historyHint = overdueVaccines.length >= 3
+    ? h('div.hint-strip', null,
+      h('div', null,
+        h('strong', null, 'Детето идва от друга практика?'),
+        h('div.small', null, 'Въведете наведнъж поставените досега ваксини от имунизационния паспорт, всяка със своята дата.')),
+      h('button.btn.sm', { onclick: () => historyDialog(ctx) }, '📋 Въведи минали имунизации'))
+    : null;
+
+  return h('div.overview-grid', null, h('div.col', null,
     card(actionable.length ? `За извършване (${actionable.length})` : 'За извършване',
       { icon: '📌', tight: true },
+      historyHint,
       actionable.length
         ? table(['Дейност', 'Срок', 'Състояние', ''],
           actionable.slice(0, 12).map(e => planRow(e, ctx, true)))
-        : empty('Всичко по календара е изпълнено.', '✓')),
+        : empty('Всичко по календара е изпълнено.', '✓'),
+      actionable.length > 12
+        ? h('div.body.small.muted', null, `Показани са първите 12. Всички са в разделите „Имунизации“ и „Профилактични прегледи“.`)
+        : null),
 
     card('Предстоящи', { icon: '📅', tight: true },
       next.length
         ? table(['Дейност', 'Срок', 'Състояние', ''], next.map(e => planRow(e, ctx, true)))
-        : empty('Няма предстоящи дейности в близките дни.', '·')),
+        : empty('Няма предстоящи дейности в близките дни.', null))), h('div.col', null,
 
     card('Растеж', {
       icon: '📈',
@@ -203,7 +217,7 @@ function overviewTab(ctx) {
             h('div.entry', null,
               h('div.small', null, h('strong', null, formatDate(v.date)), ' · ', v.type),
               v.diagnosis ? h('div.small', null, v.diagnosis, v.icd ? ` (${v.icd})` : '') : null))))
-        : empty('Няма записани прегледи.', '·')));
+        : empty('Няма записани прегледи.', null))));
 }
 
 function developmentOverview({ data }) {
@@ -288,8 +302,14 @@ function vaccinesTab(ctx) {
   return h('div.stack', null,
     card('Задължителни имунизации', {
       icon: '💉', tight: true,
-      actions: h('span.small.muted', null,
-        `${mandatory.filter(e => e.status === 'done').length} от ${mandatory.length} поставени`),
+      actions: [
+        h('span.small.muted', null,
+          `${mandatory.filter(e => e.status === 'done').length} от ${mandatory.length} поставени`),
+        h('button.btn.sm.no-print', {
+          onclick: () => historyDialog(ctx),
+          title: 'Въвеждане наведнъж на ваксини, поставени в друга практика',
+        }, '📋 Минали имунизации'),
+      ],
     }, table(['Ваксина', 'Възраст', 'Срок', 'Състояние', 'Партида', ''],
       mandatory.map(e => planRow(e, ctx)))),
 
@@ -691,7 +711,7 @@ function remindersTab(ctx) {
       h('div.grow'),
       h('span.small.muted', null, 'Свободни напомняния извън календара — контролен преглед, изследване, документ.')),
     card('Активни', { icon: '🔔' },
-      open.length ? h('ul.list-plain', null, open.map(row)) : empty('Няма активни напомняния.', '·')),
+      open.length ? h('ul.list-plain', null, open.map(row)) : empty('Няма активни напомняния.', null)),
     done.length ? card('Изпълнени', { icon: '✓' }, h('ul.list-plain', null, done.map(row))) : null);
 }
 

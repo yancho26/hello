@@ -1,7 +1,8 @@
 /* Настройки: практика, потребители, календар, данни и журнал. */
 
 import { api } from '../api.js';
-import { refreshBootstrap, state } from '../app.js';
+import { canStopHere, refreshBootstrap, state, stopProgram } from '../app.js';
+import { whatsNew } from '../whats-new.js';
 import {
   badge, card, confirmDialog, decimalFields, empty, field, h, input, modal, mount,
   numberInput, select, table, toast,
@@ -52,6 +53,7 @@ async function practiceTab(rerender) {
         practice: { name: d.name, address: d.address, phone: d.phone },
         horizonDays: d.horizonDays,
         requireLogin: d.requireLogin === 'on',
+        autoLogoutMinutes: Number(d.autoLogoutMinutes || 0),
       });
       await refreshBootstrap();
       toast('Настройките са запазени.', 'ok');
@@ -74,6 +76,13 @@ async function practiceTab(rerender) {
         h('div.tiny.dim', null,
           'Препоръчително, когато компютърът се ползва от повече хора. '
           + 'Вписването отбелязва кой е направил всяка промяна в журнала.')))),
+    h('div', null, field('Автоматично излизане при бездействие',
+      select([
+        { value: 0, label: 'изключено' },
+        ...[5, 10, 15, 30, 60].map(m => ({ value: m, label: `след ${m} минути` })),
+      ].map(o => ({ ...o, selected: Number(state.settings.autoLogoutMinutes || 0) === o.value })),
+      { name: 'autoLogoutMinutes' }),
+      'Важи при вход с ПИН. Минута преди това програмата предупреждава. Пази досиетата, ако някой остави компютъра отключен.')),
     h('div.full', null, h('button.btn.primary', { type: 'submit' }, 'Запази')));
 
   return card('Данни на практиката', { icon: '🏥' }, form);
@@ -353,8 +362,29 @@ async function dataTab(rerender) {
       'Ако адресът не се отваря от друг компютър: мрежата в Windows трябва да е „Частна“ (Private), '
       + 'а двата компютъра — в една и съща мрежа. Този компютър трябва да е включен, докато другите работят.')) : null;
 
+  const program = srv.version ? card('Програмата', { icon: '⚙️' },
+    h('dl.kv', null,
+      h('dt', null, 'Версия'), h('dd', null, `${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}`),
+      h('dt', null, 'Работи на'), h('dd', null, srv.local ? 'този компютър' : 'друг компютър в кабинета')),
+    h('div.row', { style: { marginTop: '12px' } },
+      h('button.btn', { onclick: () => whatsNew({ all: true }) }, 'Какво е новото'),
+      canStopHere()
+        ? h('button.btn.danger', { onclick: stopProgram }, '⏻ Спри програмата')
+        : null),
+    srv.canStop && !srv.local
+      ? h('p.small.muted', { style: { margin: '10px 0 0' } },
+        'Програмата може да бъде спряна само от компютъра, на който работи.')
+      : null,
+    srv.edition === 'windows'
+      ? h('p.small.muted', { style: { margin: '10px 0 0' } },
+        'Обновяване: стартирайте файла за обновяване на компютъра, на който работи програмата. '
+        + 'Данните и настройките се запазват.')
+      : null) : null;
+
   return h('div.stack', null,
     connection,
+    extraBackupCard(srv, rerender),
+    program,
     card('Резервни копия', { icon: '💾' },
       h('p.small.muted', null,
         'Сървърът прави автоматично копие всеки ден при първата промяна и пази последните 60 дни в ',
@@ -369,11 +399,73 @@ async function dataTab(rerender) {
       h('p.small', null,
         'Всички данни стоят на компютъра, на който работи програмата — в ', where, '. '
         + 'Нищо не се изпраща в интернет и няма външни услуги.'),
-      h('p.small.muted', { style: srv.version ? null : { marginBottom: 0 } },
+      h('p.small.muted', { style: { marginBottom: 0 } },
         'Данните за деца пациенти са лични данни за здравословно състояние. Достъпът до компютъра, '
-        + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.'),
-      srv.version ? h('p.small.muted', { style: { marginBottom: 0 } },
-        `Версия ${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}.`) : null));
+        + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.')));
+}
+
+/* Външно копие: флашка, втори диск или мрежова папка. */
+function extraBackupCard(srv, rerender) {
+  const current = state.settings.extraBackupDir || '';
+  const status = state.extraBackup;
+  const local = srv.local !== false;
+
+  const pathInput = input({
+    value: current, placeholder: 'например E:\\Детска консултация или \\\\сървър\\копия',
+    disabled: !local, 'aria-label': 'Папка за външно копие',
+  });
+
+  const save = async (value) => {
+    try {
+      const res = await api.updateSettings({ extraBackupDir: value });
+      state.settings = res.settings;
+      state.extraBackup = res.extraBackup;
+      toast(value ? 'Папката е проверена и първото копие е направено.' : 'Външното копие е изключено.', 'ok');
+      rerender();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+  const copyNow = async (btn) => {
+    btn.disabled = true;
+    try {
+      const res = await api.copyBackupNow();
+      state.extraBackup = res.extraBackup;
+      toast('Копието е направено.', 'ok');
+      rerender();
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.message, 'error');
+    }
+  };
+
+  let statusLine = null;
+  if (current && status && status.dir === current) {
+    const when = new Date(status.at).toLocaleString('bg-BG', { dateStyle: 'medium', timeStyle: 'short' });
+    statusLine = status.ok
+      ? h('div.backup-status.ok', null, '✓ Последно копие: ', when)
+      : h('div.backup-status.error', null,
+        h('strong', null, `✕ Последният опит (${when}) не успя. `),
+        status.error || '',
+        h('div.small', null, 'Проверете дали флашката или мрежовата папка е свързана.'));
+  }
+
+  return card('Външно копие', { icon: '🗄️' },
+    h('p.small', { style: { marginTop: 0 } },
+      'Автоматично копие на всички данни в папка извън този диск — флашка, външен диск или мрежова папка. '
+      + 'Прави се при първата промяна за деня, на всеки час при промени и при спиране на програмата. '
+      + 'Пазят се последните 60 дни. Така данните оцеляват и при повреда или кражба на компютъра.'),
+    h('div.row', null,
+      h('div', { style: { flex: '1', minWidth: '260px' } }, pathInput),
+      local ? h('button.btn.primary', { onclick: () => save(pathInput.value.trim()) }, current ? 'Смени' : 'Включи') : null,
+      local && current ? h('button.btn', { onclick: (e) => copyNow(e.currentTarget) }, 'Копирай сега') : null,
+      local && current ? h('button.btn.ghost', { onclick: () => save('') }, 'Изключи') : null),
+    statusLine,
+    local ? null : h('p.small.muted', { style: { marginBottom: 0 } },
+      'Папката се задава от компютъра, на който работи програмата.'),
+    current ? null : h('p.small.muted', { style: { margin: '10px 0 0' } },
+      'Съвет: флашка, която стои постоянно в компютъра, пази от повреда на диска. '
+      + 'Втора флашка, сменяна веднъж седмично и пазена извън кабинета, пази и от кражба или пожар.'));
 }
 
 /* ---------------------------------- журнал ----------------------------------- */
@@ -394,6 +486,8 @@ async function auditTab() {
     schedule_add: 'нова дейност в календара', schedule_delete: 'изтрита дейност',
     schedule_reset: 'календарът е върнат', export: 'сваляне на копие', import: 'възстановяване от копие',
     doctor_add: 'нов потребител', doctor_update: 'промяна в потребител',
+    records_history: 'минали имунизации', system_stop: 'спиране на програмата',
+    backup_copy: 'копие във външна папка', auto_logout: 'автоматично излизане',
   };
 
   const rows = entries.map(e => {
@@ -410,5 +504,5 @@ async function auditTab() {
   return card('Журнал на действията', { icon: '📋', tight: true },
     rows.length
       ? table(['Кога', 'Кой', 'Действие', 'Подробности'], rows)
-      : empty('Журналът е празен.', '·'));
+      : empty('Журналът е празен.', null));
 }

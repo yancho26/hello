@@ -1,4 +1,5 @@
-# Сглобява инсталатора за Windows и го проверява на истински Windows.
+# Сглобява инсталатора и файла за обновяване за Windows и ги проверява на
+# истински Windows.
 #
 # Готовият инсталатор е в Actions → това изпълнение → Artifacts →
 # DetskaKonsultacia-Setup. При етикет v* (например v1.0.0) се публикува и
@@ -19,6 +20,7 @@ on:
       - 'test/**'
       - 'server.js'
       - 'scripts/build-windows.mjs'
+      - 'CHANGELOG.md'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/windows-installer.yml'
@@ -63,16 +65,36 @@ jobs:
         with:
           name: DetskaKonsultacia-Setup
           path: dist
-      - name: Инсталиране, работа, спиране, деинсталиране
+      - name: Инсталиране, работа, спиране, обновяване, деинсталиране
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe  = 'C:\Program Files\DetskaKonsultacia\DetskaKonsultacia.exe'
-          $data = 'C:\ProgramData\DetskaKonsultacia\data\practice.json'
-          $base = 'http://localhost:8080'
-          $setup = (Get-ChildItem dist\DetskaKonsultacia-Setup-*.exe | Select-Object -First 1).FullName
+          $exe    = 'C:\Program Files\DetskaKonsultacia\DetskaKonsultacia.exe'
+          $data   = 'C:\ProgramData\DetskaKonsultacia\data\practice.json'
+          $desk   = 'C:\Users\Public\Desktop\Детска консултация.lnk'
+          $base   = 'http://localhost:8080'
+          $setup  = (Get-ChildItem dist\DetskaKonsultacia-Setup-*.exe | Select-Object -First 1).FullName
+          $update = (Get-ChildItem dist\DetskaKonsultacia-Update-*.exe | Select-Object -First 1).FullName
+          $version = [regex]::Match($setup, 'Setup-(.+)\.exe$').Groups[1].Value
+          $env:DETSKA_NO_BROWSER = '1'
 
-          Write-Host '== Тихо инсталиране'
+          function Wait-Up([int]$seconds = 60) {
+            for ($i = 0; $i -lt $seconds; $i++) {
+              try { $st = Invoke-RestMethod "$base/api/state"; if ($st.app -eq 'detska-konsultacia') { return $true } } catch {}
+              Start-Sleep 1
+            }
+            return $false
+          }
+          function Wait-Down([int]$seconds = 20) {
+            for ($i = 0; $i -lt $seconds; $i++) {
+              if (-not (Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue)) { return $true }
+              Start-Sleep 1
+            }
+            return $false
+          }
+          function Patients { (Get-Content $data -Raw -Encoding utf8 | ConvertFrom-Json).patients.Count }
+
+          Write-Host "== Тихо инсталиране на $version"
           Start-Process $setup -ArgumentList '/S' -Wait
           if (-not (Test-Path $exe)) { throw 'Програмата не е инсталирана.' }
           Get-Item $exe | Format-List Name, Length, VersionInfo
@@ -83,55 +105,76 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Липсва правилото в защитната стена.' }
 
           Write-Host '== Стартиране'
-          $env:DETSKA_NO_BROWSER = '1'
           Start-Process $exe -ArgumentList '--background'
-          $state = $null
-          for ($i = 0; $i -lt 60 -and -not $state; $i++) {
-            try { $state = Invoke-RestMethod "$base/api/state" } catch { Start-Sleep 1 }
-          }
-          if (-not $state -or $state.app -ne 'detska-konsultacia') {
+          if (-not (Wait-Up)) {
             Get-Content 'C:\ProgramData\DetskaKonsultacia\logs\server.log' -ErrorAction SilentlyContinue
             throw 'Сървърът не отговаря.'
           }
           $page = Invoke-WebRequest "$base/" -UseBasicParsing
           if ($page.Content -notmatch 'Детска консултация') { throw 'Интерфейсът не се зарежда.' }
-          $js = Invoke-WebRequest "$base/js/shared/growth.js" -UseBasicParsing
-          if ($js.StatusCode -ne 200) { throw 'Липсва вграден файл.' }
-          $proc = Get-Process DetskaKonsultacia
-          $proc | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
+          foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'favicon.svg') {
+            if ((Invoke-WebRequest "$base/$f" -UseBasicParsing).StatusCode -ne 200) { throw "Липсва вграден файл $f." }
+          }
+          Get-Process DetskaKonsultacia | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
 
           Write-Host '== Запис на данни'
           $body = @{ practiceName = 'Проверка'; doctorName = 'д-р Тест'; pin = '1234' } | ConvertTo-Json
           Invoke-RestMethod -Method Post "$base/api/setup" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' | Out-Null
-          $login = @{ doctorId = ''; pin = '1234' }
-          $doctors = (Invoke-RestMethod "$base/api/state").doctors
-          $login.doctorId = $doctors[0].id
-          Invoke-RestMethod -Method Post "$base/api/login" -Body ($login | ConvertTo-Json) -ContentType 'application/json' -SessionVariable s | Out-Null
+          $doctorId = (Invoke-RestMethod "$base/api/state").doctors[0].id
+          Invoke-RestMethod -Method Post "$base/api/login" -Body (@{ doctorId = $doctorId; pin = '1234' } | ConvertTo-Json) -ContentType 'application/json' -SessionVariable s | Out-Null
           $child = @{ name = 'Иван Иванов'; birthDate = (Get-Date).AddMonths(-7).ToString('yyyy-MM-dd'); sex = 'm' } | ConvertTo-Json
           $created = Invoke-RestMethod -Method Post "$base/api/patients" -Body ([Text.Encoding]::UTF8.GetBytes($child)) -ContentType 'application/json; charset=utf-8' -WebSession $s
           $card = Invoke-RestMethod "$base/api/patients/$($created.patient.id)" -WebSession $s
           Write-Host "Дете: $($card.patient.name), дейности в плана: $($card.plan.Count)"
           if ($card.plan.Count -lt 10) { throw 'Планът на детето не е изчислен.' }
+          $boot = Invoke-RestMethod "$base/api/bootstrap" -WebSession $s
+          if ($boot.server.version -ne $version) { throw "Версията е $($boot.server.version), очаква се $version." }
+          if (-not $boot.server.canStop -or -not $boot.server.local) { throw 'Бутонът за спиране не е достъпен на този компютър.' }
+
+          Write-Host '== Външно копие'
+          $extra = 'C:\ExtraCopy\Детска консултация'
+          $patch = @{ extraBackupDir = $extra } | ConvertTo-Json
+          $res = Invoke-RestMethod -Method Patch "$base/api/settings" -Body ([Text.Encoding]::UTF8.GetBytes($patch)) -ContentType 'application/json; charset=utf-8' -WebSession $s
+          if (-not $res.extraBackup.ok) { throw 'Външното копие не е направено.' }
+          Get-ChildItem $extra | Format-Table Name, Length
 
           Write-Host '== Второ стартиране — само отваря браузъра'
           $second = Start-Process $exe -ArgumentList '--background' -PassThru -Wait
           if ($second.ExitCode -ne 0) { throw 'Второто стартиране не завърши чисто.' }
           if ((Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue).Count -ne 1) { throw 'Стартирано е второ копие.' }
 
-          Write-Host '== Спиране'
+          Write-Host '== Спиране от бутона в програмата'
+          Invoke-RestMethod -Method Post "$base/api/system/stop" -Body '{}' -ContentType 'application/json' -WebSession $s | Out-Null
+          if (-not (Wait-Down)) { throw 'Програмата не спря от бутона.' }
+          if ((Patients) -ne 1) { throw 'Данните не са записани.' }
+
+          Write-Host '== Файл за обновяване върху работеща програма'
+          Remove-Item $desk -ErrorAction SilentlyContinue   # потребителят е махнал иконата
+          Start-Process $exe -ArgumentList '--background'
+          if (-not (Wait-Up)) { throw 'Програмата не тръгна преди обновяването.' }
+          $u = Start-Process $update -ArgumentList '/S' -PassThru -Wait
+          if ($u.ExitCode -ne 0) { throw "Обновяването върна код $($u.ExitCode)." }
+          if (-not (Wait-Up 45)) { throw 'След тихо обновяване програмата не тръгна отново.' }
+          if ((Patients) -ne 1) { throw 'Обновяването засегна данните.' }
+          if (Test-Path $desk) { throw 'Обновяването върна иконата, която потребителят беше махнал.' }
+          if (-not (Test-Path 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\Детска консултация.lnk')) { throw 'Автоматичното стартиране изчезна.' }
+          netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Правилото в защитната стена изчезна.' }
+          $ver = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DetskaKonsultacia').DisplayVersion
+          if ($ver -ne $version) { throw "В „Приложения“ версията е $ver." }
+
+          Write-Host '== Пълен инсталатор върху работеща програма'
+          $f = Start-Process $setup -ArgumentList '/S' -PassThru -Wait
+          if ($f.ExitCode -ne 0) { throw "Пълният инсталатор върна код $($f.ExitCode)." }
+          if (-not (Wait-Up 45)) { throw 'След пълния инсталатор програмата не тръгна отново.' }
+          if (Test-Path $desk) { throw 'Пълният инсталатор не запази избора без икона на работния плот.' }
+          if ((Patients) -ne 1) { throw 'Пълният инсталатор засегна данните.' }
+
+          Write-Host '== Спиране от менюто Старт'
           $stop = Start-Process $exe -ArgumentList '--stop', '--quiet' -PassThru -Wait
           if ($stop.ExitCode -ne 0) { throw 'Спирането върна грешка.' }
-          Start-Sleep 2
-          if (Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue) { throw 'Програмата не спря.' }
-          $saved = Get-Content $data -Raw -Encoding utf8 | ConvertFrom-Json
-          if ($saved.patients.Count -ne 1) { throw 'Данните не са записани.' }
-
-          Write-Host '== Обновяване върху съществуваща инсталация'
-          Start-Process $exe -ArgumentList '--background'
-          Start-Sleep 3
-          Start-Process $setup -ArgumentList '/S' -Wait
-          if (Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue) { throw 'Инсталаторът не спря програмата.' }
-          if (((Get-Content $data -Raw -Encoding utf8 | ConvertFrom-Json).patients.Count) -ne 1) { throw 'Обновяването засегна данните.' }
+          if (-not (Wait-Down)) { throw 'Програмата не спря.' }
+          if (-not (Test-Path "$extra\practice-$((Get-Date).ToString('yyyy-MM-dd')).json")) { throw 'Няма външно копие при спиране.' }
 
           Write-Host '== Тихо деинсталиране'
           Start-Process 'C:\Program Files\DetskaKonsultacia\uninstall.exe' -ArgumentList '/S' -Wait
@@ -140,6 +183,12 @@ jobs:
           if (-not (Test-Path $data)) { throw 'Деинсталирането изтри данните.' }
           netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'Правилото в защитната стена остана.' }
+
+          Write-Host '== Файл за обновяване без инсталирана програма'
+          $n = Start-Process $update -ArgumentList '/S' -PassThru -Wait
+          if ($n.ExitCode -ne 2) { throw "Очаква се код 2, получен е $($n.ExitCode)." }
+          if (Test-Path $exe) { throw 'Файлът за обновяване инсталира програмата.' }
+
           $global:LASTEXITCODE = 0
           Write-Host 'Всички проверки минаха.'
 
@@ -159,4 +208,5 @@ jobs:
         with:
           files: |
             dist/DetskaKonsultacia-Setup-*.exe
+            dist/DetskaKonsultacia-Update-*.exe
             dist/SHA256SUMS.txt
