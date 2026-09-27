@@ -112,7 +112,7 @@ jobs:
           }
           $page = Invoke-WebRequest "$base/" -UseBasicParsing
           if ($page.Content -notmatch 'Детска консултация') { throw 'Интерфейсът не се зарежда.' }
-          foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'favicon.svg') {
+          foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'js/views/adult-patient.js', 'js/shared/nutrition.js', 'js/shared/drugs.js', 'favicon.svg') {
             if ((Invoke-WebRequest "$base/$f" -UseBasicParsing).StatusCode -ne 200) { throw "Липсва вграден файл $f." }
           }
           Get-Process DetskaKonsultacia | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
@@ -127,6 +127,31 @@ jobs:
           $card = Invoke-RestMethod "$base/api/patients/$($created.patient.id)" -WebSession $s
           Write-Host "Дете: $($card.patient.name), дейности в плана: $($card.plan.Count)"
           if ($card.plan.Count -lt 10) { throw 'Планът на детето не е изчислен.' }
+
+          Write-Host '== Възрастен пациент'
+          $post = { param($url, $obj) Invoke-RestMethod -Method Post "$base$url" -Body ([Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 5))) -ContentType 'application/json; charset=utf-8' -WebSession $s }
+          $adult = & $post '/api/patients' @{ name = 'Петър Петров'; birthDate = (Get-Date).AddYears(-66).ToString('yyyy-MM-dd'); sex = 'm' }
+          $aid = $adult.patient.id
+          & $post "/api/patients/$aid/chronic" @{ code = 'dm2'; since = '2015-03-01' } | Out-Null
+          & $post "/api/patients/$aid/chronic" @{ code = 'htn' } | Out-Null
+          & $post "/api/patients/$aid/measurements" @{ weight = 92; height = 176; waist = 106; systolic = 152; diastolic = 90 } | Out-Null
+          foreach ($d in 'ramipril', 'hydrochlorothiazide') { & $post "/api/patients/$aid/meds" @{ drug = $d; schedule = @{ m = '1' } } | Out-Null }
+          $nsaid = & $post "/api/patients/$aid/meds" @{ drug = 'ibuprofen'; prn = $true }
+          if (-not ($nsaid.alerts | Where-Object { $_.severity -eq 'major' })) { throw 'Няма сигнал за троен удар (ACEi, диуретик и НСПВС).' }
+          $today = (Get-Date).ToString('yyyy-MM-dd')
+          $labs = & $post "/api/patients/$aid/results" @{ date = $today; items = @(@{ code = 'hba1c'; value = 64; unit = 'mmol/mol' }, @{ code = 'tchol'; value = 5.8 }, @{ code = 'hdl'; value = 1.1 }, @{ code = 'ldl'; value = 3.6 }, @{ code = 'creat'; value = 105 }) }
+          if ([math]::Abs($labs.results[0].value - 8.0) -gt 0.05) { throw "HbA1c не е преобразуван: $($labs.results[0].value)." }
+          $phq = & $post "/api/patients/$aid/assessments" @{ tool = 'phq9'; answers = @(1, 1, 1, 1, 1, 1, 1, 0, 1) }
+          if ($phq.assessment.result.alerts.Count -ne 1) { throw 'Няма сигнал при положителен въпрос 9 на PHQ-9.' }
+          $plan = & $post "/api/patients/$aid/nutrition" @{ goal = 'lose' }
+          Write-Host "Хранителен режим: $($plan.plan.targets.kcal) kcal, белтък $($plan.plan.targets.protein) г"
+          if ($plan.plan.meals.Count -ne 5) { throw 'Хранителният режим няма пет хранения.' }
+          $full = Invoke-RestMethod "$base/api/patients/$aid" -WebSession $s
+          Write-Host "Риск: $($full.adult.cv.model) $($full.adult.cv.score)% · сигнали за лекарства: $($full.adult.medAlerts.Count) · проследяване: $($full.adult.monitoring.Count)"
+          if ($full.adult.cv.model -ne 'SCORE2-Diabetes') { throw 'SCORE2-Diabetes не е изчислен.' }
+          $rep = Invoke-RestMethod "$base/api/reports" -WebSession $s
+          if (($rep.chronic | Where-Object { $_.code -eq 'dm2' }).count -ne 1) { throw 'Регистърът на заболяванията не отчита пациента.' }
+
           $boot = Invoke-RestMethod "$base/api/bootstrap" -WebSession $s
           if ($boot.server.version -ne $version) { throw "Версията е $($boot.server.version), очаква се $version." }
           if (-not $boot.server.canStop -or -not $boot.server.local) { throw 'Бутонът за спиране не е достъпен на този компютър.' }
@@ -146,7 +171,7 @@ jobs:
           Write-Host '== Спиране от бутона в програмата'
           Invoke-RestMethod -Method Post "$base/api/system/stop" -Body '{}' -ContentType 'application/json' -WebSession $s | Out-Null
           if (-not (Wait-Down)) { throw 'Програмата не спря от бутона.' }
-          if ((Patients) -ne 1) { throw 'Данните не са записани.' }
+          if ((Patients) -ne 2) { throw 'Данните не са записани.' }
 
           Write-Host '== Файл за обновяване върху работеща програма'
           Remove-Item $desk -ErrorAction SilentlyContinue   # потребителят е махнал иконата
@@ -155,7 +180,7 @@ jobs:
           $u = Start-Process $update -ArgumentList '/S' -PassThru -Wait
           if ($u.ExitCode -ne 0) { throw "Обновяването върна код $($u.ExitCode)." }
           if (-not (Wait-Up 45)) { throw 'След тихо обновяване програмата не тръгна отново.' }
-          if ((Patients) -ne 1) { throw 'Обновяването засегна данните.' }
+          if ((Patients) -ne 2) { throw 'Обновяването засегна данните.' }
           if (Test-Path $desk) { throw 'Обновяването върна иконата, която потребителят беше махнал.' }
           if (-not (Test-Path 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\Детска консултация.lnk')) { throw 'Автоматичното стартиране изчезна.' }
           netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
@@ -168,7 +193,7 @@ jobs:
           if ($f.ExitCode -ne 0) { throw "Пълният инсталатор върна код $($f.ExitCode)." }
           if (-not (Wait-Up 45)) { throw 'След пълния инсталатор програмата не тръгна отново.' }
           if (Test-Path $desk) { throw 'Пълният инсталатор не запази избора без икона на работния плот.' }
-          if ((Patients) -ne 1) { throw 'Пълният инсталатор засегна данните.' }
+          if ((Patients) -ne 2) { throw 'Пълният инсталатор засегна данните.' }
 
           Write-Host '== Спиране от менюто Старт'
           $stop = Start-Process $exe -ArgumentList '--stop', '--quiet' -PassThru -Wait

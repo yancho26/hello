@@ -201,7 +201,7 @@ export function printAdultSummary(p, data) {
     const v = a.vitals;
     const rows = [];
     if (v.bp) rows.push(['Артериално налягане', `${v.bp.systolic}/${v.bp.diastolic} mmHg`, formatDate(v.bp.date), v.bpClass?.label || '']);
-    if (v.weight) rows.push(['Тегло', `${v.weight.value} кг`, formatDate(v.weight.date), '']);
+    if (v.weight) rows.push(['Тегло', `${String(v.weight.value).replace('.', ',')} кг`, formatDate(v.weight.date), '']);
     if (v.bmi) rows.push(['ИТМ', String(v.bmi).replace('.', ','), '', v.bmiClass?.label || '']);
     if (v.waist) rows.push(['Обиколка на талията', `${v.waist.value} см`, formatDate(v.waist.date), v.waistRisk?.label || '']);
     for (const [code, r] of Object.entries(a.labs)) {
