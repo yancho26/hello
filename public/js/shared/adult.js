@@ -187,7 +187,40 @@ export function adultSummary(p, { asOf = today(), region = 'very_high', horizonD
     foodNotes: foodNotes(p, asOf),
     mental: mentalSummary(p.assessments),
     conditions: activeConditions(p).map(c => ({ ...c, def: CONDITIONS[c.code] })),
+    hints: diagnosticHints(p, {
+      conds, bp, bmiValue: b ? Math.round(b * 10) / 10 : null, egfr,
+      stage: egfr !== null ? ckdStage(egfr, uacr) : null, labs,
+    }),
   };
+}
+
+/**
+ * Подсказки за диагноза, която не е вписана, но данните я подсказват.
+ * Само подсещат — диагнозата изисква потвърждение по правилата.
+ */
+export function diagnosticHints(p, { conds, bp, bmiValue, egfr, stage, labs }) {
+  const out = [];
+  const has = (...codes) => codes.some(c => conds.has(c));
+  const dec = (v) => String(v).replace('.', ',');
+  if (stage && stage.ckd && !has('ckd')) {
+    out.push({ code: 'ckd', text: `eGFR ${egfr} (${stage.label}) — при потвърждение след 3 месеца впишете ХБЗ; тогава проследяването е по KDIGO.` });
+  }
+  const a1c = labs.hba1c?.value, glu = labs.glucose?.value;
+  if (!has('dm1', 'dm2') && (a1c >= 6.5 || glu >= 7.0)) {
+    out.push({ code: 'dm2', text: `${a1c >= 6.5 ? `HbA1c ${dec(a1c)}%` : `Глюкоза на гладно ${dec(glu)} mmol/L`} — в диабетния диапазон; потвърдете с повторно изследване.` });
+  } else if (!has('dm1', 'dm2', 'prediabetes') && (a1c >= 5.7 || glu >= 5.6)) {
+    out.push({ code: 'prediabetes', text: `${a1c >= 5.7 ? `HbA1c ${dec(a1c)}%` : `Глюкоза на гладно ${dec(glu)} mmol/L`} — предиабет; промени в начина на живот и ежегодно изследване.` });
+  }
+  if (!has('htn') && bp && (bp.systolic >= 140 || bp.diastolic >= 90)) {
+    out.push({ code: 'htn', text: `Налягане ${bp.systolic}/${bp.diastolic} — потвърдете с домашно или амбулаторно (Холтер) измерване.` });
+  }
+  if (!has('obesity') && bmiValue >= 30) {
+    out.push({ code: 'obesity', text: `ИТМ ${dec(bmiValue)} — затлъстяване.` });
+  }
+  if (!has('dyslip') && labs.ldl?.value >= 4.9) {
+    out.push({ code: 'dyslip', text: `LDL ${dec(labs.ldl.value)} mmol/L — силно повишен; изключете фамилна хиперхолестеролемия.` });
+  }
+  return out;
 }
 
 /** Кратки броячи за списъци и таблото. */

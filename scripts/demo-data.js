@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-/* Създава примерен регистър, за да може платформата да се разгледа веднага.
+/* Създава примерен регистър — деца и възрастни, — за да може платформата да
+ * се разгледа веднага.
  *
  * Употреба:  node scripts/demo-data.js [--force]
  * Записва в DATA_DIR (по подразбиране ./data). Отказва да пише върху
@@ -14,6 +15,8 @@ import { addDays, addMonths, today } from '../public/js/shared/dates.js';
 import { computePlan } from '../public/js/shared/schedule.js';
 import { CHECKPOINTS, checkpointFor } from '../public/js/shared/development.js';
 import { correctionMonths, lmsAt, valueAtZ } from '../public/js/shared/growth.js';
+import { evaluate } from '../public/js/shared/mental.js';
+import { LABS } from '../public/js/shared/labs.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, 'data');
@@ -81,6 +84,328 @@ function measurementFor(sex, ageMonths, zShift) {
   };
 }
 
+/* -------------------------------- възрастни -------------------------------- */
+
+const ADULT_M = ['Стоян', 'Петър', 'Димитър', 'Христо', 'Васил', 'Любомир', 'Красимир', 'Емил', 'Пламен', 'Валентин', 'Атанас', 'Росен'];
+const ADULT_F = ['Росица', 'Весела', 'Даниела', 'Цветелина', 'Надежда', 'Галина', 'Катя', 'Снежана', 'Милена', 'Антония', 'Йорданка', 'Светла'];
+
+/* Профили: заболявания, лекарства и колко добре е контролиран пациентът.
+ * [профил, брой, възраст от–до, пол (m/f/null)] */
+const PROFILES = [
+  ['healthy', 7, 22, 62, null],
+  ['htn', 5, 45, 76, null],
+  ['metabolic', 6, 48, 74, null],
+  ['af', 3, 70, 86, null],
+  ['ckd', 2, 60, 78, null],
+  ['copd', 2, 55, 72, 'm'],
+  ['asthma', 1, 28, 45, 'f'],
+  ['thyroid', 2, 35, 62, 'f'],
+  ['mental', 3, 26, 55, null],
+  ['elderly', 2, 81, 89, 'f'],
+  ['gout', 1, 50, 65, 'm'],
+  ['masld', 1, 42, 58, 'm'],
+  ['young', 2, 19, 21, null],
+];
+
+const MEDS = {
+  htn: [['perindopril+amlodipine', '5/5 мг', { m: '1' }], ['bisoprolol', '5 мг', { m: '1' }]],
+  htn2: [['telmisartan+hydrochlorothiazide', '80/12,5 мг', { m: '1' }]],
+  dm: [['metformin', '1000 мг', { m: '1', e: '1' }], ['empagliflozin', '10 мг', { m: '1' }, { protocol: true }]],
+  dmNoSglt: [['metformin', '850 мг', { m: '1', e: '1' }], ['gliclazide', '60 мг', { m: '1' }]],
+  statin: [['rosuvastatin', '20 мг', { e: '1' }]],
+  statinLow: [['atorvastatin', '20 мг', { e: '1' }]],
+  afOac: [['apixaban', '5 мг', { m: '1', e: '1' }, { protocol: true }], ['bisoprolol', '5 мг', { m: '1' }]],
+  afNoOac: [['bisoprolol', '2,5 мг', { m: '1' }], ['acetylsalicylic_acid', '100 мг', { n: '1' }]],
+  hf: [['sacubitril+valsartan', '49/51 мг', { m: '1', e: '1' }, { protocol: true }], ['furosemide', '40 мг', { m: '1' }], ['spironolactone', '25 мг', { m: '1' }], ['dapagliflozin', '10 мг', { m: '1' }, { protocol: true }]],
+  copd: [['tiotropium', '2,5 мкг', { m: '2' }, { protocol: true }], ['salbutamol', '100 мкг', {}, { prn: true }]],
+  asthma: [['budesonide+formoterol', '160/4,5 мкг', { m: '1', e: '1' }]],
+  thyroid: [['levothyroxine', '75 мкг', { m: '1' }, { note: 'на гладно, 30 мин преди закуска' }]],
+  depression: [['sertraline', '50 мг', { m: '1' }]],
+  anxiety: [['escitalopram', '10 мг', { m: '1' }]],
+  dementia: [['donepezil', '10 мг', { e: '1' }], ['alprazolam', '0,5 мг', { b: '1' }], ['alendronate', '70 мг', {}, { note: 'веднъж седмично, в неделя' }], ['cholecalciferol', '1000 IU', { m: '1' }], ['pantoprazole', '40 мг', { m: '1' }]],
+  gout: [['allopurinol', '300 мг', { m: '1' }], ['amlodipine', '5 мг', { m: '1' }]],
+  nsaid: [['diclofenac', '75 мг', { m: '1', e: '1' }]],
+};
+
+function adultName(sex) {
+  const middle = pick(MIDDLE);
+  const surname = pick(LAST);
+  return [sex === 'm' ? pick(ADULT_M) : pick(ADULT_F),
+    sex === 'f' ? femaleForm(middle) : middle, sex === 'f' ? femaleForm(surname) : surname].join(' ');
+}
+
+const r1 = (v, d = 1) => Math.round(v * 10 ** d) / 10 ** d;
+
+function makeAdults(store, t) {
+  let n = 0;
+  for (const [profile, count, ageFrom, ageTo, fixedSex] of PROFILES) {
+    for (let k = 0; k < count; k++) {
+      n++;
+      const sex = fixedSex || (rnd() < 0.5 ? 'm' : 'f');
+      const age = Math.floor(between(ageFrom, ageTo + 1));
+      const birthDate = addDays(addMonths(t, -12 * age), -Math.floor(rnd() * 330));
+      // Колко добре е контролиран и колко редовно идва: 0 — лошо, 1 — отлично.
+      const control = rnd();
+      const diligent = rnd() < 0.75;
+      // Възрастните са регистрирани като възрастни; „young“ — като деца, преди години.
+      const registeredMonthsAgo = profile === 'young' ? 12 * (age - 8) : Math.floor(between(4, 36));
+      const createdAt = addMonths(t, -registeredMonthsAgo) + 'T09:00:00.000Z';
+      const name = adultName(sex);
+      const p = {
+        id: 'demo-a-' + String(n).padStart(3, '0'),
+        name, egn: makeEgn(birthDate, sex, 300 + n), sex, birthDate,
+        phone: '08' + Math.floor(between(70000000, 99999999)),
+        address: 'гр. София',
+        doctorId: rnd() < 0.6 ? 'demo-doc-1' : 'demo-doc-2',
+        contacts: rnd() < 0.5 ? [{ name: pick(ADULT_F) + ' ' + femaleForm(pick(LAST)), relation: 'близък', phone: '08' + Math.floor(between(70000000, 99999999)) }] : [],
+        allergies: rnd() < 0.12 ? [pick(['пеницилин', 'сулфонамиди', 'йодни контрастни средства', 'аспирин'])] : [],
+        conditions: [], notes: '',
+        records: {}, optIn: [], measurements: [], visits: [], reminders: [], development: [],
+        chronic: [], meds: [], results: [], assessments: [], nutritionPlans: [], lifestyle: {},
+        createdAt,
+      };
+      const reg = createdAt.slice(0, 10);
+      // Кога заболяванията и лекарствата са въведени в програмата — около 3 години назад.
+      const enteredAt = (reg > addMonths(t, -40) ? reg : addMonths(t, -40)) + 'T09:00:00.000Z';
+      const since = (yearsAgo) => {
+        const d = addMonths(t, -Math.round(yearsAgo * 12));
+        return d < addMonths(birthDate, 12 * 18) ? addMonths(birthDate, 12 * 18) : d;
+      };
+      const cond = (code, yearsAgo, extra = {}) => p.chronic.push({
+        id: `demo-c-${n}-${code}`, code, since: since(yearsAgo), note: '', targets: {}, status: 'active', addedAt: enteredAt, ...extra,
+      });
+      const med = (drug, dose, schedule, opts = {}) => {
+        const rx = diligent ? Math.floor(between(2, 38)) : Math.floor(between(20, 60));
+        p.meds.push({
+          id: `demo-rx-${n}-${p.meds.length}`, drug, name: '', dose, schedule, prn: !!opts.prn,
+          start: addMonths(t, -Math.floor(between(6, 60))), end: '', indication: opts.indication || '',
+          chronic: true, prescribedOn: opts.prn ? '' : addDays(t, -rx), supplyDays: opts.prn ? null : 30,
+          protocolUntil: opts.protocol ? addDays(t, Math.floor(between(-15, 170))) : '', note: opts.note || '',
+          addedAt: enteredAt,
+        });
+      };
+      const addMeds = (key, indication) => { for (const [d, dose, sch, opts] of MEDS[key]) med(d, dose, sch, { ...(opts || {}), indication }); };
+
+      /* --- заболявания и лечение по профил --- */
+      const smoker = profile === 'copd' ? (rnd() < 0.6 ? 'current' : 'former') : rnd() < 0.24 ? 'current' : rnd() < 0.3 ? 'former' : 'never';
+      let bpBase = 122 + between(-6, 8);
+      let hba1c = null, egfrTarget = sex === 'm' ? between(80, 100) : between(78, 98);
+      let ldl = between(2.6, 4.2), weightBmi = between(21, 29);
+      if (profile === 'htn') {
+        cond('htn', between(3, 15));
+        addMeds(rnd() < 0.5 ? 'htn' : 'htn2', 'htn');
+        if (rnd() < 0.6) { cond('dyslip', between(2, 8)); addMeds('statinLow', 'dyslip'); ldl = control > 0.5 ? between(1.3, 1.9) : between(2.2, 3.4); }
+        bpBase = control > 0.55 ? between(124, 132) : control > 0.25 ? between(136, 146) : between(150, 166);
+        weightBmi = between(25, 31);
+      }
+      if (profile === 'metabolic') {
+        cond('dm2', between(3, 14)); cond('htn', between(4, 16)); cond('dyslip', between(2, 10));
+        if (rnd() < 0.5) cond('obesity', between(2, 8));
+        addMeds(rnd() < 0.55 ? 'dm' : 'dmNoSglt', 'dm2'); addMeds('htn', 'htn'); addMeds(rnd() < 0.5 ? 'statin' : 'statinLow', 'dyslip');
+        hba1c = control > 0.6 ? between(6.4, 6.9) : control > 0.3 ? between(7.1, 7.8) : between(8.1, 9.4);
+        bpBase = control > 0.5 ? between(126, 134) : between(138, 154);
+        ldl = control > 0.5 ? between(1.1, 1.6) : between(2.0, 3.3);
+        weightBmi = between(28, 36);
+        if (rnd() < 0.4) egfrTarget = between(48, 70);
+      }
+      if (profile === 'af') {
+        cond('af', between(1, 8)); cond('htn', between(5, 20));
+        const noOac = k === 1;
+        addMeds(noOac ? 'afNoOac' : 'afOac', 'af');
+        if (k === 2) { cond('hf', between(1, 4)); addMeds('hf', 'hf'); cond('dm2', between(4, 12)); med('metformin', '1000 мг', { m: '1', e: '1' }, { indication: 'dm2' }); hba1c = between(6.8, 7.6); }
+        if (k === 0) { med('diclofenac', '50 мг', { m: '1', e: '1' }, { note: 'за болки в коляното' }); med('telmisartan+hydrochlorothiazide', '80/12,5 мг', { m: '1' }, { indication: 'htn' }); }
+        egfrTarget = between(45, 68);
+        bpBase = between(128, 146);
+        weightBmi = between(24, 30);
+      }
+      if (profile === 'ckd') {
+        cond('ckd', between(2, 7)); cond(k === 0 ? 'dm2' : 'htn', between(6, 15));
+        if (k === 0) { cond('htn', between(5, 12)); med('metformin', '1000 мг', { m: '1', e: '1' }, { indication: 'dm2' }); hba1c = between(7.0, 7.9); }
+        med('ramipril', '5 мг', { m: '1' }, { indication: 'ckd' });
+        med('atorvastatin', '40 мг', { e: '1' }, { indication: 'ckd' });
+        egfrTarget = k === 0 ? between(26, 34) : between(38, 50);
+        bpBase = between(132, 148);
+      }
+      if (profile === 'copd') { cond('copd', between(3, 12)); addMeds('copd', 'copd'); if (rnd() < 0.5) { cond('htn', between(2, 10)); addMeds('htn2', 'htn'); } }
+      if (profile === 'asthma') { cond('asthma', between(5, 20)); addMeds('asthma', 'asthma'); }
+      if (profile === 'thyroid') { cond('hypothyroid', between(2, 12)); addMeds('thyroid', 'hypothyroid'); }
+      if (profile === 'mental') {
+        if (k === 1) { cond('anxiety', between(0.5, 3)); addMeds('anxiety', 'anxiety'); } else { cond('depression', between(0.3, 2)); addMeds('depression', 'depression'); }
+      }
+      if (profile === 'elderly') {
+        cond('dementia', between(1, 4)); cond('osteoporosis', between(2, 8)); cond('htn', between(10, 25));
+        addMeds('dementia', 'dementia'); med('amlodipine', '5 мг', { m: '1' }, { indication: 'htn' });
+        egfrTarget = between(42, 58); bpBase = between(132, 150); weightBmi = between(20, 24);
+      }
+      if (profile === 'gout') { cond('gout', between(2, 8)); cond('htn', between(3, 10)); addMeds('gout', 'gout'); bpBase = between(130, 142); weightBmi = between(28, 33); }
+      if (profile === 'masld') { cond('obesity', between(3, 8)); cond('masld', between(1, 4)); cond('prediabetes', between(1, 3)); weightBmi = between(31, 36); hba1c = between(5.8, 6.3); }
+
+      p.lifestyle = {
+        smoking: smoker, alcohol: profile === 'masld' || rnd() < 0.15 ? 'high' : rnd() < 0.6 ? 'low' : 'none',
+        activity: rnd() < 0.5 ? 'sedentary' : rnd() < 0.7 ? 'light' : 'moderate',
+        diet: [], bleedingHistory: false, notes: '', updatedOn: addMonths(t, -Math.floor(between(1, 18))),
+      };
+
+      /* --- измервания: на 4–8 месеца в последните 3 години --- */
+      const height = sex === 'm' ? Math.round(between(166, 188)) : Math.round(between(154, 172));
+      const weight0 = r1(weightBmi * (height / 100) ** 2, 1);
+      const trend = profile === 'metabolic' && control > 0.6 ? -between(2, 6) : between(-2, 3);
+      const firstMeas = reg > addMonths(t, -36) ? reg : addMonths(t, -36);
+      const lastGap = diligent ? Math.floor(between(10, 120)) : Math.floor(between(200, 400));
+      let d = addDays(firstMeas, Math.floor(between(0, 60)));
+      const measDates = [];
+      while (d <= addDays(t, -lastGap)) { measDates.push(d); d = addDays(d, Math.floor(between(120, 240))); }
+      if (!measDates.length) measDates.push(addDays(t, -lastGap));
+      measDates.forEach((date, i) => {
+        const progress = measDates.length > 1 ? i / (measDates.length - 1) : 1;
+        const sys = Math.round(bpBase + between(-6, 6) + (control > 0.6 ? (1 - progress) * 8 : 0));
+        p.measurements.push({
+          id: `demo-am-${n}-${i}`, date,
+          weight: r1(weight0 + trend * progress + between(-0.8, 0.8), 1),
+          height: i === 0 ? height : null, head: null,
+          waist: i % 2 === 0 ? Math.round((weightBmi * 3.2) + (sex === 'm' ? 8 : 0) + between(-4, 4)) : null,
+          systolic: sys, diastolic: Math.round(sys * 0.6 + between(-4, 6)), pulse: Math.round(between(58, 86)),
+          note: '', doctorId: p.doctorId,
+        });
+      });
+
+      /* --- изследвания --- */
+      const res = (date, code, value, text) => p.results.push({
+        id: `demo-r-${n}-${p.results.length}`, date, code, value: value === null ? null : r1(value, LABS[code]?.decimals ?? 1), text: text || '', note: '',
+      });
+      const labYears = [];
+      const lastLab = diligent ? Math.floor(between(20, 300)) : Math.floor(between(380, 620));
+      for (let y = 0; y < 3; y++) {
+        const date = addDays(t, -(lastLab + y * Math.floor(between(330, 400))));
+        if (date >= reg && date > addMonths(t, -40)) labYears.push(date);
+      }
+      // Всеки пациент има поне едни изследвания след регистрацията.
+      if (!labYears.length) labYears.push(addDays(reg, Math.floor(between(7, 40))));
+      const ageAt = (date) => (Date.parse(date) - Date.parse(birthDate)) / (365.25 * 86400000);
+      const creatFor = (egfr, date) => {
+        // Обратно на CKD-EPI 2021 — креатинин, който дава желаната eGFR.
+        const a = ageAt(date);
+        const [kappa, alpha, fem] = sex === 'f' ? [0.7, -0.241, 1.012] : [0.9, -0.302, 1];
+        for (let scr = 0.4; scr < 8; scr += 0.01) {
+          const ratio = scr / kappa;
+          const e = 142 * Math.min(ratio, 1) ** alpha * Math.max(ratio, 1) ** -1.2 * 0.9938 ** a * fem;
+          if (e <= egfr) return scr * 88.4;
+        }
+        return 600;
+      };
+      for (const [i, date] of labYears.entries()) {
+        const drift = i * 0.08;
+        if (p.chronic.length || age >= 40 || rnd() < 0.5) {
+          const l = ldl + drift * (control > 0.5 ? 1 : 0.4) + between(-0.2, 0.2);
+          const hdl = sex === 'f' ? between(1.2, 1.8) : between(0.9, 1.4);
+          const tg = between(0.9, profile === 'metabolic' || profile === 'masld' ? 3.2 : 1.9);
+          res(date, 'ldl', l); res(date, 'hdl', hdl); res(date, 'tg', tg); res(date, 'tchol', l + hdl + tg / 2.2);
+          res(date, 'glucose', hba1c ? between(6.8, 9.5) : between(4.4, 5.6));
+        }
+        if (p.chronic.length || age >= 50) {
+          res(date, 'creat', creatFor(egfrTarget + i * 2 + between(-2, 2), date));
+          res(date, 'k', profile === 'ckd' && k === 0 && i === 0 ? 5.6 : between(3.9, 5.0));
+          if (p.chronic.some(c => c.code === 'hf')) res(date, 'na', between(134, 142));
+        }
+        if (hba1c || profile === 'ckd') res(date, 'uacr', profile === 'ckd' ? between(8, 45) : control > 0.5 ? between(0.5, 2.8) : between(3, 15));
+        if (['af', 'hf', 'ckd', 'elderly'].includes(profile)) { res(date, 'hb', sex === 'm' ? between(128, 152) : between(115, 138)); res(date, 'plt', between(170, 320)); res(date, 'wbc', between(4.8, 8.5)); }
+        if (profile === 'thyroid' || profile === 'af') res(date, 'tsh', control > 0.35 ? between(0.9, 3.6) : between(5.2, 8.5));
+        if (profile === 'masld' || profile === 'metabolic') { res(date, 'alt', between(28, 78)); res(date, 'ast', between(24, 58)); if (profile === 'masld') res(date, 'plt', between(150, 230)); }
+        if (profile === 'gout') res(date, 'urate', control > 0.5 ? between(290, 350) : between(390, 470));
+        if (['af', 'htn', 'metabolic', 'ckd'].includes(profile)) res(date, 'ecg', null, pick(['синусов ритъм, без промени', 'синусов ритъм, ЛВХ', profile === 'af' ? 'предсърдно мъждене, КЧ 78/мин' : 'синусов ритъм']));
+        if (hba1c && profile !== 'masld' && i === 0 && diligent) { res(date, 'eye', null, 'без диабетна ретинопатия'); res(date, 'foot', null, 'запазена чувствителност, пулсации налични'); }
+        if (profile === 'copd' && i === 0) res(date, 'spiro', null, 'FEV1/FVC 0,62; FEV1 58% — GOLD 2');
+      }
+      // HbA1c на 3–6 месеца.
+      if (hba1c) {
+        const every = control > 0.5 ? 6 : 4;
+        let date = addDays(t, -(diligent ? Math.floor(between(15, 150)) : Math.floor(between(220, 330))));
+        for (let i = 0; i < 6 && date >= reg; i++) {
+          res(date, 'hba1c', hba1c + i * (control > 0.6 ? 0.15 : -0.05) + between(-0.15, 0.15));
+          date = addMonths(date, -every);
+        }
+      }
+
+      /* --- скали --- */
+      const assess = (date, tool, answers, number = null) => {
+        const result = evaluate(tool, answers, { sex, number });
+        p.assessments.push({ id: `demo-as-${n}-${p.assessments.length}`, date, tool, answers, extra: null, number, score: result.score, result, note: '', doctorId: p.doctorId, recordedAt: date + 'T10:00:00.000Z' });
+      };
+      if (profile === 'mental' && k !== 1) {
+        const series = k === 0
+          ? [[2, 2, 2, 2, 1, 2, 1, 1, 0], [2, 1, 2, 1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 0, 1, 0, 0, 0], [0, 1, 1, 0, 0, 0, 0, 0, 0]]
+          : [[2, 3, 2, 3, 2, 2, 2, 1, 1], [3, 3, 2, 2, 2, 3, 2, 1, 1]];
+        series.forEach((a, i) => assess(addDays(t, -((series.length - 1 - i) * 42 + (k === 0 ? 20 : 6))), 'phq9', a));
+      }
+      if (profile === 'mental' && k === 1) {
+        [[2, 2, 3, 2, 1, 2, 2], [1, 2, 2, 1, 1, 1, 1], [1, 1, 1, 1, 0, 1, 0]].forEach((a, i) => assess(addDays(t, -((2 - i) * 50 + 15)), 'gad7', a));
+      }
+      if (profile === 'healthy' && rnd() < 0.5) assess(addDays(t, -Math.floor(between(30, 300))), 'phq4', [0, pick([0, 1]), 0, pick([0, 1])]);
+      if (rnd() < 0.3) assess(addDays(t, -Math.floor(between(30, 500))), 'auditc', [pick([0, 1, 2, 3]), pick([0, 1]), pick([0, 1])]);
+      if (profile === 'elderly') {
+        assess(addDays(t, -Math.floor(between(60, 200))), 'minicog', [pick([0, 1]), 0]);
+        assess(addDays(t, -Math.floor(between(30, 200))), 'falls', [1, 1, 1], r1(between(14, 22), 0));
+      }
+      if (profile === 'af' && age >= 70 && rnd() < 0.5) assess(addDays(t, -Math.floor(between(30, 300))), 'falls', [0, pick([0, 1]), 0], r1(between(9, 13), 0));
+
+      /* --- диспансерни прегледи --- */
+      if (p.chronic.length) {
+        const every = profile === 'hf' || profile === 'mental' ? 3 : 6;
+        let date = addDays(t, -(diligent ? Math.floor(between(10, every * 28)) : Math.floor(between(every * 35, every * 60))));
+        for (let i = 0; i < 5 && date >= reg; i++) {
+          p.visits.push({
+            id: `demo-av-${n}-${i}`, date, type: 'Диспансерен преглед', complaint: '', findings: '',
+            diagnosis: p.chronic.map(c => c.code).includes('dm2') ? 'Захарен диабет тип 2' : '', icd: '',
+            treatment: 'Продължава терапията', note: '', doctorId: p.doctorId,
+          });
+          date = addMonths(date, -every);
+        }
+      }
+      if (rnd() < 0.5) {
+        p.visits.push({
+          id: `demo-av-${n}-acute`, date: addDays(t, -Math.floor(between(20, 500))), type: 'Амбулаторен преглед',
+          complaint: pick(['кашлица и температура', 'болки в кръста', 'главоболие', 'болки в гърлото']),
+          findings: '', diagnosis: pick(['Остър бронхит', 'Лумбаго', 'Остър фарингит', 'Тензионно главоболие']),
+          icd: pick(['J20.9', 'M54.5', 'J02.9', 'G44.2']), treatment: 'симптоматично', note: '', doctorId: p.doctorId,
+        });
+      }
+
+      /* --- профилактика по календара --- */
+      if (age >= 50 && rnd() < 0.4) p.optIn.push('ad-zoster-1', 'ad-zoster-2');
+      const plan = computePlan(p, store.schedule, { asOf: t });
+      for (const e of plan) {
+        if (e.due > t || e.status === 'done') continue;
+        if (e.item.track !== 'adult' && profile !== 'young') continue;
+        // Детските имунизации на регистрираните като деца са почти всички поставени.
+        const chance = e.item.track !== 'adult' ? (e.group === 'vaccine' ? 0.98 : 0.7) : diligent ? 0.8 : 0.35;
+        if (rnd() > chance) continue;
+        const doneDate = addDays(e.due, Math.floor(between(0, 60)));
+        if (doneDate > t) continue;
+        p.records[e.id] = {
+          status: 'done', date: doneDate, batch: e.group === 'vaccine' ? 'L' + Math.floor(between(10000, 99999)) : '',
+          product: '', note: '', doctorId: p.doctorId, recordedAt: doneDate + 'T10:00:00.000Z',
+        };
+      }
+
+      // Втората доза срещу херпес зостер — поне 2 месеца след първата.
+      const z1 = p.records['ad-zoster-1'], z2 = p.records['ad-zoster-2'];
+      if (z2 && (!z1 || z2.date < addMonths(z1.date, 2))) {
+        if (z1 && addMonths(z1.date, 2) <= t) z2.date = addMonths(z1.date, 2);
+        else delete p.records['ad-zoster-2'];
+      }
+
+      if (rnd() < 0.15) {
+        p.reminders.push({
+          id: 'demo-ar-' + n, date: addDays(t, Math.floor(between(-15, 30))),
+          text: pick(['Резултат от кардиолог', 'Контрол на налягането след смяна на терапията', 'Направление за ехография', 'ТЕЛК — документи']),
+          done: false, doneDate: '', doctorId: p.doctorId,
+        });
+      }
+      store.data.patients.push(p);
+    }
+  }
+}
+
 function main() {
   if (fs.existsSync(path.join(DATA_DIR, 'practice.json')) && !force) {
     const store = new Store(DATA_DIR);
@@ -96,7 +421,7 @@ function main() {
 
   const store = new Store(DATA_DIR);
   store.data.practice = {
-    name: 'АИППМП „Детско здраве“',
+    name: 'АИППМП „Здраве“',
     address: 'гр. София, ул. Здраве 1',
     phone: '02 900 00 00',
   };
@@ -104,7 +429,7 @@ function main() {
     { id: 'demo-doc-1', name: 'д-р Мария Иванова', role: 'Общопрактикуващ лекар', pin: null, active: true },
     { id: 'demo-doc-2', name: 'д-р Петър Стоянов', role: 'Общопрактикуващ лекар', pin: hashPin('1234'), active: true },
   ];
-  store.data.settings = { horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '' };
+  store.data.settings = { horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '', cvRegion: 'very_high' };
   // Примерните данни са „нови“ — без прозорец „Какво е новото“ при първото отваряне.
   store.data.appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
   store.data.patients = [];
@@ -300,20 +625,26 @@ function main() {
     store.data.patients.push(patient);
   }
 
+  makeAdults(store, t);
+
   store.persistSync();
   const counts = store.patients.reduce((acc, p) => {
     acc.measurements += p.measurements.length;
     acc.visits += p.visits.length;
-    acc.development += p.development.length;
+    acc.development += (p.development || []).length;
     acc.records += Object.keys(p.records).length;
+    acc.results += (p.results || []).length;
+    acc.meds += (p.meds || []).length;
+    if (p.id.startsWith('demo-a-')) acc.adults++;
     return acc;
-  }, { measurements: 0, visits: 0, records: 0, development: 0 });
+  }, { measurements: 0, visits: 0, records: 0, development: 0, results: 0, meds: 0, adults: 0 });
 
   console.log(`
 Готово. Създаден е примерен регистър в ${DATA_DIR}:
 
-  ${store.patients.length} деца
+  ${store.patients.length - counts.adults} деца и ${counts.adults} възрастни
   ${counts.records} отбелязани дейности
+  ${counts.meds} лекарства, ${counts.results} резултата от изследвания
   ${counts.measurements} измервания
   ${counts.visits} прегледа
   ${counts.development} оценки на развитието

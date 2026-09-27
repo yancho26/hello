@@ -1,16 +1,19 @@
 /* Табло: какво трябва да се свърши днес и кой изостава.
  *
- * Задачите се групират по дете, а не по дейност — едно дете с десет
- * пропуснати ваксини е едно обаждане, а не десет реда в списъка. */
+ * Задачите се групират по пациент, а не по дейност — едно дете с десет
+ * пропуснати ваксини или един възрастен с три просрочени изследвания е
+ * едно обаждане, а не десет реда в списъка. */
 
 import { api } from '../api.js';
-import { state } from '../app.js';
+import { scheduleItem, state } from '../app.js';
 import { badge, card, empty, h, mount, stat, table, toast } from '../ui/components.js';
 import { durationText, formatAge, formatDate, formatDateShort, relativeDays, today, weekdayName } from '../shared/dates.js';
 import { markDoneDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
+import { setPatientsView } from './patients.js';
 
-const GROUP_ICON = { vaccine: '💉', checkup: '🩺', screening: '🔬', reminder: '🔔' };
+const GROUP_ICON = { vaccine: '💉', checkup: '🩺', screening: '🔬', reminder: '🔔', monitoring: '🧪', renewal: '💊' };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 let filters = { horizon: null, onlyMine: false };
 
@@ -28,22 +31,41 @@ export async function renderDashboard(host) {
   const dueToday = groupByChild(buckets.today);
   const soon = groupByChild(buckets.soon);
 
+  const ad = reports.adults;
   const stats = h('div.grid.cols-4', null,
-    stat(reports.totals.patients, 'деца в регистъра', {
-      foot: reports.totals.archived ? `${reports.totals.archived} в архив` : null,
+    stat(reports.totals.patients, 'пациенти в регистъра', {
+      foot: `${reports.totals.children} деца · ${ad.total} възрастни`
+        + (reports.totals.archived ? ` · ${reports.totals.archived} в архив` : ''),
       onclick: () => { location.hash = '#/patients'; },
     }),
-    stat(overdue.length, 'деца с просрочия', {
+    stat(overdue.length, 'пациенти с просрочия', {
       kind: overdue.length ? 'danger' : 'ok',
       foot: `${buckets.overdue.length} дейности общо`,
     }),
-    stat(dueToday.length, 'деца с дейности за днес', { kind: dueToday.length ? 'warn' : '' }),
+    stat(dueToday.length, 'пациенти с дейности за днес', { kind: dueToday.length ? 'warn' : '' }),
     stat(reports.totals.averageCoverage === null ? '—' : reports.totals.averageCoverage + '%',
-      'среден имунизационен обхват', {
+      'имунизационен обхват при децата', {
       kind: reports.totals.averageCoverage >= 95 ? 'ok'
         : reports.totals.averageCoverage >= 80 ? 'warn' : 'danger',
       foot: `${reports.totals.fullyCovered} деца с пълен обхват`,
     }));
+
+  // Хронично болните — кой има нужда от внимание извън календара.
+  const openList = (group) => () => {
+    setPatientsView({ group, condition: '', filter: 'attention', archived: false });
+    location.hash = '#/patients';
+  };
+  const chronicStats = ad.withChronic || ad.medSerious || ad.mentalAlerts ? h('div.grid.cols-4', { style: { marginTop: '12px' } },
+    stat(ad.withChronic, 'с хронични заболявания', {
+      foot: `${ad.monitoringOverdue} с просрочено проследяване`,
+      onclick: openList('adult'),
+    }),
+    stat(ad.medSerious, 'със сериозен сигнал за лекарства', {
+      kind: ad.medSerious ? 'danger' : 'ok', foot: `${ad.polypharmacy} с 5 или повече лекарства`, onclick: openList('adult'),
+    }),
+    stat(ad.renewalsOverdue, 'с изтекла рецепта или протокол', { kind: ad.renewalsOverdue ? 'warn' : 'ok', onclick: openList('adult') }),
+    stat(ad.mentalAlerts, 'със сигнал за психично здраве', { kind: ad.mentalAlerts ? 'danger' : 'ok', onclick: openList('adult') }))
+    : null;
 
   const controls = h('div.row.no-print', null,
     h('div.chips', null,
@@ -70,6 +92,7 @@ export async function renderDashboard(host) {
           `${weekdayName(todayISO)}, ${formatDate(todayISO)} · ${state.practice.name}`)),
       controls),
     stats,
+    chronicStats,
     h('div', { style: { height: '16px' } }),
     section('Просрочени', overdue, reload, {
       icon: '⚠️', emptyText: 'Няма просрочени дейности. Отлична работа!', collapsedAfter: 12,
@@ -114,7 +137,7 @@ function section(title, groups, reload, opts = {}) {
   }
   const limit = opts.collapsedAfter || groups.length;
   const body = table(
-    ['Срок', 'Дете', 'Възраст', 'Какво предстои', 'Телефон', 'Състояние', { label: '', class: 'right' }],
+    ['Срок', 'Пациент', 'Възраст', 'Какво предстои', 'Телефон', 'Състояние', { label: '', class: 'right' }],
     groups.slice(0, limit).map(g => childRow(g, reload)));
 
   const more = groups.length > limit
@@ -125,11 +148,11 @@ function section(title, groups, reload, opts = {}) {
           for (const g of groups.slice(limit)) tbody.appendChild(childRow(g, reload));
           e.target.remove();
         },
-      }, `Покажи още ${groups.length - limit} деца`))
+      }, `Покажи още ${plural(groups.length - limit, 'пациент', 'пациенти')}`))
     : null;
 
   const count = groups.reduce((n, g) => n + g.items.length, 0);
-  return card(`${title} — ${groups.length} ${groups.length === 1 ? 'дете' : 'деца'} (${count} дейности)`,
+  return card(`${title} — ${plural(groups.length, 'пациент', 'пациенти')} (${count} дейности)`,
     { icon: opts.icon, tight: true }, body, more);
 }
 
@@ -139,7 +162,7 @@ function childRow(g, reload) {
   const rest = g.items.length - shown.length;
   const isOverdue = g.items.some(i => i.status === 'overdue' || i.status === 'deferral_ended');
 
-  const actionable = g.items.filter(i => !i.isReminder && state.scheduleById.has(i.itemId));
+  const actionable = g.items.filter(i => !i.isReminder && !i.isMonitoring && !i.isRenewal && scheduleItem(i.itemId));
 
   return h('tr.clickable' + (isOverdue ? '.attention' : ''), { onclick: open },
     h('td.nowrap', null,
@@ -163,7 +186,7 @@ function childRow(g, reload) {
             e.stopPropagation();
             markDoneDialog({
               patientId: g.id, patientName: g.name,
-              item: state.scheduleById.get(actionable[0].itemId), onDone: reload,
+              item: scheduleItem(actionable[0].itemId), onDone: reload,
             });
           },
         }, '✓')
@@ -182,7 +205,7 @@ function childRow(g, reload) {
 
 function printCallList(rows) {
   if (!rows.length) {
-    toast('Няма деца за обаждане в избрания период.');
+    toast('Няма пациенти за обаждане в избрания период.');
     return;
   }
   const groups = groupByChild(rows);
@@ -219,11 +242,11 @@ function printCallList(rows) {
 
   doc.body.appendChild(mk('h1', 'Списък за обаждане'));
   doc.body.appendChild(mk('div',
-    `${state.practice.name} · ${formatDate(today())} · ${groups.length} деца`, 'sub'));
+    `${state.practice.name} · ${formatDate(today())} · ${plural(groups.length, 'пациент', 'пациенти')}`, 'sub'));
 
   const tbl = doc.createElement('table');
   const head = doc.createElement('tr');
-  for (const label of ['✓', 'Дете', 'Възраст', 'Телефон', 'За какво', 'Забележка']) {
+  for (const label of ['✓', 'Пациент', 'Възраст', 'Телефон', 'За какво', 'Забележка']) {
     head.appendChild(mk('th', label));
   }
   tbl.appendChild(head);

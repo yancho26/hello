@@ -512,7 +512,7 @@ export function medMonitoring(patient, ctx = {}, asOf = today()) {
       if (classes.has('DOAC') && req === 'renal' && ctx.crcl > 0 && ctx.crcl < 60) {
         mo = Math.max(1, Math.floor(ctx.crcl / 10));
       }
-      out.push({ req, months: mo, reason: medLabel(m), start: m.start || asOf });
+      out.push({ req, months: mo, reason: medLabel(m), start: m.start || asOf, added: (m.addedAt || '').slice(0, 10) });
     }
   }
   return out;

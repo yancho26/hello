@@ -9,6 +9,9 @@ import {
 } from '../ui/components.js';
 import { formatDate } from '../shared/dates.js';
 import { CALENDAR_VERIFIED, GROUPS } from '../shared/calendar.js';
+import { CV_REGIONS } from '../shared/clinical.js';
+
+let scheduleTrack = 'child';
 
 let tab = 'practice';
 
@@ -54,6 +57,7 @@ async function practiceTab(rerender) {
         horizonDays: d.horizonDays,
         requireLogin: d.requireLogin === 'on',
         autoLogoutMinutes: Number(d.autoLogoutMinutes || 0),
+        cvRegion: d.cvRegion,
       });
       await refreshBootstrap();
       toast('Настройките са запазени.', 'ok');
@@ -83,6 +87,12 @@ async function practiceTab(rerender) {
       ].map(o => ({ ...o, selected: Number(state.settings.autoLogoutMinutes || 0) === o.value })),
       { name: 'autoLogoutMinutes' }),
       'Важи при вход с ПИН. Минута преди това програмата предупреждава. Пази досиетата, ако някой остави компютъра отключен.')),
+    h('div', null, field('Регион за SCORE2 (ESC)',
+      select(Object.entries(CV_REGIONS).map(([value, label]) => ({
+        value, label: label + (value === 'very_high' ? ' — България' : ''),
+        selected: (state.settings.cvRegion || 'very_high') === value,
+      })), { name: 'cvRegion' }),
+      'Калибрирането на SCORE2 и SCORE2-Diabetes по сърдечно-съдовата смъртност в страната. България е в региона с много висок риск.')),
     h('div.full', null, h('button.btn.primary', { type: 'submit' }, 'Запази')));
 
   return card('Данни на практиката', { icon: '🏥' }, form);
@@ -163,17 +173,36 @@ function doctorDialog(doctor, rerender) {
 
 /* --------------------------------- календар ---------------------------------- */
 
+export function adultWhen(i) {
+  const y = (m) => Math.round((m / 12) * 10) / 10;
+  if (i.recur) {
+    const every = i.recur.everyMonths % 12 === 0 ? `на ${i.recur.everyMonths / 12} г.` : `на ${i.recur.everyMonths} мес.`;
+    const to = i.recur.toMonths < 1200 ? `–${y(i.recur.toMonths)} г.` : '+';
+    return `${y(i.recur.fromMonths)}${to}, ${i.recur.everyMonths === 12 ? 'ежегодно' : every}`;
+  }
+  if (i.seasonal) {
+    const from = `всяка есен от ${y(i.fromMonths ?? 216)} г.`;
+    return i.riskFromMonths !== undefined ? `${from}; по-рано при риск` : from;
+  }
+  return `${y(i.dueMonths)} г.` + (i.riskFromMonths !== undefined ? `; от ${y(i.riskFromMonths)} г. при риск` : '');
+}
+
+const sortKey = (i) => (i.recur ? i.recur.fromMonths : i.seasonal ? i.fromMonths ?? 216 : i.dueMonths);
+
 async function scheduleTab(rerender) {
   const groups = ['vaccine', 'screening', 'checkup'];
+  const adult = scheduleTrack === 'adult';
 
   const sections = groups.map(g => {
-    const items = state.schedule.filter(i => i.group === g).sort((a, b) => a.dueMonths - b.dueMonths);
+    const items = state.schedule.filter(i => i.group === g && (i.track === 'adult') === adult)
+      .sort((a, b) => sortKey(a) - sortKey(b));
     if (!items.length) return null;
     const rows = items.map(i => h('tr', { style: { opacity: i.disabled ? .5 : 1 } },
       h('td', null,
-        h('div', { style: { fontWeight: '600' } }, i.name),
+        h('div', { style: { fontWeight: '600' } }, i.name,
+          i.sex ? h('span.tiny.dim', null, i.sex === 'f' ? ' · жени' : ' · мъже') : null),
         i.note ? h('div.tiny.dim', null, i.note) : null),
-      h('td.nowrap.mono.small', null, i.dueMonths + ' мес.'),
+      h('td.nowrap.small', null, adult ? adultWhen(i) : i.dueMonths + ' мес.'),
       h('td.nowrap.mono.small', null, (i.graceMonths ?? 1) + ' мес.'),
       h('td', null, i.optIn ? badge('', 'препоръчителна') : i.mandatory ? badge('done', 'задължителна') : badge('', 'по преценка')),
       h('td.actions', null,
@@ -204,11 +233,19 @@ async function scheduleTab(rerender) {
   }).filter(Boolean);
 
   return h('div.stack', null,
+    h('div.chips', null,
+      h('button.chip' + (!adult ? '.active' : ''), { onclick: () => { scheduleTrack = 'child'; rerender(); } }, 'Деца'),
+      h('button.chip' + (adult ? '.active' : ''), { onclick: () => { scheduleTrack = 'adult'; rerender(); } }, 'Възрастни')),
     h('div.alert-strip.info', null,
-      h('div', null,
-        'Календарът се прилага за всички деца. Промяна тук влиза в сила веднага и за вече заведените досиета. ',
-        h('strong', null, 'Сверявайте с актуалната Наредба № 15. '),
-        `Съдържанието по подразбиране е проверено към ${CALENDAR_VERIFIED}.`)),
+      adult
+        ? h('div', null,
+          'Профилактиката при възрастни: Наредба № 8 (годишен преглед), Наредба № 15 (Td на 25 г. и на 10 години), ',
+          'Препоръката на Съвета на ЕС за скрининг на рак (2022), ESC 2021 и препоръките на ECDC за ваксините. ',
+          'Повтарящите се дейности се пресмятат за всеки пациент; при хронично заболяване ваксините се дължат по-рано.')
+        : h('div', null,
+          'Календарът се прилага за всички деца. Промяна тук влиза в сила веднага и за вече заведените досиета. ',
+          h('strong', null, 'Сверявайте с актуалната Наредба № 15. '),
+          `Съдържанието по подразбиране е проверено към ${CALENDAR_VERIFIED}.`)),
     h('div.row.no-print', null,
       h('button.btn.primary', { onclick: () => scheduleItemDialog(null, rerender) }, '＋ Добави дейност'),
       h('div.grow'),
@@ -216,7 +253,7 @@ async function scheduleTab(rerender) {
         onclick: async () => {
           const ok = await confirmDialog({
             title: 'Връщане към стандартния календар',
-            message: 'Всички промени по календара ще бъдат отменени. Данните за децата не се засягат.',
+            message: 'Всички промени по календара (за деца и за възрастни) ще бъдат отменени. Данните на пациентите не се засягат.',
             confirmLabel: 'Върни стандартния', danger: true,
           });
           if (!ok) return;
@@ -231,16 +268,25 @@ async function scheduleTab(rerender) {
 
 function scheduleItemDialog(item, rerender) {
   let form;
+  const adult = item ? item.track === 'adult' : scheduleTrack === 'adult';
   const submit = async (close) => {
-    const d = decimalFields(Object.fromEntries(new FormData(form)), ['dueMonths', 'graceMonths']);
+    const d = decimalFields(Object.fromEntries(new FormData(form)), ['dueMonths', 'graceMonths', 'years', 'everyYears']);
     const payload = {
       name: d.name, short: d.short, note: d.note,
       dueMonths: d.dueMonths, graceMonths: d.graceMonths,
       mandatory: d.mandatory === 'on',
     };
+    if (adult) {
+      delete payload.dueMonths;
+      if (d.years !== undefined && d.years !== '') {
+        if (item && item.recur) payload.fromMonths = Math.round(Number(d.years) * 12);
+        else if (!item || !item.seasonal) payload.dueMonths = Math.round(Number(d.years) * 12);
+      }
+      if (d.everyYears) payload.everyMonths = Math.round(Number(d.everyYears) * 12);
+    }
     try {
       if (item) await api.updateScheduleItem(item.id, payload);
-      else await api.addScheduleItem({ ...payload, group: d.group });
+      else await api.addScheduleItem({ ...payload, group: d.group, track: adult ? 'adult' : undefined, sex: d.sex || undefined });
       await refreshBootstrap();
       toast('Календарът е обновен.', 'ok');
       close();
@@ -261,10 +307,21 @@ function scheduleItemDialog(item, rerender) {
           { value: 'checkup', label: 'Профилактичен преглед' },
           { value: 'screening', label: 'Скрининг / изследване' },
         ], { name: 'group' }))) : null,
-        h('div', null, field('Възраст (месеци)',
-          numberInput({ name: 'dueMonths', min: 0, max: 240, required: true,
-            value: item ? item.dueMonths : '' }),
-          '0 = при раждане, 12 = на 1 година')),
+        adult
+          ? (item && item.seasonal ? h('div', null, field('Кога', h('div.small', null, adultWhen(item)))) : h('div', null, field(item && item.recur ? 'От възраст (години)' : 'Възраст (години)',
+            numberInput({ name: 'years', min: 18, max: 100, required: true,
+              value: item ? String(Math.round(((item.recur ? item.recur.fromMonths : item.dueMonths) / 12) * 10) / 10).replace('.', ',') : '' }))))
+          : h('div', null, field('Възраст (месеци)',
+            numberInput({ name: 'dueMonths', min: 0, max: 240, required: true,
+              value: item ? item.dueMonths : '' }),
+            '0 = при раждане, 12 = на 1 година')),
+        adult && (!item || item.recur) ? h('div', null, field('Повтаря се на (години)',
+          numberInput({ name: 'everyYears', min: 0.1, max: 20,
+            value: item && item.recur ? String(Math.round((item.recur.everyMonths / 12) * 10) / 10).replace('.', ',') : '' }),
+          item ? null : 'Празно — еднократно.')) : null,
+        adult && !item ? h('div', null, field('За', select([
+          { value: '', label: 'мъже и жени' }, { value: 'f', label: 'само жени' }, { value: 'm', label: 'само мъже' },
+        ], { name: 'sex' }))) : null,
         h('div', null, field('Гратисен период (месеци)',
           numberInput({ name: 'graceMonths', min: 0, max: 60,
             value: item ? item.graceMonths ?? 1 : 1 }),
@@ -488,11 +545,18 @@ async function auditTab() {
     doctor_add: 'нов потребител', doctor_update: 'промяна в потребител',
     records_history: 'минали имунизации', system_stop: 'спиране на програмата',
     backup_copy: 'копие във външна папка', auto_logout: 'автоматично излизане',
+    development_add: 'оценка на развитието', development_delete: 'изтрита оценка на развитието',
+    chronic_add: 'ново хронично заболяване', chronic_update: 'промяна в заболяване', chronic_delete: 'изтрито заболяване',
+    med_add: 'ново лекарство', med_update: 'промяна в лекарство', med_stop: 'спряно лекарство',
+    med_renew: 'рецепта', med_delete: 'изтрито лекарство',
+    results_add: 'резултати от изследвания', result_delete: 'изтрит резултат',
+    assessment_add: 'попълнена скала', assessment_delete: 'изтрита скала',
+    lifestyle_update: 'начин на живот', nutrition_save: 'хранителен режим', nutrition_delete: 'изтрит хранителен режим',
   };
 
   const rows = entries.map(e => {
     const when = new Date(e.ts);
-    const details = [e.name, e.item, e.status, e.date && formatDate(e.date)].filter(Boolean).join(' · ');
+    const details = [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date)].filter(Boolean).join(' · ');
     return h('tr', null,
       h('td.nowrap.small.mono', null,
         when.toLocaleDateString('bg-BG'), ' ', when.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })),

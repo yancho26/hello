@@ -29,8 +29,11 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
 
   const candidates = data.plan.filter(e =>
     ACTIONABLE.has(e.status) || (e.status === 'soon' && e.due <= limitDate));
+  const isAdult = !!data.isAdult;
+  // При хронично болен възрастен посещението може да е и диспансерният преглед.
+  const review = isAdult && data.adult ? data.adult.monitoring.find(t => t.id === 'mon:review') : null;
 
-  if (!candidates.length) {
+  if (!candidates.length && !isAdult) {
     toast('Няма дължими дейности за отбелязване.');
     return;
   }
@@ -82,7 +85,13 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
     const fd = new FormData(form);
     const date = fd.get('date');
     const chosen = candidates.filter(e => fd.get('do__' + e.id));
-    if (!chosen.length) { toast('Изберете поне една дейност.', 'error'); return; }
+    const withReview = !!fd.get('review');
+    const measured = ['weight', 'height', 'head', 'waist', 'systolic', 'diastolic', 'pulse']
+      .some(k => normaliseDecimal(fd.get(k)));
+    if (!chosen.length && !withReview && !measured) {
+      toast(isAdult ? 'Изберете дейност или въведете измерване.' : 'Изберете поне една дейност.', 'error');
+      return;
+    }
 
     const failed = [];
     for (const e of chosen) {
@@ -96,21 +105,26 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
     }
 
     // Измерванията се записват само ако лекарят ги е попълнил.
-    const weight = normaliseDecimal(fd.get('weight'));
-    const height = normaliseDecimal(fd.get('height'));
-    const head = normaliseDecimal(fd.get('head'));
-    const systolic = normaliseDecimal(fd.get('systolic'));
-    const diastolic = normaliseDecimal(fd.get('diastolic'));
-    if (weight || height || head || systolic || diastolic) {
+    if (measured) {
+      const m = { date };
+      for (const k of ['weight', 'height', 'head', 'waist', 'systolic', 'diastolic', 'pulse']) m[k] = normaliseDecimal(fd.get(k));
       try {
-        await api.addMeasurement(patientId, { date, weight, height, head, systolic, diastolic });
+        await api.addMeasurement(patientId, m);
       } catch (err) {
         failed.push('измерване: ' + err.message);
       }
     }
+    if (withReview) {
+      try {
+        await api.addVisit(patientId, { date, type: 'Диспансерен преглед', note: fd.get('reviewNote') || '' });
+      } catch (err) {
+        failed.push('диспансерен преглед: ' + err.message);
+      }
+    }
 
+    const count = chosen.length + (withReview ? 1 : 0);
     if (failed.length) toast('Част от записите не преминаха — ' + failed.join('; '), 'error');
-    else toast(`Отбелязани ${chosen.length} дейности за ${patientName}.`, 'ok');
+    else toast(count ? `Отбелязано за ${patientName}: ${count === 1 ? '1 дейност' : count + ' дейности'}.` : `Измерването е записано за ${patientName}.`, 'ok');
 
     close();
     if (onDone) await onDone();
@@ -134,17 +148,31 @@ export async function visitDialog({ patientId, patientName, onDone, includeSoonD
             `Натрупани са ${dueNow.length} дължими дейности. Нищо не е отметнато предварително — `
             + 'изберете само това, което действително се извършва днес.')
           : null,
+        review ? h('label.check', { style: { padding: '9px 0', borderBottom: '1px solid var(--line)' } },
+          h('input', { type: 'checkbox', name: 'review', checked: review.status === 'overdue' || review.status === 'due' || review.status === 'soon' }),
+          h('span.grow', null,
+            h('div', null, '🩺 ', h('strong', null, 'Диспансерен преглед')),
+            h('div.tiny.dim', null, review.reasons.join(', '),
+              review.last ? ` · последен ${formatDate(review.last)}` : ' · няма запис'))) : null,
         h('div', { style: { maxHeight: '300px', overflowY: 'auto', marginBottom: '14px' } },
-          candidates.map(rowFor)),
+          candidates.map(rowFor),
+          !candidates.length ? h('div.small.muted', { style: { padding: '8px 0' } }, 'Няма дължими дейности по профилактиката.') : null),
         h('h3', { style: { marginBottom: '4px' } }, 'Измервания',
           h('span.small.muted', { style: { fontWeight: '400' } },
-            showBp ? ' — по желание; налягането се измерва ежегодно от 3 г.' : ' — по желание')),
-        h('div.form-grid', null,
-          h('div', null, field('Тегло (кг)', numberInput({ name: 'weight', min: 0.3, max: 200 }))),
-          h('div', null, field('Ръст (см)', numberInput({ name: 'height', min: 20, max: 230 }))),
-          h('div', null, field('Обиколка глава (см)', numberInput({ name: 'head', min: 20, max: 70 }))),
-          showBp ? h('div', null, field('Систолно (mmHg)', numberInput({ name: 'systolic', min: 50, max: 250 }))) : null,
-          showBp ? h('div', null, field('Диастолно (mmHg)', numberInput({ name: 'diastolic', min: 20, max: 160 }))) : null));
+            isAdult ? ' — по желание' : showBp ? ' — по желание; налягането се измерва ежегодно от 3 г.' : ' — по желание')),
+        isAdult
+          ? h('div.form-grid', null,
+            h('div', null, field('Систолно (mmHg)', numberInput({ name: 'systolic', min: 50, max: 280 }))),
+            h('div', null, field('Диастолно (mmHg)', numberInput({ name: 'diastolic', min: 20, max: 160 }))),
+            h('div', null, field('Пулс (/мин)', numberInput({ name: 'pulse', min: 25, max: 220 }))),
+            h('div', null, field('Тегло (кг)', numberInput({ name: 'weight', min: 30, max: 350 }))),
+            h('div', null, field('Обиколка на талията (см)', numberInput({ name: 'waist', min: 40, max: 250 }))))
+          : h('div.form-grid', null,
+            h('div', null, field('Тегло (кг)', numberInput({ name: 'weight', min: 0.3, max: 200 }))),
+            h('div', null, field('Ръст (см)', numberInput({ name: 'height', min: 20, max: 230 }))),
+            h('div', null, field('Обиколка глава (см)', numberInput({ name: 'head', min: 20, max: 70 }))),
+            showBp ? h('div', null, field('Систолно (mmHg)', numberInput({ name: 'systolic', min: 50, max: 250 }))) : null,
+            showBp ? h('div', null, field('Диастолно (mmHg)', numberInput({ name: 'diastolic', min: 20, max: 160 }))) : null));
       return form;
     },
     actions: (close) => [

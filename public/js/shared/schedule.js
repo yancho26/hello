@@ -70,7 +70,8 @@ export const ACTIONABLE = new Set(['overdue', 'deferral_ended', 'due']);
  * на следващия по ред, и се отбелязва като пропуснат: остава видим в
  * досието, но не задръства ежедневния списък със задачи.
  *
- * Скринингите изтичат само ако изрично е зададен срок (expireMonths). */
+ * Скринингите изтичат, ако изрично е зададен срок (expireMonths), а детските —
+ * най-късно на 18 години. */
 /* Кога изтича всеки детски профилактичен преглед — индексът се изчислява
  * веднъж за календар, а не за всеки пациент (важно при хиляди досиета). */
 const nextCheckupCache = new WeakMap();
@@ -91,6 +92,8 @@ function expiryFor(item, schedule, birthDate) {
   if (Number.isFinite(item.expireMonths)) {
     return dueDateFor(birthDate, item.dueMonths + item.expireMonths);
   }
+  // Детски скрининг без изричен срок (напр. белег от БЦЖ) не преследва пациента в зряла възраст.
+  if (item.group !== 'checkup' && !isAdultItem(item)) return dueDateFor(birthDate, ADULT_MONTHS);
   if (item.group !== 'checkup' || isAdultItem(item)) return null;
   const next = nextCheckupIndex(schedule).get(item.dueMonths);
   return next === null || next === undefined
@@ -235,6 +238,23 @@ export function findScheduleItem(schedule, id) {
 }
 
 /**
+ * Последният резултат или скала с някой от кодовете в периода [from, to).
+ * Така мамография, FIT, липиден профил или PHQ-4 отбелязват съответната
+ * дейност, без значение в какъв ред са въведени — и я отварят отново, ако
+ * резултатът бъде изтрит.
+ */
+function evidenceDate(patient, codes, from, to) {
+  let best = null;
+  const consider = (code, date) => {
+    if (!codes.includes(code) || !date || date < from || (to && date >= to)) return;
+    if (!best || date > best) best = date;
+  };
+  for (const r of patient.results || []) consider(r.code, r.date);
+  for (const a of patient.assessments || []) consider(a.tool, a.date);
+  return best;
+}
+
+/**
  * Изчислява плана на един пациент.
  * @param {object} patient  досието (birthDate, records, optIn)
  * @param {Array}  schedule календарът (виж calendar.js)
@@ -261,8 +281,12 @@ export function computePlan(patient, schedule, opts = {}) {
   for (const item of expandSchedule(patient, schedule, asOf)) {
     if (item.optIn && !optIn.has(item.id)) continue;
 
-    const rec = records[item.id] || null;
+    let rec = records[item.id] || null;
     let due = item.dueDate || dueDateFor(patient.birthDate, item.dueMonths);
+    if (!rec && item.closesWith) {
+      const when = evidenceDate(patient, item.closesWith, addMonths(due, -6), item.expiresOn);
+      if (when) rec = { status: 'done', date: when, auto: true, note: 'Отбелязано по въведен резултат.' };
+    }
 
     // Ако предходен прием от серията е закъснял, следващият се измества напред.
     if (item.series && item.minIntervalM) {

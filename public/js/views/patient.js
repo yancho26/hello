@@ -1,4 +1,5 @@
-/* Досие на дете: обзор, имунизации, прегледи, растеж, визити, напомняния. */
+/* Досие на пациент. При дете: обзор, имунизации, прегледи, растеж, развитие.
+ * При възрастен: разделите от adult-patient.js. Общи са прегледите и напомнянията. */
 
 import { api } from '../api.js';
 import { state } from '../app.js';
@@ -12,13 +13,17 @@ import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm } from '../shared/growth.js
 import { ACTIONABLE } from '../shared/schedule.js';
 import { OPT_IN_GROUPS } from '../shared/calendar.js';
 import { openPatientForm } from './patients.js';
-import { deferDialog, markDoneDialog, refuseDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
 import { historyDialog } from './history-dialog.js';
 import { printImmunisationCard } from './print.js';
 import { developmentTab } from './development.js';
+import { planRow } from './plan-row.js';
+import { ADULT_TABS, ADULT_VIEWS, adultHeaderAlerts, adultTabCount } from './adult-patient.js';
+import { nutritionTab } from './nutrition-view.js';
+import { printAdultSummary, printMedList } from './adult-print.js';
 
 let activeTab = 'overview';
+let activeFor = null;
 
 const TABS = [
   { id: 'overview', label: 'Обзор' },
@@ -34,15 +39,25 @@ export async function renderPatient(host, id) {
   const data = await api.patient(id);
   const p = data.patient;
   const reload = () => renderPatient(host, id);
+  // Всяко досие се отваря на обзора; презареждането на същото запазва раздела.
+  if (activeFor !== id) { activeTab = 'overview'; activeFor = id; }
 
+  const isAdult = !!data.isAdult;
   const actionable = data.plan.filter(e => ACTIONABLE.has(e.status));
   const vaccines = data.plan.filter(e => e.group === 'vaccine');
   const checkups = data.plan.filter(e => e.group === 'checkup' || e.group === 'screening');
 
-  const ctx = { p, data, reload, actionable, vaccines, checkups };
+  const ctx = {
+    p, data, reload, actionable, vaccines, checkups, isAdult, a: data.adult,
+    openTab: (tab) => { activeTab = tab; renderTab(); },
+    addVisit: (type) => addVisitDialog(ctx, type),
+  };
+  const tabs = isAdult ? ADULT_TABS : TABS;
+  if (!tabs.some(t => t.id === activeTab)) activeTab = 'overview';
 
-  const tabBar = h('div.tabs.no-print', null, TABS.map(t => {
-    const n = t.id === 'vaccines' ? vaccines.filter(e => ACTIONABLE.has(e.status)).length
+  const tabBar = h('div.tabs.no-print', null, tabs.map(t => {
+    const n = isAdult ? adultTabCount(t.id, ctx)
+      : t.id === 'vaccines' ? vaccines.filter(e => ACTIONABLE.has(e.status)).length
       : t.id === 'checkups' ? checkups.filter(e => ACTIONABLE.has(e.status)).length
         : t.id === 'reminders' ? (p.reminders || []).filter(r => !r.done).length
           : t.id === 'development'
@@ -57,13 +72,15 @@ export async function renderPatient(host, id) {
   const content = h('div#tabContent');
   const renderTab = () => {
     for (const [i, btn] of [...tabBar.children].entries()) {
-      btn.classList.toggle('active', TABS[i].id === activeTab);
+      btn.classList.toggle('active', tabs[i].id === activeTab);
     }
-    const view = {
-      overview: overviewTab, vaccines: vaccinesTab, checkups: checkupsTab,
-      growth: growthTab, development: developmentTab, visits: visitsTab, reminders: remindersTab,
-    }[activeTab] || overviewTab;
-    mount(content, view(ctx));
+    const views = isAdult
+      ? { ...ADULT_VIEWS, nutrition: nutritionTab, visits: visitsTab, reminders: remindersTab }
+      : {
+        overview: overviewTab, vaccines: vaccinesTab, checkups: checkupsTab,
+        growth: growthTab, development: developmentTab, visits: visitsTab, reminders: remindersTab,
+      };
+    mount(content, (views[activeTab] || views.overview)(ctx));
   };
 
   mount(host, patientHeader(ctx), tabBar, content);
@@ -72,14 +89,17 @@ export async function renderPatient(host, id) {
 
 /* --------------------------------- заглавие ---------------------------------- */
 
-function patientHeader({ p, data, reload }) {
+function patientHeader(ctx) {
+  const { p, data, reload, isAdult } = ctx;
   const doctor = state.doctors.find(d => d.id === p.doctorId);
   const alerts = [];
   if (p.allergies && p.allergies.length) {
     alerts.push(h('div.alert-strip', null, '⚠ Алергии: ', h('strong', null, p.allergies.join(', '))));
   }
+  if (isAdult) alerts.push(...adultHeaderAlerts(ctx));
   if (p.conditions && p.conditions.length) {
-    alerts.push(h('div.alert-strip.info', null, 'Диспансерно наблюдение: ', h('strong', null, p.conditions.join(', '))));
+    alerts.push(h('div.alert-strip.info', null, isAdult ? 'Други заболявания: ' : 'Диспансерно наблюдение: ',
+      h('strong', null, p.conditions.join(', '))));
   }
   if (p.archived) {
     alerts.push(h('div.alert-strip.warn', null, 'Досието е в архив.',
@@ -108,31 +128,37 @@ function patientHeader({ p, data, reload }) {
           h('button.btn.ghost.sm.no-print', {
             onclick: () => { location.hash = '#/patients'; },
             style: { marginBottom: '6px', marginLeft: '-8px' },
-          }, '← Всички деца'),
+          }, '← Всички пациенти'),
           h('h1', null, p.name,
             h('span.dim', { style: { fontSize: '18px' } }, p.sex === 'f' ? '♀' : p.sex === 'm' ? '♂' : '')),
           h('div.facts', null,
             fact('Възраст', formatAge(p.birthDate)),
-            fact('Роден', formatDate(p.birthDate)),
+            fact(p.sex === 'f' ? 'Родена' : 'Роден', formatDate(p.birthDate)),
             fact('ЕГН', p.egn || '—'),
             fact('Телефон', p.phone || '—'),
             fact('Личен лекар', doctor ? doctor.name : '—'),
             p.birth && isPreterm(Number(p.birth.gestWeeks))
               ? fact('Гестационна възраст', p.birth.gestWeeks + ' с.') : null)),
-        h('div', null, coverageRing(data.summary.coverage)),
+        h('div', { title: isAdult ? 'Изпълнени задължителни профилактични дейности (преглед, скрининги, Td)' : 'Поставени задължителни имунизации' },
+          coverageRing(data.summary.coverage, 62, isAdult ? 'профилактика' : 'обхват')),
         h('div.row.tight.no-print', null,
           h('button.btn.sm.primary', {
             onclick: () => visitDialog({ patientId: p.id, patientName: p.name, onDone: reload }),
           }, '✓ Отбележи посещение'),
           h('button.btn.sm', { onclick: () => openPatientForm(p, reload) }, '✎ Редакция'),
-          h('button.btn.sm', { onclick: () => printImmunisationCard(p, data) }, '🖨 Имунизационен паспорт'),
+          isAdult
+            ? [
+              h('button.btn.sm', { onclick: () => printMedList(p, data) }, '🖨 Лекарства'),
+              h('button.btn.sm', { onclick: () => printAdultSummary(p, data) }, '🖨 Обобщение'),
+            ]
+            : h('button.btn.sm', { onclick: () => printImmunisationCard(p, data) }, '🖨 Имунизационен паспорт'),
           h('button.btn.sm.danger', {
             onclick: async () => {
               const ok = await confirmDialog({
                 title: p.archived ? 'Връщане от архив' : 'Архивиране на досието',
                 message: p.archived
                   ? `Досието на ${p.name} ще се върне в активния списък.`
-                  : `${p.name} ще бъде преместен в архива и няма да излиза в напомнянията. Данните се запазват.`,
+                  : `Досието на ${p.name} ще бъде преместено в архива и няма да излиза в напомнянията. Данните се запазват.`,
                 confirmLabel: p.archived ? 'Върни' : 'Архивирай',
                 danger: !p.archived,
               });
@@ -365,76 +391,6 @@ function checkupsTab(ctx) {
       : null);
 }
 
-/* ------------------------------ ред от плана --------------------------------- */
-
-function planRow(e, ctx, compact = false) {
-  const { p, reload } = ctx;
-  const item = state.scheduleById.get(e.id) || { id: e.id, name: e.name, group: e.group, short: e.short };
-  const rec = e.record;
-
-  const actions = h('td.actions.no-print', null,
-    e.status === 'done'
-      ? h('button.btn.xs', {
-        title: 'Отмени отбелязването',
-        onclick: async (ev) => {
-          ev.stopPropagation();
-          const ok = await confirmDialog({
-            title: 'Отмяна',
-            message: `Записът за „${e.name}“ ще бъде премахнат от досието.`,
-            confirmLabel: 'Отмени', danger: true,
-          });
-          if (!ok) return;
-          await api.clearRecord(p.id, e.id);
-          toast('Записът е премахнат.');
-          reload();
-        },
-      }, '↺')
-      : h('div.row.tight', { style: { justifyContent: 'flex-end' } },
-        h('button.btn.xs.primary', {
-          title: 'Отбележи като извършено',
-          onclick: () => markDoneDialog({ patientId: p.id, patientName: p.name, item, onDone: reload }),
-        }, '✓'),
-        !compact && e.group === 'vaccine' ? h('button.btn.xs', {
-          title: 'Медицински отвод',
-          onclick: () => deferDialog({ patientId: p.id, patientName: p.name, item, onDone: reload }),
-        }, '⏸') : null,
-        !compact && e.group === 'vaccine' ? h('button.btn.xs', {
-          title: 'Отказ от родител',
-          onclick: () => refuseDialog({ patientId: p.id, patientName: p.name, item, onDone: reload }),
-        }, '✕') : null));
-
-  const nameCell = h('td', null,
-    h('div', { style: { fontWeight: '600' } }, e.name),
-    e.note ? h('div.tiny.dim', null, e.note) : null,
-    rec && rec.reason ? h('div.tiny.dim', null, 'Причина: ' + rec.reason) : null,
-    rec && rec.note ? h('div.tiny.dim', null, rec.note) : null);
-
-  if (compact) {
-    return h('tr' + (e.status === 'overdue' ? '.attention' : ''), null,
-      nameCell,
-      h('td.nowrap.small', null, formatDateShort(e.due)),
-      h('td', null, statusBadge(e)),
-      actions);
-  }
-
-  return h('tr' + (e.status === 'overdue' ? '.attention' : ''), null,
-    nameCell,
-    h('td.nowrap.small.dim', null, ageLabel(e.doseMonths)),
-    h('td.nowrap.small', null,
-      h('div', null, formatDate(e.due)),
-      e.status !== 'done' ? h('div.tiny.dim', null, relativeDays(e.due)) : null),
-    h('td', null, statusBadge(e)),
-    h('td.small.mono', null, rec && rec.batch ? rec.batch : rec && rec.product ? rec.product : ''),
-    actions);
-}
-
-function ageLabel(months) {
-  if (months === 0) return 'при раждане';
-  if (months < 12) return months + ' мес.';
-  const y = Math.floor(months / 12), m = Math.round(months % 12);
-  return m ? `${y} г. ${m} м.` : `${y} г.`;
-}
-
 /* ---------------------------------- растеж ----------------------------------- */
 
 function growthTab(ctx) {
@@ -634,7 +590,12 @@ function visitsTab(ctx) {
       : card(null, {}, empty('Няма записани прегледи.', '🩺')));
 }
 
-function addVisitDialog(ctx) {
+const VISIT_TYPES = [
+  'Амбулаторен преглед', 'Профилактичен преглед', 'Вторичен преглед', 'Диспансерен преглед',
+  'Домашно посещение', 'Консултация по телефон', 'Издаване на документ',
+];
+
+function addVisitDialog(ctx, defaultType = '') {
   const { p, reload } = ctx;
   let form;
   const submit = async (close) => {
@@ -655,10 +616,10 @@ function addVisitDialog(ctx) {
     body: (close) => {
       form = h('form.form-grid', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div', null, field('Дата', input({ name: 'date', type: 'date', value: today(), max: today(), required: true }))),
-        h('div', null, field('Вид', select([
-          'Амбулаторен преглед', 'Профилактичен преглед', 'Вторичен преглед',
-          'Домашно посещение', 'Консултация по телефон', 'Издаване на документ',
-        ].map(v => ({ value: v, label: v })), { name: 'type' }))),
+        h('div', null, field('Вид', select(VISIT_TYPES
+          .filter(v => ctx.isAdult || v !== 'Диспансерен преглед' || (p.conditions || []).length)
+          .map(v => ({ value: v, label: v, selected: v === defaultType })), { name: 'type' }),
+        ctx.isAdult && (p.chronic || []).length ? '„Диспансерен преглед“ отбелязва контролния преглед по хроничните заболявания.' : null)),
         h('div.full', null, field('Оплаквания', h('textarea', { name: 'complaint', rows: 2 }))),
         h('div.full', null, field('Обективно състояние', h('textarea', { name: 'findings', rows: 3 }))),
         h('div', null, field('Диагноза', input({ name: 'diagnosis', placeholder: 'напр. Остър фарингит' }))),

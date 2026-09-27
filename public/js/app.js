@@ -11,6 +11,7 @@ import { renderPatient } from './views/patient.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderCalendar } from './views/calendar.js';
+import { findScheduleItem } from './shared/schedule.js';
 
 export const state = {
   doctor: null,
@@ -83,7 +84,7 @@ function shell() {
     type: 'search',
     placeholder: 'Търсене…',
     title: 'Търсене по име, ЕГН или телефон (клавиш /)',
-    'aria-label': 'Търсене на дете',
+    'aria-label': 'Търсене на пациент',
     oninput: (e) => {
       const q = e.target.value;
       clearTimeout(searchTimer);
@@ -125,8 +126,8 @@ function shell() {
       h('kbd', null, '/')),
     h('button.btn.primary.sm.no-print', {
       onclick: () => import('./views/patients.js').then(m => m.openPatientForm()),
-      title: 'Ново дете (N)',
-    }, '＋ Ново дете'),
+      title: 'Нов пациент (N)',
+    }, '＋ Нов пациент'),
     h('button.user-chip', { onclick: userMenu },
       avatar(state.doctor ? state.doctor.name : '?'),
       h('span', null, state.doctor ? state.doctor.name : 'Вход')),
@@ -366,6 +367,11 @@ async function start() {
 
   if (state.settings.requireLogin && info.doctor) startIdleLogout(Number(state.settings.autoLogoutMinutes) || 0);
   maybeShowWhatsNew(state.server);
+}
+
+/** Дейност от календара по код — включително повторение на дейност за възрастни (код@месеци). */
+export function scheduleItem(id) {
+  return state.scheduleById.get(id) || findScheduleItem(state.schedule, id)?.item || null;
 }
 
 /** Презарежда календара и настройките след промяна в „Настройки“. */

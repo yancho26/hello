@@ -206,7 +206,9 @@ export function answerValues(tool, answers) {
   const count = t.items ? t.items.length : t.questions ? t.questions.length : t.fields.length;
   const values = [];
   for (let i = 0; i < count; i++) {
-    const v = Number(answers[i]);
+    const raw = answers[i];
+    if (raw === null || raw === undefined || raw === '') throw new Error(`Липсва отговор ${i + 1}.`);
+    const v = Number(raw);
     const allowed = t.items ? t.options.map(o => o[0])
       : t.questions ? t.questions[i].options.map(o => o[0])
         : t.fields[i].options.map(o => o[0]);

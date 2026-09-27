@@ -63,8 +63,9 @@ export const api = {
   archivePatient: (id, archived, reason) =>
     request('POST', `/api/patients/${id}/archive`, { archived, reason }),
 
-  setRecord: (id, itemId, data) => request('PUT', `/api/patients/${id}/records/${itemId}`, data),
-  clearRecord: (id, itemId) => request('DELETE', `/api/patients/${id}/records/${itemId}`),
+  setRecord: (id, itemId, data) =>
+    request('PUT', `/api/patients/${id}/records/${encodeURIComponent(itemId)}`, data),
+  clearRecord: (id, itemId) => request('DELETE', `/api/patients/${id}/records/${encodeURIComponent(itemId)}`),
   addHistory: (id, data) => request('POST', `/api/patients/${id}/records`, data),
   setOptIn: (id, optIn) => request('PUT', `/api/patients/${id}/optin`, { optIn }),
 
@@ -80,6 +81,24 @@ export const api = {
   addReminder: (id, data) => request('POST', `/api/patients/${id}/reminders`, data),
   updateReminder: (id, rid, data) => request('PATCH', `/api/patients/${id}/reminders/${rid}`, data),
   deleteReminder: (id, rid) => request('DELETE', `/api/patients/${id}/reminders/${rid}`),
+
+  addCondition: (id, data) => request('POST', `/api/patients/${id}/chronic`, data),
+  updateCondition: (id, cid, data) => request('PATCH', `/api/patients/${id}/chronic/${cid}`, data),
+  deleteCondition: (id, cid) => request('DELETE', `/api/patients/${id}/chronic/${cid}`),
+
+  addMed: (id, data) => request('POST', `/api/patients/${id}/meds`, data),
+  updateMed: (id, mid, data) => request('PATCH', `/api/patients/${id}/meds/${mid}`, data),
+  deleteMed: (id, mid) => request('DELETE', `/api/patients/${id}/meds/${mid}`),
+
+  addResults: (id, data) => request('POST', `/api/patients/${id}/results`, data),
+  deleteResult: (id, rid) => request('DELETE', `/api/patients/${id}/results/${rid}`),
+
+  addAssessment: (id, data) => request('POST', `/api/patients/${id}/assessments`, data),
+  deleteAssessment: (id, aid) => request('DELETE', `/api/patients/${id}/assessments/${aid}`),
+
+  setLifestyle: (id, data) => request('PUT', `/api/patients/${id}/lifestyle`, data),
+  nutrition: (id, data) => request('POST', `/api/patients/${id}/nutrition`, data),
+  deleteNutrition: (id, nid) => request('DELETE', `/api/patients/${id}/nutrition/${nid}`),
 
   tasks: (params) => request('GET', '/api/tasks' + qs(params)),
   reports: (params) => request('GET', '/api/reports' + qs(params)),

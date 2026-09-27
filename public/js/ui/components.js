@@ -183,7 +183,7 @@ export function statusBadge(entry) {
   const s = entry.status;
   if (s === 'done') {
     return badge('done', entry.record && entry.record.date
-      ? 'поставена ' + formatDate(entry.record.date) : 'изпълнено');
+      ? (entry.group === 'vaccine' ? 'поставена ' : 'извършено ') + formatDate(entry.record.date) : 'изпълнено');
   }
   if (s === 'overdue') return badge('overdue', `просрочено с ${durationText(entry.overdueDays)}`);
   if (s === 'missed') return badge('missed', 'пропуснато');
@@ -229,8 +229,8 @@ export function table(columns, rows) {
   return h('div.table-wrap', null, h('table', null, thead, h('tbody', null, rows)));
 }
 
-/** Пръстен с процент — обхват на имунизациите. */
-export function coverageRing(pct, size = 62) {
+/** Пръстен с процент — обхват на имунизациите или на профилактиката. */
+export function coverageRing(pct, size = 62, label = 'обхват') {
   const r = (size - 8) / 2;
   const c = 2 * Math.PI * r;
   const value = pct === null ? 0 : pct;
@@ -250,7 +250,7 @@ export function coverageRing(pct, size = 62) {
       })),
     h('div', null,
       h('div.pct', null, pct === null ? '—' : pct + '%'),
-      h('div.small.muted', null, 'обхват')));
+      h('div.small.muted', null, label)));
 }
 
 export function avatar(name) {

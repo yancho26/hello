@@ -215,6 +215,17 @@ export function rangeFor(code, sex) {
   return lab.range || null;
 }
 
+/** Референтните граници като текст: „62–106“, „<3,0“ или „≥1,0“. */
+export function rangeText(code, sex) {
+  const lab = LABS[code];
+  const r = rangeFor(code, sex);
+  if (!lab || !r) return '';
+  const f = (v) => String(v).replace('.', ',');
+  if (r[1] >= lab.max || r[1] === 99) return '≥' + f(r[0]);
+  if (r[0] === 0) return '<' + f(r[1]);
+  return `${f(r[0])}–${f(r[1])}`;
+}
+
 /** 'H' — над границата, 'L' — под нея, null — в граници или без граници. */
 export function flagFor(code, value, sex) {
   const r = rangeFor(code, sex);

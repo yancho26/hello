@@ -1,4 +1,4 @@
-/* Списък с деца и формулярът за въвеждане/редакция. */
+/* Списък с пациенти и формулярът за въвеждане/редакция. */
 
 import { api } from '../api.js';
 import { state } from '../app.js';
@@ -6,10 +6,26 @@ import {
   badge, card, decimalFields, empty, field, h, input, modal, mount,
   numberInput, select, table, toast,
 } from '../ui/components.js';
-import { formatAge, formatDate, today } from '../shared/dates.js';
+import { ageInMonthsExact, formatAge, formatDate, today } from '../shared/dates.js';
 import { parse as parseEgn } from '../shared/egn.js';
+import { ADULT_MONTHS, pediatricTracked } from '../shared/schedule.js';
+import { CONDITIONS } from '../shared/chronic.js';
 
-let view = { q: '', filter: 'all', sort: 'name', archived: false };
+let view = { q: '', filter: 'all', sort: 'name', archived: false, group: '', condition: '' };
+
+const SHORT = {
+  htn: 'АХ', dm2: 'ЗД2', dm1: 'ЗД1', prediabetes: 'предиабет', dyslip: 'дислипидемия', chd: 'ИБС', pad: 'ПАБ',
+  stroke: 'инсулт', hf: 'СН', af: 'ПМ', ckd: 'ХБЗ', copd: 'ХОББ', asthma: 'астма', hypothyroid: 'хипотиреоидизъм',
+  obesity: 'затлъстяване', gout: 'подагра', osteoporosis: 'остеопороза', depression: 'депресия', anxiety: 'тревожност',
+  dementia: 'деменция', masld: 'MASLD', anemia: 'анемия',
+};
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+/** Отваря списъка с предварително избран филтър — например от таблото. */
+export function setPatientsView(v) {
+  Object.assign(view, v);
+}
 
 function readQueryFromHash() {
   const m = location.hash.match(/\?q=([^&]*)/);
@@ -26,6 +42,8 @@ export async function renderPatients(host) {
     sort: view.sort,
     archived: view.archived ? '1' : '',
     doctor: view.filter === 'mine' && state.doctor ? state.doctor.id : '',
+    group: view.group,
+    condition: view.condition,
   });
 
   let list = data.patients;
@@ -37,7 +55,23 @@ export async function renderPatients(host) {
     state.doctors.length > 1 ? chip('Моите', 'mine') : null,
     h('button.chip' + (view.archived ? '.active' : ''), {
       onclick: () => { view.archived = !view.archived; renderPatients(host); },
-    }, 'Архив'));
+    }, 'Архив'),
+    h('span.chip-sep'),
+    groupChip('Деца', 'child'),
+    groupChip('Възрастни', 'adult'),
+    select([
+      { value: '', label: 'всички заболявания' },
+      ...Object.entries(CONDITIONS).map(([code, d]) => ({ value: code, label: d.name, selected: view.condition === code })),
+    ], {
+      class: 'chip-select',
+      onchange: (e) => { view.condition = e.target.value; if (view.condition) view.group = 'adult'; renderPatients(host); },
+    }));
+
+  function groupChip(label, key) {
+    return h('button.chip' + (view.group === key ? '.active' : ''), {
+      onclick: () => { view.group = view.group === key ? '' : key; if (view.group !== 'adult') view.condition = ''; renderPatients(host); },
+    }, label);
+  }
 
   function chip(label, key, count) {
     return h('button.chip' + (view.filter === key && !view.archived ? '.active' : ''), {
@@ -61,27 +95,33 @@ export async function renderPatients(host) {
     h('div.page-head', null,
       h('div.titles', null,
         h('h1', null, view.archived ? 'Архив' : 'Пациенти'),
-        h('div.muted.small', null, `${list.length} ${list.length === 1 ? 'дете' : 'деца'}`)),
+        h('div.muted.small', null, plural(list.length, 'пациент', 'пациенти'))),
       h('div.row.no-print', { style: { flexWrap: 'nowrap' } }, sortSelect,
-        h('button.btn.primary', { onclick: () => openPatientForm(null, () => renderPatients(host)) }, '＋ Ново дете'))),
+        h('button.btn.primary', { onclick: () => openPatientForm(null, () => renderPatients(host)) }, '＋ Нов пациент'))),
     chips,
     h('div', { style: { height: '12px' } }),
     list.length
       ? card(null, { tight: true }, table(
-        ['Дете', 'Възраст', 'ЕГН', 'Телефон', 'Следваща дейност', 'Обхват', ''],
+        ['Пациент', 'Възраст', 'ЕГН', 'Телефон', 'Следваща дейност', 'Обхват', ''],
         list.map(p => patientRow(p, host))))
       : card(null, {}, empty(view.q
         ? `Няма съвпадение за „${view.q}“.`
-        : view.archived ? 'Архивът е празен.' : 'Все още няма записани деца.', '🔎')));
+        : view.archived ? 'Архивът е празен.' : view.condition || view.group ? 'Няма пациенти по този филтър.' : 'Все още няма записани пациенти.', '🔎')));
 }
 
 function patientRow(p, host) {
-  const attention = p.counts.overdue > 0 || p.growthConcerns > 0 || p.developmentConcerns > 0;
+  const f = p.adult;
+  const attention = p.counts.overdue > 0 || p.growthConcerns > 0 || p.developmentConcerns > 0
+    || !!(f && (f.monOverdue || f.medSerious || f.mentalUrgent));
   const alerts = [];
   if (p.allergies && p.allergies.length) alerts.push(badge('alert', '⚠ алергия'));
   if (p.growthConcerns) alerts.push(badge('alert', '📉 растеж'));
   if (p.developmentConcerns) alerts.push(badge('alert', '🧠 развитие'));
-  if (p.conditions && p.conditions.length) alerts.push(badge('', p.conditions[0]));
+  if (f && f.mentalUrgent) alerts.push(badge('alert', '🧠 психично здраве'));
+  if (f && f.medSerious) alerts.push(badge('alert', '💊 ' + f.medSerious));
+  if (f && f.monOverdue) alerts.push(badge('overdue', '🧪 ' + f.monOverdue));
+  for (const code of (p.chronic || []).slice(0, 4)) alerts.push(badge('', SHORT[code] || CONDITIONS[code]?.name || code));
+  if (!p.chronic?.length && p.conditions && p.conditions.length) alerts.push(badge('', p.conditions[0]));
 
   return h('tr.clickable' + (attention ? '.attention' : ''), {
     onclick: () => { location.hash = '#/patient/' + p.id; },
@@ -99,7 +139,8 @@ function patientRow(p, host) {
         h('div.small', null, p.next.short || p.next.name),
         h('div.tiny', null, statusText(p.next)))
       : h('span.dim.small', null, '—')),
-    h('td.nowrap', null, coverageBar(p.coverage)),
+    h('td.nowrap', { title: p.coverageKind === 'prevention' ? 'Изпълнена задължителна профилактика' : 'Поставени задължителни имунизации' },
+      coverageBar(p.coverage)),
     h('td.actions.no-print', null,
       p.counts.overdue
         ? badge('overdue', p.counts.overdue + ' просрочени')
@@ -127,7 +168,7 @@ function coverageBar(pct) {
       h('div', { style: { height: '100%', width: pct + '%', background: colour, borderRadius: '3px' } })));
 }
 
-/* ---------------------------- формуляр за дете ------------------------------- */
+/* -------------------------- формуляр за пациент ----------------------------- */
 
 export function openPatientForm(patient = null, onSaved = null) {
   const isNew = !patient;
@@ -140,6 +181,26 @@ export function openPatientForm(patient = null, onSaved = null) {
       selected: patient ? patient.doctorId === d.id : (state.doctor && state.doctor.id === d.id),
     })),
   ];
+
+  /* Детските раздели (данни при раждане, ръст на родителите) се показват само
+   * при пациент под 18 г. При възрастен, регистриран като дете, може да се
+   * изключи детският календар — например пропуснати детски ваксини. */
+  let birthInput = null;
+  const isAdultAge = () => {
+    const bd = birthInput && birthInput.value;
+    return !!bd && ageInMonthsExact(bd, today()) >= ADULT_MONTHS;
+  };
+  const contactsTitle = h('h3', { style: { marginTop: '6px' } }, 'Родители и контакти');
+  const pedsBox = h('input', { type: 'checkbox', name: 'pediatricMode', checked: patient ? pediatricTracked(patient) : false });
+  const pedsToggle = h('div.full', { hidden: true }, h('label.check', null, pedsBox, h('span', null,
+    h('strong', null, 'Следи и детския имунизационен календар'),
+    h('div.tiny.dim', null, 'За пациент, завеждан като дете: пропуснатите детски ваксини остават в напомнянията. Изключете, ако няма нужда.'))));
+  const applyAge = () => {
+    const adult = isAdultAge();
+    for (const el of form.querySelectorAll('.peds-only')) el.classList.toggle('hidden', adult);
+    contactsTitle.textContent = adult ? 'Близки за контакт' : 'Родители и контакти';
+    pedsToggle.hidden = !(adult && patient && pediatricTracked(patient));
+  };
 
   const submit = async (close) => {
     const fd = new FormData(form);
@@ -166,10 +227,15 @@ export function openPatientForm(patient = null, onSaved = null) {
     delete data.motherHeight;
     delete data.fatherHeight;
     for (const k of ['birthWeight', 'birthHeight', 'birthHead', 'gestWeeks', 'delivery', 'apgar']) delete data[k];
+    // Скритите детски раздели при възрастен не се изпращат, за да не се затрият съществуващи данни.
+    if (isAdultAge()) { delete data.birth; delete data.parentHeights; }
+    const pedsMode = data.pediatricMode;
+    delete data.pediatricMode;
+    if (!pedsToggle.hidden) data.pediatric = pedsMode === 'on';
 
     try {
       const res = isNew ? await api.createPatient(data) : await api.updatePatient(patient.id, data);
-      toast(isNew ? 'Детето е записано.' : 'Промените са запазени.', 'ok');
+      toast(isNew ? 'Досието е създадено.' : 'Промените са запазени.', 'ok');
       close();
       if (onSaved) await onSaved(res.patient);
       else if (isNew) location.hash = '#/patient/' + res.patient.id;
@@ -179,7 +245,7 @@ export function openPatientForm(patient = null, onSaved = null) {
   };
 
   modal({
-    title: isNew ? 'Ново дете' : 'Редакция — ' + patient.name,
+    title: isNew ? 'Нов пациент' : 'Редакция — ' + patient.name,
     wide: true,
     body: (close) => {
       const egnField = input({
@@ -190,10 +256,11 @@ export function openPatientForm(patient = null, onSaved = null) {
         name: 'birthDate', type: 'date', max: today(),
         value: patient ? patient.birthDate : '',
       });
+      birthInput = birthField;
       const sexField = select([
         { value: '', label: '—' },
-        { value: 'm', label: 'момче', selected: patient && patient.sex === 'm' },
-        { value: 'f', label: 'момиче', selected: patient && patient.sex === 'f' },
+        { value: 'm', label: 'мъжки', selected: patient && patient.sex === 'm' },
+        { value: 'f', label: 'женски', selected: patient && patient.sex === 'f' },
       ], { name: 'sex' });
       const egnHint = h('div.field-hint', null, 'Датата и полът се попълват автоматично.');
 
@@ -209,6 +276,7 @@ export function openPatientForm(patient = null, onSaved = null) {
         }
         birthField.value = parsed.birthDate;
         sexField.value = parsed.sex;
+        applyAge();
         egnHint.textContent = parsed.valid
           ? `Роден${parsed.sex === 'f' ? 'а' : ''} на ${formatDate(parsed.birthDate)}`
           : '⚠ Контролната цифра не съвпада — проверете ЕГН.';
@@ -217,6 +285,8 @@ export function openPatientForm(patient = null, onSaved = null) {
 
       const c = (patient && patient.contacts) || [];
       const birth = (patient && patient.birth) || {};
+      birthField.addEventListener('change', applyAge);
+      birthField.addEventListener('input', applyAge);
 
       form = h('form', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div.form-grid', null,
@@ -231,13 +301,13 @@ export function openPatientForm(patient = null, onSaved = null) {
           h('div', null, field('Личен лекар', select(doctorOptions, { name: 'doctorId' }))),
           h('div.full', null, field('Адрес', input({ name: 'address', value: patient ? patient.address || '' : '' }))),
 
-          h('div.full', null, h('h3', { style: { marginTop: '6px' } }, 'Родители и контакти')),
+          h('div.full', null, contactsTitle),
           ...[0, 1].flatMap(i => [
-            h('div', null, field(i === 0 ? 'Име на родител' : 'Втори контакт',
+            h('div', null, field(i === 0 ? 'Име на близък' : 'Втори контакт',
               input({ name: 'contactName' + i, value: c[i] ? c[i].name : '' }))),
             h('div', null, field('Роля', input({
               name: 'contactRelation' + i, value: c[i] ? c[i].relation : '',
-              placeholder: i === 0 ? 'майка' : 'баща',
+              placeholder: i === 0 ? 'майка / съпруг(а)' : 'баща / дете',
             }))),
             h('div', null, field('Телефон', input({
               name: 'contactPhone' + i, type: 'tel', value: c[i] ? c[i].phone : '',
@@ -251,41 +321,44 @@ export function openPatientForm(patient = null, onSaved = null) {
               value: (patient && patient.allergies || []).join(', '),
             }),
             'Показват се като предупреждение в досието.')),
-          h('div.full', null, field('Хронични заболявания / диспансеризация',
+          h('div.full', null, field('Други заболявания (свободен текст)',
             input({
               name: 'conditions', placeholder: 'разделени със запетая',
               value: (patient && patient.conditions || []).join(', '),
-            }))),
+            }),
+            'При възрастни хроничните заболявания се въвеждат в раздел „Хронични заболявания“ — там се изчисляват проследяването и целите.')),
+          pedsToggle,
 
-          h('div.full', null, h('h3', { style: { marginTop: '6px' } }, 'Данни при раждане')),
-          h('div', null, field('Тегло (кг)', numberInput({
+          h('div.full.peds-only', null, h('h3', { style: { marginTop: '6px' } }, 'Данни при раждане')),
+          h('div.peds-only', null, field('Тегло (кг)', numberInput({
             name: 'birthWeight', min: 0.2, max: 8, value: birth.weight ?? '',
           }))),
-          h('div', null, field('Ръст (см)', numberInput({
+          h('div.peds-only', null, field('Ръст (см)', numberInput({
             name: 'birthHeight', min: 20, max: 70, value: birth.height ?? '',
           }))),
-          h('div', null, field('Обиколка глава (см)', numberInput({
+          h('div.peds-only', null, field('Обиколка глава (см)', numberInput({
             name: 'birthHead', min: 20, max: 50, value: birth.head ?? '',
           }))),
-          h('div', null, field('Гест. седмица', numberInput({
+          h('div.peds-only', null, field('Гест. седмица', numberInput({
             name: 'gestWeeks', min: 20, max: 45, value: birth.gestWeeks ?? '',
           }))),
-          h('div', null, field('Апгар', input({ name: 'apgar', value: birth.apgar || '', placeholder: '9/10' }))),
-          h('div', null, field('Раждане', input({ name: 'delivery', value: birth.delivery || '', placeholder: 'нормално / секцио' }))),
+          h('div.peds-only', null, field('Апгар', input({ name: 'apgar', value: birth.apgar || '', placeholder: '9/10' }))),
+          h('div.peds-only', null, field('Раждане', input({ name: 'delivery', value: birth.delivery || '', placeholder: 'нормално / секцио' }))),
 
-          h('div.full', null, h('h3', { style: { marginTop: '6px' } }, 'Ръст на родителите',
+          h('div.full.peds-only', null, h('h3', { style: { marginTop: '6px' } }, 'Ръст на родителите',
             h('span.small.muted', { style: { fontWeight: '400' } }, ' — за изчисляване на целевия ръст'))),
-          h('div', null, field('Майка (см)', numberInput({
+          h('div.peds-only', null, field('Майка (см)', numberInput({
             name: 'motherHeight', min: 120, max: 220,
             value: (patient && patient.parentHeights && patient.parentHeights.mother) ?? '',
           }))),
-          h('div', null, field('Баща (см)', numberInput({
+          h('div.peds-only', null, field('Баща (см)', numberInput({
             name: 'fatherHeight', min: 120, max: 220,
             value: (patient && patient.parentHeights && patient.parentHeights.father) ?? '',
           }))),
 
           h('div.full', null, field('Бележки',
             h('textarea', { name: 'notes', rows: 3 }, patient ? patient.notes || '' : '')))));
+      setTimeout(applyAge, 0);
       return form;
     },
     actions: (close) => [

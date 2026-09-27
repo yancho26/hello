@@ -95,8 +95,8 @@ export function deferDialog({ patientId, patientName, item, onDone }) {
   });
 }
 
-/** Отказ от родител. */
-export function refuseDialog({ patientId, patientName, item, onDone }) {
+/** Отказ от родител (при дете) или от самия пациент. */
+export function refuseDialog({ patientId, patientName, item, onDone, adult = false }) {
   let form;
   const submit = async (close) => {
     const data = Object.fromEntries(new FormData(form));
@@ -111,12 +111,14 @@ export function refuseDialog({ patientId, patientName, item, onDone }) {
   };
 
   modal({
-    title: 'Отказ на родител — ' + item.name,
+    title: (adult ? 'Отказ — ' : 'Отказ на родител — ') + item.name,
     body: (close) => {
       form = h('form.stack', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div.muted.small', null, patientName),
         h('div.alert-strip.warn', null,
-          'Записва се, че родителят е информиран и е отказал. Дейността спира да излиза като просрочена.'),
+          adult
+            ? 'Записва се, че пациентът е информиран и е отказал. Дейността спира да излиза като просрочена.'
+            : 'Записва се, че родителят е информиран и е отказал. Дейността спира да излиза като просрочена.'),
         field('Бележка по отказа', input({ name: 'note', placeholder: 'напр. писмен отказ в досието' })));
       return form;
     },

@@ -12,7 +12,7 @@
  */
 
 import { addDays, addMonths, ageInMonthsExact, daysBetween, today } from './dates.js';
-import { latestEgfr, latestResult, resultSeries } from './labs.js';
+import { latestEgfr, latestResult, resultSeries, round } from './labs.js';
 import { ckdStage } from './clinical.js';
 
 /* ------------------------------- изисквания ------------------------------- */
@@ -218,6 +218,13 @@ export const CONDITION_GROUPS = {
   gi: 'Храносмилателни', blood: 'Кръв',
 };
 
+/** Основният показател за контрол на всяко заболяване — за регистъра в справките. */
+export const PRIMARY_TARGET = {
+  htn: 'bp', dm2: 'hba1c', dm1: 'hba1c', dyslip: 'ldl', chd: 'ldl', pad: 'ldl', stroke: 'ldl',
+  hf: 'bp', af: 'bp', ckd: 'ckd', hypothyroid: 'tsh', obesity: 'weight', gout: 'urate',
+  depression: 'phq9', anxiety: 'gad7',
+};
+
 export const activeConditions = (patient) =>
   (patient.chronic || []).filter(c => c.status !== 'resolved' && CONDITIONS[c.code]);
 
@@ -303,7 +310,7 @@ export function controlStatus(patient, ctx = {}, asOf = today()) {
     const t = hba1cTarget(patient, asOf);
     out.push({
       id: 'hba1c', label: 'HbA1c', target: t.text,
-      value: r ? `${String(r.value).replace('.', ',')}%` : null, date: r ? r.date : null,
+      value: r ? `${String(round(r.value, 1)).replace('.', ',')}%` : null, date: r ? r.date : null,
       status: r ? status(r.value < t.value, r.value < t.value + 1) : 'unknown',
     });
   }
@@ -311,7 +318,7 @@ export function controlStatus(patient, ctx = {}, asOf = today()) {
     const r = latestResult(results, 'ldl');
     out.push({
       id: 'ldl', label: 'LDL-холестерол', target: ctx.ldlTarget.text,
-      value: r ? `${String(r.value).replace('.', ',')} mmol/L` : null, date: r ? r.date : null,
+      value: r ? `${String(round(r.value, 2)).replace('.', ',')} mmol/L` : null, date: r ? r.date : null,
       status: r ? status(r.value < ctx.ldlTarget.value, r.value < ctx.ldlTarget.value * 1.3) : 'unknown',
     });
   }
@@ -319,7 +326,7 @@ export function controlStatus(patient, ctx = {}, asOf = today()) {
     const r = latestResult(results, 'tsh');
     out.push({
       id: 'tsh', label: 'TSH', target: '0,4–4,0 mIU/L',
-      value: r ? `${String(r.value).replace('.', ',')} mIU/L` : null, date: r ? r.date : null,
+      value: r ? `${String(round(r.value, 2)).replace('.', ',')} mIU/L` : null, date: r ? r.date : null,
       status: r ? status(r.value >= 0.4 && r.value <= 4.0, r.value >= 0.1 && r.value <= 10) : 'unknown',
     });
   }
@@ -327,7 +334,7 @@ export function controlStatus(patient, ctx = {}, asOf = today()) {
     const r = latestResult(results, 'urate');
     out.push({
       id: 'urate', label: 'Пикочна киселина', target: '<360 µmol/L',
-      value: r ? `${r.value} µmol/L` : null, date: r ? r.date : null,
+      value: r ? `${Math.round(r.value)} µmol/L` : null, date: r ? r.date : null,
       status: r ? status(r.value < 360, r.value < 420) : 'unknown',
     });
   }
@@ -399,6 +406,11 @@ export function lastDone(patient, reqId) {
 export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, extra = [] } = {}) {
   const conditions = activeConditions(patient);
   const registered = (patient.createdAt || '').slice(0, 10) || asOf;
+  /* Проследяването започва от по-късната от: поставянето на диагнозата,
+   * регистрацията и въвеждането на заболяването в програмата. Диабет от 2015 г.,
+   * въведен днес, прави HbA1c дължим сега — не „просрочен с 9 години“. */
+  const latest = (...dates) => dates.filter(Boolean).sort().pop();
+  const added = (x) => (x.addedAt || '').slice(0, 10);
   const wanted = new Map(); // req → { months, reasons, start }
 
   const add = (req, months, reason, start) => {
@@ -413,7 +425,7 @@ export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, ext
 
   for (const c of conditions) {
     const def = CONDITIONS[c.code];
-    const start = [c.since || registered, registered].sort().pop();
+    const start = latest(c.since, registered, added(c));
     for (const [req, months] of def.needs) add(req, months, def.name, start);
   }
 
@@ -424,12 +436,13 @@ export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, ext
     const stage = e ? ckdStage(e.value, u ? u.value : null) : null;
     if (stage && stage.perYear) {
       const months = Math.max(3, Math.round(12 / stage.perYear));
-      add('renal', months, `ХБЗ ${stage.label}`, registered);
-      add('uacr', months, `ХБЗ ${stage.label}`, registered);
+      const ckdStart = latest(registered, added(conditions.find(c => c.code === 'ckd')));
+      add('renal', months, `ХБЗ ${stage.label}`, ckdStart);
+      add('uacr', months, `ХБЗ ${stage.label}`, ckdStart);
     }
   }
 
-  for (const x of extra) add(x.req, x.months, x.reason, [x.start || registered, registered].sort().pop());
+  for (const x of extra) add(x.req, x.months, x.reason, latest(x.start, registered, x.added));
 
   const tasks = [];
   for (const [req, w] of wanted) {
@@ -452,7 +465,8 @@ export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, ext
     const visits = (patient.visits || []).filter(v => /диспансер|контрол/i.test(v.type || ''))
       .map(v => v.date).sort();
     const last = visits[visits.length - 1] || null;
-    const start = [...conditions.map(c => c.since || registered), registered].sort().pop();
+    const start = latest(...conditions.map(c => c.since), registered,
+      conditions.map(added).filter(Boolean).sort()[0]);
     const due = last ? addMonths(last, months) : start;
     const status = due > asOf
       ? (daysBetween(asOf, due) <= horizonDays ? 'soon' : 'future')
