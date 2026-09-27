@@ -161,7 +161,7 @@ jobs:
           netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Правилото в защитната стена изчезна.' }
           $ver = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DetskaKonsultacia').DisplayVersion
-          if ($ver -ne $version) { throw "В „Приложения“ версията е $ver." }
+          if ($ver -ne $version) { throw "Версията в Приложения е $ver." }
 
           Write-Host '== Пълен инсталатор върху работеща програма'
           $f = Start-Process $setup -ArgumentList '/S' -PassThru -Wait
