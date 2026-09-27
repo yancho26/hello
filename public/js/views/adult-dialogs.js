@@ -3,8 +3,7 @@
 
 import { api } from '../api.js';
 import {
-  badge, confirmDialog, decimalFields, field, h, input, modal, normaliseDecimal, numberInput, select, toast,
-} from '../ui/components.js';
+  badge, confirmDialog, decimalFields, field, h, input, modal, normaliseDecimal, numberInput, select, toast, mount } from '../ui/components.js';
 import { addDays, formatDate, today } from '../shared/dates.js';
 import { CONDITIONS, CONDITION_GROUPS, REQUIREMENTS, activeConditions } from '../shared/chronic.js';
 import { CHECKS, LABS, LAB_GROUPS, rangeText, unitsFor } from '../shared/labs.js';
@@ -31,13 +30,13 @@ export function conditionDialog(ctx, existing = null, preset = '') {
 
   const renderExtras = (code) => {
     const def = CONDITIONS[code];
-    tips.replaceChildren(...(def ? [
+    mount(tips, ...(def ? [
       h('div.tiny.dim', null, `МКБ-10: ${def.icd} · диспансерен преглед на ${def.review} мес.`),
       h('div.tiny', null, 'Проследяване: ', def.needs.map(([r, m]) => `${REQUIREMENTS[r].name.toLowerCase()} (${m} мес.)`).join(', ')),
       ...def.tips.map(t => h('div.tiny.muted', null, '• ' + t)),
     ] : []));
     const cur = existing ? existing.targets || {} : {};
-    targetsBox.replaceChildren(
+    mount(targetsBox, 
       def && def.targets.includes('bp') ? h('div', null, field('Индивидуална цел за налягане',
         input({ name: 'bp', value: cur.bp || '', placeholder: 'напр. 140/90' }),
         'Празно — по ESC 2024 (<130/80, при 85+ г. <140/90).')) : null,
@@ -104,7 +103,7 @@ export function medDialog(ctx, existing = null) {
   const nameInput = input({ name: 'name', value: existing ? existing.name || '' : '', placeholder: 'търговско име или свободен текст' });
 
   const renderChosen = () => {
-    chosenBox.replaceChildren(chosen
+    mount(chosenBox, chosen
       ? h('div.row.tight', null, badge('done', drugName(chosen)),
         DRUGS[chosen].brands.length ? h('span.tiny.dim', null, DRUGS[chosen].brands.filter(b => /[а-я]/i.test(b)).slice(0, 3).join(', ')) : null,
         existing ? null : h('button.btn.xs', { type: 'button', onclick: () => { chosen = ''; renderChosen(); } }, 'смени'))
@@ -117,12 +116,12 @@ export function medDialog(ctx, existing = null) {
     autocomplete: 'off',
     oninput: (e) => {
       const hits = searchDrugs(e.target.value, 10);
-      results.replaceChildren(...hits.map(hit => h('button.drug-hit', {
+      mount(results, ...hits.map(hit => h('button.drug-hit', {
         type: 'button',
         onclick: () => {
           chosen = hit.id;
           if (!nameInput.value && hit.brand) nameInput.value = hit.brand;
-          results.replaceChildren();
+          mount(results);
           e.target.value = '';
           renderChosen();
         },
@@ -322,7 +321,7 @@ export function resultsDialog(ctx, codes = []) {
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g).push(code);
     }
-    labsBox.replaceChildren(...[...groups.entries()].map(([g, list]) =>
+    mount(labsBox, ...[...groups.entries()].map(([g, list]) =>
       h('div.lab-group', null, h('div.lab-group-title', null, LAB_GROUPS[g]), list.map(labRow))));
   };
 
@@ -406,18 +405,18 @@ export function assessmentDialog(ctx, toolId) {
     const number = form.querySelector('[name="number"]');
     const n = number ? Number(normaliseDecimal(number.value)) || null : null;
     if (tool.kind === 'value') {
-      if (!n && n !== 0) { live.replaceChildren(h('span.dim', null, 'Въведете стойността.')); return; }
+      if (!n && n !== 0) { mount(live, h('span.dim', null, 'Въведете стойността.')); return; }
       const r = evaluate(toolId, [], { number: n });
-      live.replaceChildren(h('strong', null, `${dec(n)}%`), ' · ', r.label);
+      mount(live, h('strong', null, `${dec(n)}%`), ' · ', r.label);
       return;
     }
     const filled = a.filter(v => v !== null).length;
     if (filled < rows.length) {
-      live.replaceChildren(h('span.dim', null, `Отговорени ${filled} от ${rows.length}`));
+      mount(live, h('span.dim', null, `Отговорени ${filled} от ${rows.length}`));
       return;
     }
     const r = evaluate(toolId, a.map(Number), { sex: p.sex, number: n });
-    live.replaceChildren(h('strong', null, `${r.score} т.`), ' · ', r.label,
+    mount(live, h('strong', null, `${r.score} т.`), ' · ', r.label,
       r.alerts.length ? h('div.alert-strip', { style: { marginTop: '6px' } }, r.alerts[0].text) : null);
   };
 
@@ -579,7 +578,7 @@ export function findriscDialog(ctx, summary) {
     const fd = new FormData(form);
     const answers = Object.fromEntries(FINDRISC_QUESTIONS.map(q => [q.id, fd.get(q.id)]));
     const r = findrisc({ age: summary.age, bmi: v.bmi, waist: v.waist?.value, sex: p.sex, answers });
-    out.replaceChildren(r
+    mount(out, r
       ? h('div', null, h('strong', null, `${r.score} т. · ${r.label} риск`),
         h('div.small', null, `Вероятност за диабет тип 2 в следващите 10 години: ${r.chance}.`),
         h('div.small', null, r.advice))

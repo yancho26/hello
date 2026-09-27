@@ -1,7 +1,7 @@
 /* Раздел „Хранене“: начин на живот и личен хранителен режим. */
 
 import { api } from '../api.js';
-import { badge, card, decimalFields, empty, field, h, numberInput, select, toast } from '../ui/components.js';
+import { badge, card, decimalFields, empty, field, h, numberInput, select, toast, mount } from '../ui/components.js';
 import { formatDate } from '../shared/dates.js';
 import { ACTIVITY, GOALS, PREFERENCES } from '../shared/nutrition.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
@@ -46,7 +46,7 @@ export function nutritionTab(ctx) {
         await reload();
         return;
       }
-      preview.replaceChildren(planView(res.plan, {
+      mount(preview, planView(res.plan, {
         onVariant: () => { variant++; generate(); },
         onSave: () => generate(true),
         onPrint: () => printNutritionPlan(p, res.plan),
@@ -74,7 +74,7 @@ export function nutritionTab(ctx) {
   const draft = drafts.get(p.id);
   if (draft) {
     variant = draft.variant;
-    preview.replaceChildren(planView(draft.plan, {
+    mount(preview, planView(draft.plan, {
       onVariant: () => { variant++; generate(); },
       onSave: () => generate(true),
       onPrint: () => printNutritionPlan(p, draft.plan),

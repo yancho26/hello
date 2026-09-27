@@ -116,6 +116,9 @@ export const api = {
   stopProgram: () => request('POST', '/api/system/stop', {}),
   copyBackupNow: () => request('POST', '/api/backup/extra', {}),
 
+  importRead: (data) => request('POST', '/api/import/read', data),
+  importPatients: (data) => request('POST', '/api/import/patients', data),
+
   exportAll: () => request('GET', '/api/export'),
   importAll: (data) => request('POST', '/api/import', data),
 };

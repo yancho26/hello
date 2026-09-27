@@ -56,7 +56,7 @@ export function modal({ title, body, actions, wide = false, onClose }) {
     close();
   };
 
-  const box = h('div.modal' + (wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true' },
+  const box = h('div.modal' + (wide === 'x' ? '.wide.xwide' : wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true' },
     h('header', null,
       h('h2', null, title),
       h('button.icon-btn', { onclick: () => close(), title: 'Затваряне', type: 'button' }, '✕')),
@@ -181,6 +181,9 @@ export function badge(status, text) {
 /** Обозначение на статус със срока — това вижда лекарят най-често. */
 export function statusBadge(entry) {
   const s = entry.status;
+  if (s === 'done' && entry.record && entry.record.imported) {
+    return badge('done', 'прието при внасяне');
+  }
   if (s === 'done') {
     return badge('done', entry.record && entry.record.date
       ? (entry.group === 'vaccine' ? 'поставена ' : 'извършено ') + formatDate(entry.record.date) : 'изпълнено');
@@ -251,6 +254,16 @@ export function coverageRing(pct, size = 62, label = 'обхват') {
     h('div', null,
       h('div.pct', null, pct === null ? '—' : pct + '%'),
       h('div.small.muted', null, label)));
+}
+
+/** Сваляне на файл, създаден в браузъра (Excel, CSV). Името е на латиница —
+ *  някои браузъри заменят името на кирилица с „download“. */
+export function downloadFile(bytes, filename, type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+  const url = URL.createObjectURL(new Blob([bytes], { type }));
+  const a = h('a', { href: url, download: filename, style: { display: 'none' } });
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
 }
 
 export function avatar(name) {

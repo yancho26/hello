@@ -2,8 +2,7 @@
 
 import { api } from '../api.js';
 import {
-  badge, card, confirmDialog, empty, field, h, input, modal, select, table, toast,
-} from '../ui/components.js';
+  badge, card, confirmDialog, empty, field, h, input, modal, select, table, toast, mount } from '../ui/components.js';
 import { formatAge, formatDate } from '../shared/dates.js';
 import {
   CHECKPOINTS, DEV_DOMAINS, DEV_SOURCE, DOMAIN_ORDER, MILESTONE_ANSWERS,
@@ -173,8 +172,7 @@ function checklistDialog(ctx, checkpoint, existing) {
     const no = values.filter(v => v === 'not_yet').length;
     const unsure = values.filter(v => v === 'unsure').length;
     const total = checkpoint.items.length;
-    // replaceChildren не пропуска null — подава се само това, което има.
-    counters.replaceChildren(...[
+    mount(counters, ...[
       badge('done', `покрити ${yes}`),
       no ? badge('overdue', `непокрити ${no}`) : null,
       unsure ? badge('due', `несигурни ${unsure}`) : null,

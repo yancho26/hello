@@ -25,6 +25,8 @@ import {
 import { printMedList } from './adult-print.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
+const lastText = (t) => (t.last ? ` · последно ${formatDate(t.last)}`
+  : t.assumed ? ` · прието при внасяне ${formatDate(t.assumed)}` : ' · няма запис');
 const reasonsText = (list, max = 3) => (list.length > max ? `${list.slice(0, max).join(', ')} и още ${list.length - max}` : list.join(', '));
 const STATUS_CLS = { good: 'done', ok: 'done', partial: 'due', bad: 'overdue', unknown: 'future' };
 
@@ -130,7 +132,7 @@ function todoCard(ctx) {
   for (const t of a.monitoring.filter(x => x.status === 'overdue' || x.status === 'due')) {
     rows.push({ due: t.due, row: h('tr' + (t.status === 'overdue' ? '.attention' : ''), null,
       h('td', null, h('div', { style: { fontWeight: 600 } }, '🧪 ' + t.name),
-        h('div.tiny.dim', { title: t.reasons.join(', ') }, reasonsText(t.reasons), t.last ? ` · последно ${formatDate(t.last)}` : ' · няма запис')),
+        h('div.tiny.dim', { title: t.reasons.join(', ') }, reasonsText(t.reasons), lastText(t))),
       h('td.nowrap.small', null, formatDateShort(t.due)),
       h('td', null, monitoringBadge(t)),
       h('td.actions', null, monitoringAction(ctx, t))) });
@@ -295,7 +297,9 @@ function chronicTab(ctx) {
   const monRows = a.monitoring.map(t => h('tr' + (t.status === 'overdue' ? '.attention' : ''), null,
     h('td', null, h('strong', null, t.name), h('div.tiny.dim', { title: t.reasons.join(', ') }, reasonsText(t.reasons, 4))),
     h('td.small.nowrap', null, t.months < 12 ? `на ${t.months} мес.` : t.months === 12 ? 'ежегодно' : `на ${t.months / 12} г.`),
-    h('td.small.nowrap', null, t.last ? formatDate(t.last) : h('span.dim', null, 'няма')),
+    h('td.small.nowrap', null, t.last ? formatDate(t.last)
+      : t.assumed ? h('span.dim', { title: 'Прието за направено при внасянето на списъка' }, `внесено ${formatDate(t.assumed)}`)
+        : h('span.dim', null, 'няма')),
     h('td', null, monitoringBadge(t)),
     h('td.actions', null, monitoringAction(ctx, t))));
 

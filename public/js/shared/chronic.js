@@ -444,17 +444,23 @@ export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, ext
 
   for (const x of extra) add(x.req, x.months, x.reason, latest(x.start, registered, x.added));
 
+  // При внасяне от друга програма досегашното проследяване може да се приеме за
+  // направено към датата на внасяне — тогава срокът тече от нея.
+  const baseline = patient.importBaseline || null;
+  const assumedFor = (start) => (baseline && baseline >= start ? baseline : null);
+
   const tasks = [];
   for (const [req, w] of wanted) {
     const last = lastDone(patient, req);
-    const due = last ? addMonths(last, w.months) : w.start;
+    const assumed = last ? null : assumedFor(w.start);
+    const due = last ? addMonths(last, w.months) : assumed ? addMonths(assumed, w.months) : w.start;
     const graceEnd = addDays(due, GRACE_DAYS);
     const status = due > asOf
       ? (daysBetween(asOf, due) <= horizonDays ? 'soon' : 'future')
       : asOf <= graceEnd ? 'due' : 'overdue';
     tasks.push({
       id: 'mon:' + req, req, name: REQUIREMENTS[req].name, reasons: w.reasons, months: w.months,
-      last, due, status, group: 'monitoring',
+      last, assumed, due, status, group: 'monitoring',
       overdueDays: due <= asOf ? daysBetween(due, asOf) : 0,
     });
   }
@@ -467,12 +473,13 @@ export function monitoringTasks(patient, { asOf = today(), horizonDays = 30, ext
     const last = visits[visits.length - 1] || null;
     const start = latest(...conditions.map(c => c.since), registered,
       conditions.map(added).filter(Boolean).sort()[0]);
-    const due = last ? addMonths(last, months) : start;
+    const assumed = last ? null : assumedFor(start);
+    const due = last ? addMonths(last, months) : assumed ? addMonths(assumed, months) : start;
     const status = due > asOf
       ? (daysBetween(asOf, due) <= horizonDays ? 'soon' : 'future')
       : asOf <= addDays(due, GRACE_DAYS) ? 'due' : 'overdue';
     tasks.push({
-      id: 'mon:review', req: 'review', name: 'Диспансерен преглед', months, last, due, status,
+      id: 'mon:review', req: 'review', name: 'Диспансерен преглед', months, last, assumed, due, status,
       reasons: conditions.map(c => CONDITIONS[c.code].name), group: 'monitoring',
       overdueDays: due <= asOf ? daysBetween(due, asOf) : 0,
     });

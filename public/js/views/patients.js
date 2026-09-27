@@ -3,9 +3,11 @@
 import { api } from '../api.js';
 import { state } from '../app.js';
 import {
-  badge, card, decimalFields, empty, field, h, input, modal, mount,
+  badge, card, decimalFields, downloadFile, empty, field, h, input, modal, mount,
   numberInput, select, table, toast,
 } from '../ui/components.js';
+import { makeXlsx } from '../shared/xlsx-writer.js';
+import { openImportDialog } from './import-dialog.js';
 import { ageInMonthsExact, formatAge, formatDate, today } from '../shared/dates.js';
 import { parse as parseEgn } from '../shared/egn.js';
 import { ADULT_MONTHS, pediatricTracked } from '../shared/schedule.js';
@@ -97,6 +99,15 @@ export async function renderPatients(host) {
         h('h1', null, view.archived ? 'Архив' : 'Пациенти'),
         h('div.muted.small', null, plural(list.length, 'пациент', 'пациенти'))),
       h('div.row.no-print', { style: { flexWrap: 'nowrap' } }, sortSelect,
+        h('button.btn', {
+          title: 'Внасяне на списък от Excel, LibreOffice, CSV или друга програма',
+          onclick: () => openImportDialog({ onDone: () => renderPatients(host) }),
+        }, '⭳ Внасяне'),
+        h('button.btn', {
+          title: 'Списъкът, както е филтриран, като файл за Excel',
+          disabled: !list.length,
+          onclick: () => exportList(list),
+        }, '⭱ Excel'),
         h('button.btn.primary', { onclick: () => openPatientForm(null, () => renderPatients(host)) }, '＋ Нов пациент'))),
     chips,
     h('div', { style: { height: '12px' } }),
@@ -106,7 +117,29 @@ export async function renderPatients(host) {
         list.map(p => patientRow(p, host))))
       : card(null, {}, empty(view.q
         ? `Няма съвпадение за „${view.q}“.`
-        : view.archived ? 'Архивът е празен.' : view.condition || view.group ? 'Няма пациенти по този филтър.' : 'Все още няма записани пациенти.', '🔎')));
+        : view.archived ? 'Архивът е празен.' : view.condition || view.group ? 'Няма пациенти по този филтър.' : 'Все още няма записани пациенти.', '🔎'),
+      !view.q && !view.archived && !view.condition && !view.group && !data.patients.length
+        ? h('div.center', { style: { paddingBottom: '24px' } },
+          h('p.muted', null, 'Имате списък в друга програма или в Excel? Внесете го наведнъж.'),
+          h('button.btn.primary', { onclick: () => openImportDialog({ onDone: () => renderPatients(host) }) }, '⭳ Внасяне на списък с пациенти'))
+        : null));
+}
+
+/** Списъкът, както е на екрана, като файл .xlsx. */
+function exportList(list) {
+  const rows = [['Име', 'ЕГН', 'Дата на раждане', 'Възраст', 'Пол', 'Телефон', 'Хронични заболявания', 'Следваща дейност', 'Срок', 'Просрочени', 'Обхват %']];
+  for (const p of list) {
+    rows.push([
+      p.name, p.egn || '', p.birthDate, formatAge(p.birthDate), p.sex === 'f' ? 'ж' : p.sex === 'm' ? 'м' : '',
+      p.phone || '', (p.chronic || []).map(c => CONDITIONS[c]?.name).filter(Boolean).join(', '),
+      p.next ? p.next.name : '', p.next ? p.next.due : '', p.counts.overdue || 0,
+      p.coverage === null || p.coverage === undefined ? '' : p.coverage,
+    ]);
+  }
+  downloadFile(makeXlsx([{
+    name: 'Пациенти', rows, widths: [30, 13, 14, 14, 5, 16, 40, 34, 12, 11, 10], dateColumns: [2, 8],
+  }]), `pacienti-${today()}.xlsx`);
+  toast(`Изтеглен е списък с ${list.length} ${list.length === 1 ? 'пациент' : 'пациенти'}.`, 'ok');
 }
 
 function patientRow(p, host) {

@@ -10,6 +10,7 @@ import {
 import { formatDate } from '../shared/dates.js';
 import { CALENDAR_VERIFIED, GROUPS } from '../shared/calendar.js';
 import { CV_REGIONS } from '../shared/clinical.js';
+import { downloadTemplate, openImportDialog } from './import-dialog.js';
 
 let scheduleTrack = 'child';
 
@@ -440,6 +441,13 @@ async function dataTab(rerender) {
 
   return h('div.stack', null,
     connection,
+    card('Внасяне на пациенти от друга програма', { icon: '📥' },
+      h('p.small.muted', null,
+        'Списък от медицинската програма, от Excel или LibreOffice, CSV, HTML или XML таблица, или копирани клетки. '
+        + 'Колоните се разпознават сами, диагнозите с МКБ код стават хронични заболявания, а вече въведените пациенти се допълват, без да се дублират.'),
+      h('div.row', null,
+        h('button.btn.primary', { onclick: () => openImportDialog({ onDone: rerender }) }, '⭳ Внасяне на списък'),
+        h('button.btn', { onclick: downloadTemplate }, 'Образец за попълване (Excel)'))),
     extraBackupCard(srv, rerender),
     program,
     card('Резервни копия', { icon: '💾' },
@@ -457,7 +465,7 @@ async function dataTab(rerender) {
         'Всички данни стоят на компютъра, на който работи програмата — в ', where, '. '
         + 'Нищо не се изпраща в интернет и няма външни услуги.'),
       h('p.small.muted', { style: { marginBottom: 0 } },
-        'Данните за деца пациенти са лични данни за здравословно състояние. Достъпът до компютъра, '
+        'Данните на пациентите са лични данни за здравословно състояние. Достъпът до компютъра, '
         + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.')));
 }
 
@@ -545,7 +553,7 @@ async function auditTab() {
     doctor_add: 'нов потребител', doctor_update: 'промяна в потребител',
     records_history: 'минали имунизации', system_stop: 'спиране на програмата',
     backup_copy: 'копие във външна папка', auto_logout: 'автоматично излизане',
-    development_add: 'оценка на развитието', development_delete: 'изтрита оценка на развитието',
+    patients_import: 'внасяне на списък', development_add: 'оценка на развитието', development_delete: 'изтрита оценка на развитието',
     chronic_add: 'ново хронично заболяване', chronic_update: 'промяна в заболяване', chronic_delete: 'изтрито заболяване',
     med_add: 'ново лекарство', med_update: 'промяна в лекарство', med_stop: 'спряно лекарство',
     med_renew: 'рецепта', med_delete: 'изтрито лекарство',
@@ -556,7 +564,9 @@ async function auditTab() {
 
   const rows = entries.map(e => {
     const when = new Date(e.ts);
-    const details = [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date)].filter(Boolean).join(' · ');
+    const details = e.action === 'patients_import'
+      ? `${e.source || ''} · нови ${e.created}, допълнени ${e.updated}, пропуснати ${e.skipped}`
+      : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date)].filter(Boolean).join(' · ');
     return h('tr', null,
       h('td.nowrap.small.mono', null,
         when.toLocaleDateString('bg-BG'), ' ', when.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })),
