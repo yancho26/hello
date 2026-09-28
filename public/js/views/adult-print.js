@@ -29,7 +29,7 @@ const BASE_CSS = `
 `;
 
 /** Отваря прозорец за печат и дава помощник за сглобяване на съдържанието. */
-function printWindow(title, css, build) {
+export function printWindow(title, css, build) {
   const win = window.open('', '_blank');
   if (!win) {
     alert('Изскачащият прозорец е блокиран. Разрешете го за този адрес, за да се отпечата.');
@@ -71,7 +71,7 @@ function printWindow(title, css, build) {
   setTimeout(() => win.print(), 250);
 }
 
-function header({ el, add }, title, p) {
+export function header({ el, add }, title, p) {
   add(el('h1', title));
   add(el('div', `${state.practice.name}${state.practice.phone ? ' · тел. ' + state.practice.phone : ''}`, 'practice'));
   const facts = add(el('div', undefined, 'facts'));

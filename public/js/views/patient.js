@@ -20,6 +20,7 @@ import { developmentTab } from './development.js';
 import { planRow } from './plan-row.js';
 import { ADULT_TABS, ADULT_VIEWS, adultHeaderAlerts, adultTabCount } from './adult-patient.js';
 import { nutritionTab } from './nutrition-view.js';
+import { dosingTab } from './dosing.js';
 import { printAdultSummary, printMedList } from './adult-print.js';
 
 let activeTab = 'overview';
@@ -32,6 +33,7 @@ const TABS = [
   { id: 'growth', label: 'Растеж' },
   { id: 'development', label: 'Развитие' },
   { id: 'visits', label: 'Прегледи' },
+  { id: 'dosing', label: 'Дозировки' },
   { id: 'reminders', label: 'Напомняния' },
 ];
 
@@ -78,7 +80,7 @@ export async function renderPatient(host, id) {
       ? { ...ADULT_VIEWS, nutrition: nutritionTab, visits: visitsTab, reminders: remindersTab }
       : {
         overview: overviewTab, vaccines: vaccinesTab, checkups: checkupsTab,
-        growth: growthTab, development: developmentTab, visits: visitsTab, reminders: remindersTab,
+        growth: growthTab, development: developmentTab, visits: visitsTab, dosing: dosingTab, reminders: remindersTab,
       };
     mount(content, (views[activeTab] || views.overview)(ctx));
   };

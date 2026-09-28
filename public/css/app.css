@@ -439,6 +439,24 @@ svg.growth .point.danger { fill: var(--danger); }
   font: 600 16px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; background: transparent;
 }
 .key-error { color: var(--danger); font-size: 13.5px; font-weight: 550; min-height: 0; }
+
+/* дозировки по тегло */
+.dose-group { display: inline-block; min-width: 150px; }
+.warn-text { color: var(--warn); font-weight: 550; }
+.dose-table { margin-top: 14px; }
+.dose-table td { vertical-align: middle; }
+.dose-table tr.selected td { background: var(--brand-soft); }
+.dose-table tr.dose-na td { color: var(--ink-3); }
+.dose-table .dose-ml { font-size: 16px; }
+.dose-result {
+  margin-top: 14px; padding: 12px 14px; border-radius: var(--radius-sm); background: var(--brand-soft);
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+}
+.dose-result.blocked { background: var(--danger-soft); }
+.dose-text { font-weight: 600; flex: 1; min-width: 260px; }
+.dose-notes { margin: 12px 0 0; padding-left: 18px; }
+.dose-sheet { margin: 0; padding-left: 18px; }
+.dose-sheet li { margin-bottom: 6px; }
 .key-error:empty { display: none; }
 .setup-brand img { height: 46px; width: auto; display: block; margin: 0 auto 6px; }
 .login-doctors { display: flex; flex-direction: column; gap: 8px; }
