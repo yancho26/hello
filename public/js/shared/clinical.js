@@ -15,6 +15,8 @@
  *   FINDRISC         риск от диабет тип 2 в следващите 10 години
  */
 
+import { table } from './table.js';
+
 /* ------------------------------ бъбреци ------------------------------ */
 
 /** eGFR по CKD-EPI 2021 (mL/min/1,73 m²). Креатинин в µmol/L, възраст в години, пол 'm'|'f'. */
@@ -63,9 +65,9 @@ const KDIGO = {
   G5: { A1: ['very_high', 4], A2: ['very_high', 4], A3: ['very_high', 4] },
 };
 
-export const KDIGO_RISK_LABELS = {
+export const KDIGO_RISK_LABELS = table({
   low: 'нисък', moderate: 'умерен', high: 'висок', very_high: 'много висок',
-};
+});
 
 /**
  * Категория на ХБЗ. ХБЗ има при eGFR <60 или при албуминурия ≥3 mg/mmol
@@ -133,9 +135,9 @@ export const hba1cToPercent = (mmol) => mmol / 10.929 + 2.15;
 
 /* Регионите на ESC по сърдечно-съдова смъртност. България е в региона с
  * много висок риск. */
-export const CV_REGIONS = {
+export const CV_REGIONS = table({
   low: 'нисък риск', moderate: 'умерен риск', high: 'висок риск', very_high: 'много висок риск',
-};
+});
 
 const SCALES = {
   // [scale1, scale2] за SCORE2, мъже/жени.
@@ -199,9 +201,9 @@ export function score2Diabetes({ age, sex, smoker, sbp, tchol, hdl, ageAtDiagnos
   return { model: 'SCORE2-Diabetes', risk: Math.round(risk * 1000) / 10 };
 }
 
-export const RISK_LABELS = {
+export const RISK_LABELS = table({
   low: 'нисък до умерен', moderate: 'умерен', high: 'висок', very_high: 'много висок',
-};
+});
 
 /** Прагове по ESC 2021 за привидно здрави хора, според възрастта. */
 export function score2Category(risk, age) {
@@ -220,12 +222,12 @@ export function score2DiabetesCategory(risk) {
 }
 
 /** Целеви LDL-холестерол (mmol/L) по категория на риска (ESC/EAS 2019, потвърдено 2023/2025). */
-export const LDL_TARGETS = {
+export const LDL_TARGETS = table({
   very_high: { value: 1.4, text: '<1,4 mmol/L и понижение ≥50% от изходното' },
   high: { value: 1.8, text: '<1,8 mmol/L и понижение ≥50% от изходното' },
   moderate: { value: 2.6, text: '<2,6 mmol/L' },
   low: { value: 3.0, text: '<3,0 mmol/L' },
-};
+});
 
 /* -------------------------- предсърдно мъждене -------------------------- */
 

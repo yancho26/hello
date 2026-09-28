@@ -32,6 +32,7 @@ const server = createAppServer({
     previousVersion: store.data.previousVersion || null,
     edition: 'node',
     port: PORT,
+    host: HOST,
     dataDir: DATA_DIR,
     backupDir: store.backupDir,
     addresses: localAddresses().map(a => `http://${a}:${PORT}`),

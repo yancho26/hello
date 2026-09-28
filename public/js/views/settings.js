@@ -1,4 +1,4 @@
-/* Настройки: практика, потребители, календар, данни и журнал. */
+/* Настройки: практика, потребители, календар, данни, сигурност и журнал. */
 
 import { api } from '../api.js';
 import { canStopHere, refreshBootstrap, state, stopProgram } from '../app.js';
@@ -21,6 +21,7 @@ const TABS = [
   { id: 'doctors', label: 'Потребители' },
   { id: 'schedule', label: 'Календар' },
   { id: 'data', label: 'Данни и копия' },
+  { id: 'security', label: 'Сигурност' },
   { id: 'audit', label: 'Журнал' },
 ];
 
@@ -41,7 +42,7 @@ export async function renderSettings(host) {
   const body = document.getElementById('settingsBody');
   const views = {
     practice: practiceTab, doctors: doctorsTab, schedule: scheduleTab,
-    data: dataTab, audit: auditTab,
+    data: dataTab, security: securityTab, audit: auditTab,
   };
   mount(body, await views[tab](rerender));
 }
@@ -533,13 +534,124 @@ function extraBackupCard(srv, rerender) {
       + 'Втора флашка, сменяна веднъж седмично и пазена извън кабинета, пази и от кражба или пожар.'));
 }
 
+/* -------------------------------- сигурност ---------------------------------- */
+
+const CHECK_ICON = { ok: '✓', info: 'i', warn: '!', bad: '✕' };
+const CHECK_GROUPS = [
+  ['security', 'Сигурност', '🛡️'],
+  ['data', 'Данни и копия', '💾'],
+  ['computer', 'Компютър и други програми', '🖥️'],
+];
+
+async function securityTab(rerender) {
+  let check;
+  try {
+    check = await api.systemCheck();
+  } catch (err) {
+    return card('Проверка на сигурността и компютъра', { icon: '🛡️' }, h('p.small', null, err.message));
+  }
+
+  // Часовникът на компютъра, от който се гледа, спрямо този на програмата.
+  const skew = Math.round((Date.now() - Date.parse(check.serverTime)) / 60000);
+  if (Math.abs(skew) >= 5) {
+    check.items.push({
+      group: 'computer', level: 'warn',
+      title: `Часовникът на този компютър се разминава с програмата с ${Math.abs(skew)} мин.`,
+      detail: 'Сверете датата и часа в Windows — иначе часовете в журнала и сроковете изглеждат объркани.',
+    });
+  }
+
+  const bad = check.items.filter(i => i.level === 'bad').length;
+  const warn = check.items.filter(i => i.level === 'warn').length;
+  const summary = bad
+    ? h('div.alert-strip', null, `✕ ${bad} ${bad === 1 ? 'проблем изисква' : 'проблема изискват'} внимание`
+      + (warn ? `, ${warn} ${warn === 1 ? 'препоръка' : 'препоръки'}` : ''))
+    : warn
+      ? h('div.alert-strip.warn', null, `! ${warn} ${warn === 1 ? 'препоръка' : 'препоръки'} за по-добра защита`)
+      : h('div.alert-strip.ok', null, '✓ Всичко е наред');
+
+  const groups = CHECK_GROUPS.map(([id, label, icon]) => {
+    const rows = check.items.filter(i => i.group === id);
+    if (!rows.length) return null;
+    return h('div.sys-group', null,
+      h('h3', null, icon, ' ', label),
+      rows.map(i => h('div.sys-row.' + i.level, null,
+        h('span.sys-icon', { 'aria-hidden': 'true' }, CHECK_ICON[i.level] || ''),
+        h('div', null,
+          h('div.sys-title', null, i.title),
+          i.detail ? h('div.small.muted', null, i.detail) : null))));
+  });
+
+  return h('div.stack', null,
+    card('Проверка на сигурността и компютъра', {
+      icon: '🛡️',
+      actions: h('button.btn.sm', { onclick: rerender }, '↻ Провери отново'),
+    }, summary, groups,
+    h('p.tiny.muted', { style: { margin: '12px 0 0' } },
+      `Проверено ${new Date(check.checkedAt).toLocaleString('bg-BG', { dateStyle: 'medium', timeStyle: 'short' })}.`)),
+    networkCard(check, rerender));
+}
+
+/* Кой може да отваря програмата по мрежата. */
+function networkCard(check, rerender) {
+  const can = check.canChangeNetwork;
+  const MODES = [
+    ['lan', 'Компютрите в кабинета (вътрешната мрежа)',
+      'Препоръчително. Свързват се компютрите в същата мрежа — общ рутер или защитена връзка (VPN). Връзки от интернет се отказват.'],
+    ['local', 'Само този компютър',
+      'Най-сигурно, когато програмата се ползва само тук. Другите компютри не могат да се свържат.'],
+    ['any', 'Всякакви адреси, включително от интернет',
+      'Само ако знаете какво правите: кабинетът е зад VPN и всички потребители имат ПИН. Не се препоръчва.'],
+  ];
+  const radios = MODES.map(([value, label, hint]) => h('label.check', null,
+    h('input', { type: 'radio', name: 'network', value, checked: check.network === value, disabled: !can }),
+    h('span', null, h('strong', null, label), h('div.tiny.dim', null, hint))));
+  const hosts = h('textarea', {
+    rows: 3, disabled: !can, 'aria-label': 'Разрешени имена на адреси',
+    placeholder: 'например kabinet.example.bg',
+  }, (check.allowedHosts || []).join('\n'));
+
+  const save = async () => {
+    const network = radios.map(r => r.querySelector('input')).find(i => i.checked)?.value || check.network;
+    if (network === 'local' && check.network !== 'local') {
+      const ok = await confirmDialog({
+        title: 'Само този компютър',
+        message: 'Другите компютри в кабинета веднага ще загубят достъп до програмата.',
+        confirmLabel: 'Ограничи', danger: true,
+      });
+      if (!ok) return;
+    }
+    try {
+      const res = await api.updateSettings({ network, allowedHosts: hosts.value.split(/\s+/).filter(Boolean) });
+      state.settings = res.settings;
+      toast('Настройките за достъп са запазени.', 'ok');
+      rerender();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+
+  return card('Достъп по мрежата', { icon: '🖧' },
+    h('div.stack', { style: { gap: '10px' } }, radios),
+    h('div', { style: { marginTop: '14px' } }, field('Разрешени имена на адреси',
+      hosts,
+      'Програмата се отваря по IP адрес, localhost или името на компютъра. Друго име (например за връзка през VPN) '
+      + 'се добавя тук, по едно на ред. Така чужд сайт не може да се представи за програмата.')),
+    can
+      ? h('div.row', { style: { marginTop: '12px' } }, h('button.btn.primary', { onclick: save }, 'Запази'))
+      : h('p.small.muted', { style: { margin: '12px 0 0' } }, 'Достъпът се променя от компютъра, на който работи програмата.'));
+}
+
 /* ---------------------------------- журнал ----------------------------------- */
+
+const NETWORK_LABELS = { local: 'само този компютър', lan: 'вътрешната мрежа', any: 'всякакви адреси' };
 
 async function auditTab() {
   const { entries } = await api.audit(200);
 
   const LABELS = {
     login: 'вписване', login_failed: 'неуспешен вход', setup: 'първоначална настройка',
+    login_locked: 'входът е временно заключен', sessions_revoked: 'затворени отворени сесии',
     patient_create: 'ново досие', patient_update: 'промяна в досие',
     patient_archive: 'архивиране', patient_restore: 'връщане от архив',
     record_set: 'отбелязана дейност', record_clear: 'премахнат запис',
@@ -566,7 +678,8 @@ async function auditTab() {
     const when = new Date(e.ts);
     const details = e.action === 'patients_import'
       ? `${e.source || ''} · нови ${e.created}, допълнени ${e.updated}, пропуснати ${e.skipped}`
-      : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date)].filter(Boolean).join(' · ');
+      : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date),
+        e.ip && `от ${e.ip}`, e.network && `достъп: ${NETWORK_LABELS[e.network] || e.network}`].filter(Boolean).join(' · ');
     return h('tr', null,
       h('td.nowrap.small.mono', null,
         when.toLocaleDateString('bg-BG'), ' ', when.toLocaleTimeString('bg-BG', { hour: '2-digit', minute: '2-digit' })),

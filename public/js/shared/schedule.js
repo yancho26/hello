@@ -11,6 +11,7 @@
 
 import { addDays, addMonths, ageInMonthsExact, daysBetween, today, DAYS_PER_MONTH } from './dates.js';
 import { vaccineRiskSince } from './chronic.js';
+import { table } from './table.js';
 
 export const ADULT_MONTHS = 216;
 
@@ -30,7 +31,7 @@ export const isAdultPatient = (p, asOf = today()) =>
   !!p.birthDate && ageInMonthsExact(p.birthDate, asOf) >= ADULT_MONTHS;
 
 /** Статуси, подредени по спешност — по-малкото число излиза по-нагоре. */
-export const STATUS_ORDER = {
+export const STATUS_ORDER = table({
   overdue: 0,        // просрочено
   deferral_ended: 1, // отводът е изтекъл и дейността отново е дължима
   due: 2,            // дължимо сега (в допустимия прозорец)
@@ -41,9 +42,9 @@ export const STATUS_ORDER = {
   refused: 7,        // отказ от родител
   missed: 8,         // пропуснато и вече неприложимо — остава само в досието
   skipped: 9,        // не подлежи
-};
+});
 
-export const STATUS_LABELS = {
+export const STATUS_LABELS = table({
   overdue: 'просрочено',
   deferral_ended: 'изтекъл отвод',
   due: 'дължимо сега',
@@ -54,7 +55,7 @@ export const STATUS_LABELS = {
   refused: 'отказ',
   missed: 'пропуснато',
   skipped: 'не подлежи',
-};
+});
 
 /** Статусите, които изискват действие от лекаря. */
 export const ACTIONABLE = new Set(['overdue', 'deferral_ended', 'due']);

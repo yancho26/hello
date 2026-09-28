@@ -114,6 +114,7 @@ export const api = {
   resetSchedule: () => request('POST', '/api/schedule/reset', {}),
 
   stopProgram: () => request('POST', '/api/system/stop', {}),
+  systemCheck: () => request('GET', '/api/system/check'),
   copyBackupNow: () => request('POST', '/api/backup/extra', {}),
 
   importRead: (data) => request('POST', '/api/import/read', data),

@@ -152,14 +152,14 @@ test('автоматично излизане: сесията изтича сл�
   store.settings.autoLogoutMinutes = 5;
   const token = store.createSession('d1');
   assert.ok(store.getSession(token));
-  store.sessions.get(token).lastSeen = Date.now() - 6 * 60000;
+  store.getSession(token).lastSeen = Date.now() - 6 * 60000;
   assert.ok(store.getSession(token), 'в рамките на толеранса от 2 минути');
-  store.sessions.get(token).lastSeen = Date.now() - 8 * 60000;
+  store.getSession(token).lastSeen = Date.now() - 8 * 60000;
   assert.equal(store.getSession(token), null);
 
   store.settings.autoLogoutMinutes = 0;
   const t2 = store.createSession('d1');
-  store.sessions.get(t2).lastSeen = Date.now() - 3 * 86400000;
+  store.getSession(t2).lastSeen = Date.now() - 3 * 86400000;
   assert.ok(store.getSession(t2), 'без автоматично излизане важат 14-те дни');
   fs.rmSync(dir, { recursive: true, force: true });
 });

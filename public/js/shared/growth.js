@@ -9,6 +9,7 @@
 import { WHO_LMS } from './who-data.js';
 import { ageInMonthsExact, DAYS_PER_MONTH } from './dates.js';
 import { assessBloodPressure } from './bp.js';
+import { table } from './table.js';
 
 /* ------------------------ коригирана възраст при недоносеност ------------------------
  *
@@ -51,7 +52,7 @@ export function growthAge(chronologicalMonths, gestWeeks) {
 }
 
 /** Дефиниция на показателите, които приложението следи. */
-export const INDICATORS = {
+export const INDICATORS = table({
   weight: {
     key: 'weight', label: 'Тегло за възраст', short: 'Тегло', unit: 'кг', decimals: 3,
     sets: [{ table: 'wfa', from: 0, to: 60 }],
@@ -74,7 +75,7 @@ export const INDICATORS = {
     weightBased: false, maxAgeMonths: 60,
     hint: 'Стандартът на СЗО за обиколка на главата е до 5-годишна възраст.',
   },
-};
+});
 
 /** Връща таблицата (масив [месец, L, M, S]) за показател, пол и възраст. */
 function tableFor(indicatorKey, sex, ageMonths) {

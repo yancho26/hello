@@ -78,9 +78,9 @@ jobs:
           $version = [regex]::Match($setup, 'Setup-(.+)\.exe$').Groups[1].Value
           $env:DETSKA_NO_BROWSER = '1'
 
-          function Wait-Up([int]$seconds = 60) {
+          function Wait-Up([int]$seconds = 60, [string]$url = $base) {
             for ($i = 0; $i -lt $seconds; $i++) {
-              try { $st = Invoke-RestMethod "$base/api/state"; if ($st.app -eq 'detska-konsultacia') { return $true } } catch {}
+              try { $st = Invoke-RestMethod "$url/api/state"; if ($st.app -eq 'detska-konsultacia') { return $true } } catch {}
               Start-Sleep 1
             }
             return $false
@@ -112,9 +112,19 @@ jobs:
           }
           $page = Invoke-WebRequest "$base/" -UseBasicParsing
           if ($page.Content -notmatch 'Детска консултация') { throw 'Интерфейсът не се зарежда.' }
-          foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'js/views/adult-patient.js', 'js/shared/nutrition.js', 'js/shared/drugs.js', 'favicon.svg') {
+          foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'js/views/adult-patient.js', 'js/shared/nutrition.js', 'js/shared/drugs.js', 'js/boot-check.js', 'favicon.svg') {
             if ((Invoke-WebRequest "$base/$f" -UseBasicParsing).StatusCode -ne 200) { throw "Липсва вграден файл $f." }
           }
+
+          Write-Host '== Заглавки за сигурност и чужд адрес (DNS rebinding)'
+          $csp = [string]$page.Headers['Content-Security-Policy']
+          Write-Host "CSP: $csp"
+          if ($csp -notmatch "frame-ancestors 'none'") { throw 'Липсва политиката за съдържание.' }
+          if ([string]$page.Headers['X-Frame-Options'] -ne 'DENY') { throw 'Липсва X-Frame-Options.' }
+          $code = & curl.exe -s -o NUL -w '%{http_code}' -H 'Host: evil.example.com' "$base/api/state"
+          if ($code -ne '421') { throw "Чужд адрес в Host върна $code вместо 421." }
+          $code = & curl.exe -s -o NUL -w '%{http_code}' -H "Host: $($env:COMPUTERNAME):8080" "$base/api/state"
+          if ($code -ne '200') { throw "Името на компютъра в Host върна $code." }
           Get-Process DetskaKonsultacia | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
 
           Write-Host '== Запис на данни'
@@ -127,6 +137,18 @@ jobs:
           $card = Invoke-RestMethod "$base/api/patients/$($created.patient.id)" -WebSession $s
           Write-Host "Дете: $($card.patient.name), дейности в плана: $($card.plan.Count)"
           if ($card.plan.Count -lt 10) { throw 'Планът на детето не е изчислен.' }
+
+          Write-Host '== Налучкване на ПИН'
+          $codes = foreach ($i in 1..6) {
+            (Invoke-WebRequest -Method Post "$base/api/login" -Body (@{ doctorId = $doctorId; pin = "000$i" } | ConvertTo-Json) -ContentType 'application/json' -SkipHttpErrorCheck -UseBasicParsing).StatusCode
+          }
+          Write-Host "Отговори: $($codes -join ', ')"
+          if ($codes[4] -ne 401 -or $codes[5] -ne 429) { throw 'След 5 грешни ПИН-а входът не изчаква.' }
+          $check = Invoke-RestMethod "$base/api/system/check" -WebSession $s
+          $check.items | ForEach-Object { Write-Host "  [$($_.level)] $($_.title)" }
+          if (-not ($check.items | Where-Object { $_.title -like '*заключен вход*' })) { throw 'Проверката не показва заключения вход.' }
+          if (-not ($check.items | Where-Object { $_.title -like '*диска*' })) { throw 'Проверката не показва мястото на диска.' }
+          if (-not $check.canChangeNetwork) { throw 'Мрежата не може да се променя от този компютър.' }
 
           Write-Host '== Възрастен пациент'
           $post = { param($url, $obj) Invoke-RestMethod -Method Post "$base$url" -Body ([Text.Encoding]::UTF8.GetBytes(($obj | ConvertTo-Json -Depth 5))) -ContentType 'application/json; charset=utf-8' -WebSession $s }
@@ -192,8 +214,11 @@ jobs:
 
           Write-Host '== Файл за обновяване върху работеща програма'
           Remove-Item $desk -ErrorAction SilentlyContinue   # потребителят е махнал иконата
+          # Друга програма е оставила NODE_OPTIONS с липсващ файл — досега това спираше стартирането.
+          $env:NODE_OPTIONS = '--require C:\nonexistent\hook.js'
           Start-Process $exe -ArgumentList '--background'
-          if (-not (Wait-Up)) { throw 'Програмата не тръгна преди обновяването.' }
+          if (-not (Wait-Up)) { throw 'Програмата не тръгна при зададен NODE_OPTIONS.' }
+          Remove-Item Env:NODE_OPTIONS
           $u = Start-Process $update -ArgumentList '/S' -PassThru -Wait
           if ($u.ExitCode -ne 0) { throw "Обновяването върна код $($u.ExitCode)." }
           if (-not (Wait-Up 45)) { throw 'След тихо обновяване програмата не тръгна отново.' }
@@ -217,6 +242,23 @@ jobs:
           if ($stop.ExitCode -ne 0) { throw 'Спирането върна грешка.' }
           if (-not (Wait-Down)) { throw 'Програмата не спря.' }
           if (-not (Test-Path "$extra\practice-$((Get-Date).ToString('yyyy-MM-dd')).json")) { throw 'Няма външно копие при спиране.' }
+
+          Write-Host '== Порт 8080 е зает от друга програма'
+          $env:DETSKA_NO_DIALOGS = '1'
+          $blocker = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, 8080)
+          $blocker.Start()
+          Start-Process $exe -ArgumentList '--background'
+          if (-not (Wait-Up 60 'http://localhost:8081')) {
+            Get-Content 'C:\ProgramData\DetskaKonsultacia\logs\server.log' -Tail 20 -ErrorAction SilentlyContinue
+            throw 'Програмата не премина на порт 8081.'
+          }
+          $cfg = Get-Content 'C:\ProgramData\DetskaKonsultacia\config.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($cfg.port -ne 8081) { throw "Новият порт не е запомнен: $($cfg.port)." }
+          $again = Start-Process $exe -ArgumentList '--background' -PassThru -Wait
+          if ($again.ExitCode -ne 0 -or (Get-Process DetskaKonsultacia).Count -ne 1) { throw 'Второ стартиране на резервния порт пусна ново копие.' }
+          $stop = Start-Process $exe -ArgumentList '--stop', '--quiet' -PassThru -Wait
+          if (-not (Wait-Down)) { throw 'Програмата на порт 8081 не спря.' }
+          $blocker.Stop()
 
           Write-Host '== Тихо деинсталиране'
           Start-Process 'C:\Program Files\DetskaKonsultacia\uninstall.exe' -ArgumentList '/S' -Wait

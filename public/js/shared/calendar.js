@@ -11,14 +11,16 @@
  * Последна проверка на съдържанието: септември 2026 г.
  */
 
+import { table } from './table.js';
+
 export const CALENDAR_VERIFIED = '2026-09';
 
 /** Групи, по които се подреждат дейностите в досието. */
-export const GROUPS = {
+export const GROUPS = table({
   vaccine: { id: 'vaccine', label: 'Имунизации', icon: '💉' },
   checkup: { id: 'checkup', label: 'Профилактични прегледи', icon: '🩺' },
   screening: { id: 'screening', label: 'Скрининг и изследвания', icon: '🔬' },
-};
+});
 
 /**
  * Полета на един елемент от календара:
@@ -561,7 +563,7 @@ export function defaultAdultSchedule() {
 }
 
 /** Наименования на препоръчителните серии, показвани като една отметка. */
-export const OPT_IN_GROUPS = {
+export const OPT_IN_GROUPS = table({
   rota: { label: 'Ротавирус', note: 'Двудозова схема в първите месеци.' },
   menb: { label: 'Менингококи B', note: 'Препоръчителна в кърмаческа възраст.' },
   menacwy: { label: 'Менингококи ACWY', note: 'Препоръчителна в юношеска възраст.' },
@@ -570,7 +572,7 @@ export const OPT_IN_GROUPS = {
   rsv: { label: 'РСВ (низевимаб)', note: 'През първия РСВ сезон на кърмачето.' },
   flu: { label: 'Грипна ваксина (ежегодно)', note: 'Всяка есен от навършени 6 месеца.' },
   zoster: { label: 'Херпес зостер', note: 'Две дози от 50 г.' },
-};
+});
 
 /** Причини за отвод — предлагат се в падащо меню. */
 export const DEFERRAL_REASONS = [

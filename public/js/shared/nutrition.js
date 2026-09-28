@@ -17,6 +17,7 @@
  */
 
 import { bmi as bmiOf } from './clinical.js';
+import { table } from './table.js';
 
 /* ---------------------------------- храни ---------------------------------- */
 
@@ -25,7 +26,7 @@ import { bmi as bmiOf } from './clinical.js';
 const F = (name, kcal, p, c, f, fib, na, k, flags = '', unit = null) =>
   ({ name, kcal, p, c, f, fib, na, k, flags: new Set(flags.split(' ').filter(Boolean)), unit });
 
-export const FOODS = {
+export const FOODS = table({
   oats: F('овесени ядки', 379, 13, 68, 6.5, 10, 6, 360, 'gluten'),
   buckwheat: F('елда, сварена', 92, 3.4, 20, 0.6, 2.7, 4, 88),
   bread: F('пълнозърнест хляб', 250, 10, 43, 3.5, 7, 450, 250, 'gluten salt'),
@@ -70,7 +71,7 @@ export const FOODS = {
   trout: F('пъстърва, печена', 150, 21, 0, 6.6, 0, 55, 450, 'fish highK'),
   mackerel: F('скумрия, печена', 205, 19, 0, 14, 0, 90, 340, 'fish'),
   tofu: F('тофу', 76, 8, 1.9, 4.8, 0.3, 7, 121, 'soy'),
-};
+});
 
 /* ------------------------------ ястия (шаблони) ------------------------------ */
 
@@ -120,25 +121,25 @@ export const MEAL_SLOTS = [
   { id: 'dinner', label: 'Вечеря', share: 0.20 },
 ];
 
-export const ACTIVITY = {
+export const ACTIVITY = table({
   sedentary: { label: 'заседнал (без спорт)', factor: 1.2 },
   light: { label: 'лека активност (1–3 пъти седмично)', factor: 1.375 },
   moderate: { label: 'умерена активност (3–5 пъти седмично)', factor: 1.55 },
   active: { label: 'висока активност (6–7 пъти седмично)', factor: 1.725 },
-};
+});
 
-export const GOALS = {
+export const GOALS = table({
   lose: 'отслабване',
   maintain: 'поддържане на теглото',
   gain: 'покачване на теглото',
-};
+});
 
-export const PREFERENCES = {
+export const PREFERENCES = table({
   vegetarian: 'вегетарианско (с яйца и млечни)',
   noFish: 'без риба',
   glutenFree: 'без глутен (цьолиакия)',
   lactoseFree: 'без лактоза',
-};
+});
 
 /* Замени при ограничения. */
 const SUBSTITUTES = {

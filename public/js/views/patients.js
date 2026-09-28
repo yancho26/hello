@@ -147,6 +147,7 @@ function patientRow(p, host) {
   const attention = p.counts.overdue > 0 || p.growthConcerns > 0 || p.developmentConcerns > 0
     || !!(f && (f.monOverdue || f.medSerious || f.mentalUrgent));
   const alerts = [];
+  if (p.broken) alerts.push(badge('overdue', '⚠ повредени данни в досието'));
   if (p.allergies && p.allergies.length) alerts.push(badge('alert', '⚠ алергия'));
   if (p.growthConcerns) alerts.push(badge('alert', '📉 растеж'));
   if (p.developmentConcerns) alerts.push(badge('alert', '🧠 развитие'));

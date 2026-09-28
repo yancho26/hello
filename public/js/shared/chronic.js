@@ -14,6 +14,7 @@
 import { addDays, addMonths, ageInMonthsExact, daysBetween, today } from './dates.js';
 import { latestEgfr, latestResult, resultSeries, round } from './labs.js';
 import { ckdStage } from './clinical.js';
+import { table } from './table.js';
 
 /* ------------------------------- изисквания ------------------------------- */
 
@@ -22,7 +23,7 @@ import { ckdStage } from './clinical.js';
  * (изследвания и прегледи) или инструменти от mental.js (tools), които
  * „покриват“ изискването.
  */
-export const REQUIREMENTS = {
+export const REQUIREMENTS = table({
   glycemia: { name: 'Глюкоза или HbA1c', codes: ['hba1c', 'glucose'] },
   hba1c: { name: 'HbA1c', codes: ['hba1c'] },
   lipids: { name: 'Липиден профил', codes: ['ldl', 'tchol'] },
@@ -48,7 +49,7 @@ export const REQUIREMENTS = {
   phq9: { name: 'Оценка на депресията (PHQ-9)', tools: ['phq9'] },
   gad7: { name: 'Оценка на тревожността (GAD-7)', tools: ['gad7'] },
   cognition: { name: 'Когнитивна оценка', tools: ['minicog'] },
-};
+});
 
 /* ------------------------------- заболявания ------------------------------- */
 
@@ -58,7 +59,7 @@ export const REQUIREMENTS = {
  * vaccineRisk — показание за ваксини срещу грип, пневмококи и др. преди 65 г.,
  * tips — напомняния за добра практика.
  */
-export const CONDITIONS = {
+export const CONDITIONS = table({
   htn: {
     name: 'Артериална хипертония', icd: 'I10–I15', group: 'cardio', review: 6,
     needs: [['renal', 12], ['k', 12], ['lipids', 12], ['glycemia', 12], ['uacr', 12], ['ecg', 12]],
@@ -210,20 +211,20 @@ export const CONDITIONS = {
     targets: [],
     tips: ['Търсене на причината (кървене от ГИТ при мъже и жени след менопауза). Желязо през ден се усвоява по-добре.'],
   },
-};
+});
 
-export const CONDITION_GROUPS = {
+export const CONDITION_GROUPS = table({
   cardio: 'Сърдечно-съдови', metabolic: 'Метаболитни', renal: 'Бъбречни', resp: 'Дихателни',
   endo: 'Ендокринни', mental: 'Психично здраве', neuro: 'Неврологични', musculo: 'Опорно-двигателни',
   gi: 'Храносмилателни', blood: 'Кръв',
-};
+});
 
 /** Основният показател за контрол на всяко заболяване — за регистъра в справките. */
-export const PRIMARY_TARGET = {
+export const PRIMARY_TARGET = table({
   htn: 'bp', dm2: 'hba1c', dm1: 'hba1c', dyslip: 'ldl', chd: 'ldl', pad: 'ldl', stroke: 'ldl',
   hf: 'bp', af: 'bp', ckd: 'ckd', hypothyroid: 'tsh', obesity: 'weight', gout: 'urate',
   depression: 'phq9', anxiety: 'gad7',
-};
+});
 
 export const activeConditions = (patient) =>
   (patient.chronic || []).filter(c => c.status !== 'resolved' && CONDITIONS[c.code]);

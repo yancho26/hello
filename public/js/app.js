@@ -388,4 +388,6 @@ export async function refreshBootstrap() {
 
 export { route };
 
+// Модулите са заредени — проверката за стар браузър (boot-check.js) вече не е нужна.
+window.__dkStarted?.();
 start();

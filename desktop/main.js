@@ -13,6 +13,12 @@
  *   C:\ProgramData\DetskaKonsultacia\data        данните и резервните копия
  *   C:\ProgramData\DetskaKonsultacia\logs        дневник на сървъра
  *   C:\ProgramData\DetskaKonsultacia\config.json порт и други настройки
+ *
+ * Съжителство с другите програми на компютъра:
+ *   - ако портът (8080) е зает от друга програма, се избира следващ свободен
+ *     (8081…8090) и се запомня в config.json, за да не се сменя всеки път;
+ *   - системната настройка NODE_OPTIONS, оставена от друга програма, не
+ *     влияе на вградения Node.js (виж execArgvExtension в build-windows.mjs).
  */
 
 import fs from 'node:fs';
@@ -42,6 +48,16 @@ const CONFIG_FILE = path.join(HOME, 'config.json');
 const CONTROL_FILE = path.join(HOME, 'control.json');
 const LOG_DIR = path.join(HOME, 'logs');
 
+/* Бележки за „Настройки → Сигурност и компютър“: неща от средата, които
+ * програмата е заобиколила. */
+const envNotes = [];
+if (IS_SEA && process.env.NODE_OPTIONS) {
+  envNotes.push('На компютъра има системна настройка NODE_OPTIONS от друга програма — „Детска консултация“ не я използва.');
+  delete process.env.NODE_OPTIONS; // и не я предава на прозорците, които отваря
+}
+
+const PORT_TRIES = 10;
+
 const DEFAULT_CONFIG = {
   port: 8080,
   host: '0.0.0.0',
@@ -69,7 +85,19 @@ function loadConfig() {
   const port = Number(process.env.PORT) || Number(config.port) || DEFAULT_CONFIG.port;
   const host = process.env.HOST || config.host || DEFAULT_CONFIG.host;
   const dataDir = path.resolve(process.env.DATA_DIR || config.dataDir || path.join(HOME, 'data'));
-  return { port, host, dataDir };
+  return { port, host, dataDir, fixedPort: !!process.env.PORT, config };
+}
+
+/** Запомня новия порт в config.json, без да губи другите настройки. */
+function rememberPort(config, from, to) {
+  try {
+    const next = { ...(readJson(CONFIG_FILE) || config), port: to };
+    next._порт = `Порт ${from} беше зает от друга програма на ${new Date().toISOString().slice(0, 10)}; `
+      + `програмата премина на ${to}. Може да върнете ${from}, ако другата програма вече не се използва.`;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2));
+  } catch (err) {
+    console.error('[порт] config.json не е обновен:', err.message);
+  }
 }
 
 function appVersion() {
@@ -257,18 +285,40 @@ async function main() {
   }
 
   const background = args.has('--background');
-  const { port, host, dataDir } = loadConfig();
-  const url = `http://localhost:${port}/`;
+  const { port: configuredPort, host, dataDir, fixedPort, config } = loadConfig();
+  const urlFor = (p) => `http://localhost:${p}/`;
 
-  const already = await probe(host, port);
-  if (already === 'ours') {
-    if (!background) openBrowser(url);
+  // Вече работещо копие — по записа от последното стартиране (портът може да е резервен).
+  const running = readJson(CONTROL_FILE);
+  if (running?.port && running.port !== configuredPort && await probe(host, running.port) === 'ours') {
+    if (!background) openBrowser(urlFor(running.port));
     process.exit(0);
   }
-  if (already === 'other') {
-    await fatal(`Порт ${port} е зает от друга програма и „${TITLE}“ не може да стартира.\n\n`
-      + `Сменете порта в ${CONFIG_FILE} (например 8081) и стартирайте отново.`);
+
+  /* Свободен порт: зададеният или, ако е зает от друга програма (Skype, Tomcat,
+   * друг медицински софтуер…), някой от следващите. */
+  let port = null;
+  let portNote = '';
+  const tries = fixedPort ? 1 : PORT_TRIES + 1;
+  for (let i = 0; i < tries && port === null; i++) {
+    const candidate = configuredPort + i;
+    const state = await probe(host, candidate);
+    if (state === 'ours') {
+      if (!background) openBrowser(urlFor(candidate));
+      process.exit(0);
+    }
+    if (state === 'free') port = candidate;
+    else console.log(`[порт] ${candidate} е зает от друга програма.`);
   }
+  if (port === null) {
+    await fatal(`Портове ${configuredPort}–${configuredPort + tries - 1} са заети от други програми и „${TITLE}“ не може да стартира.\n\n`
+      + `Задайте друг порт в ${CONFIG_FILE} и стартирайте отново.`);
+  }
+  if (port !== configuredPort) {
+    portNote = `Порт ${configuredPort} е зает от друга програма — „${TITLE}“ работи на порт ${port}.`;
+    rememberPort(config, configuredPort, port);
+  }
+  const url = urlFor(port);
 
   let store;
   try {
@@ -309,6 +359,9 @@ async function main() {
       previousVersion: store.data.previousVersion || null,
       edition: IS_WINDOWS && IS_SEA ? 'windows' : 'node',
       port,
+      host,
+      portNote,
+      envNotes,
       dataDir,
       backupDir: store.backupDir,
       addresses: host === '127.0.0.1' ? [] : localAddresses().map(a => `http://${a}:${port}`),
@@ -317,13 +370,14 @@ async function main() {
   });
 
   server.on('error', async (err) => {
-    if (err.code === 'EADDRINUSE') {
+    if (err.code === 'EADDRINUSE' || err.code === 'EACCES') {
       // Две стартирания почти едновременно: другото копие е спечелило порта.
       if (await probe(host, port) === 'ours') {
         if (!background) openBrowser(url);
         process.exit(0);
       }
-      await fatal(`Порт ${port} е зает от друга програма.\n\nСменете порта в ${CONFIG_FILE} и стартирайте отново.`);
+      await fatal(`Порт ${port} е зает или забранен от друга програма (${err.code}).\n\n`
+        + `Стартирайте програмата отново — тя ще избере друг порт. Ако не помогне, задайте порт в ${CONFIG_FILE}.`);
     }
     console.error('[сървър]', err);
     await fatal(`Сървърът не може да стартира: ${err.message}`);
@@ -337,7 +391,13 @@ async function main() {
     }
     console.log(`${TITLE} ${version} (${IS_SEA ? 'вграден' : 'от изходен код'}), PID ${process.pid}`
       + banner({ port, dataDir, stopHint: 'Спиране: „Спиране на Детска консултация“ в менюто Старт' }));
+    for (const note of [portNote, ...envNotes].filter(Boolean)) console.log('[среда]', note);
     if (!background) openBrowser(url);
+    if (portNote && host !== '127.0.0.1') {
+      const others = localAddresses().map(a => `http://${a}:${port}`);
+      messageBox(`${portNote}\n\nНа този компютър програмата се отваря както досега.`
+        + (others.length ? `\nДругите компютри в кабинета трябва да използват новия адрес:\n${others.join('\n')}` : ''));
+    }
   });
 
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {

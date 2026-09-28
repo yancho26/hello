@@ -7,9 +7,10 @@
  * ред липсва. Общо за сървъра и браузъра. */
 
 import { parse as parseEgn } from './egn.js';
+import { table } from './table.js';
 
 /** Полетата, към които може да се насочи колона. `multi` — може няколко колони. */
-export const TARGETS = {
+export const TARGETS = table({
   fullName: { label: 'Име (цялото)' },
   firstName: { label: 'Собствено име' },
   middleName: { label: 'Презиме' },
@@ -27,7 +28,7 @@ export const TARGETS = {
   regDate: { label: 'Дата на регистрация' },
   contactName: { label: 'Родител / близък' },
   contactPhone: { label: 'Телефон на родител / близък' },
-};
+});
 
 export const TARGET_ORDER = Object.keys(TARGETS);
 

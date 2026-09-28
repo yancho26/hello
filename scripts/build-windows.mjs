@@ -222,6 +222,9 @@ async function makeBlob(outDir, mainFile) {
     disableExperimentalSEAWarning: true,
     useSnapshot: false,
     useCodeCache: false, // blob-ът се прави на една система, а работи на друга
+    // NODE_OPTIONS, оставена от друга програма (напр. --require на липсващ файл),
+    // иначе би попречила на стартирането — вграденият Node.js я пренебрегва.
+    execArgvExtension: 'none',
     assets,
   }, null, 2));
   execFileSync(await hostNode(), ['--experimental-sea-config', config], { stdio: 'inherit' });

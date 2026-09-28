@@ -11,6 +11,7 @@
 
 import { ageInMonthsExact } from './dates.js';
 import { egfrCkdEpi2021 } from './clinical.js';
+import { table } from './table.js';
 
 const conv = (unit, toBase, fromBase) => ({ unit, toBase, fromBase });
 const factor = (unit, f) => conv(unit, v => v * f, v => v / f);
@@ -20,7 +21,7 @@ const factor = (unit, f) => conv(unit, v => v * f, v => v / f);
  * rangeBySex { m: [..], f: [..] }, min/max (допустими при въвеждане),
  * alt — други единици, group — за подреждане.
  */
-export const LABS = {
+export const LABS = table({
   hba1c: {
     name: 'HbA1c (гликиран хемоглобин)', short: 'HbA1c', unit: '%', decimals: 1,
     range: [4.0, 5.6], min: 3, max: 20, group: 'glucose',
@@ -143,10 +144,10 @@ export const LABS = {
     name: 'C-реактивен протеин', short: 'CRP', unit: 'mg/L', decimals: 1,
     range: [0, 5], min: 0, max: 600, group: 'other',
   },
-};
+});
 
 /** Качествени изследвания и прегледи — отбелязват се с дата и заключение. */
-export const CHECKS = {
+export const CHECKS = table({
   eye: { name: 'Преглед на очни дъна', short: 'Очни дъна', note: 'Скрининг за диабетна ретинопатия.' },
   foot: { name: 'Преглед на стъпалата', short: 'Стъпала', note: 'Чувствителност (монофиламент), пулсации, кожа.' },
   ecg: { name: 'ЕКГ', short: 'ЕКГ' },
@@ -157,9 +158,9 @@ export const CHECKS = {
   mammo: { name: 'Мамография', short: 'Мамография' },
   cervical: { name: 'Цитонамазка / HPV тест', short: 'Цитонамазка' },
   inhaler: { name: 'Проверка на инхалаторната техника', short: 'Инхалатор' },
-};
+});
 
-export const LAB_GROUPS = {
+export const LAB_GROUPS = table({
   glucose: 'Въглехидратна обмяна',
   lipids: 'Липиди',
   renal: 'Бъбреци и електролити',
@@ -167,7 +168,7 @@ export const LAB_GROUPS = {
   thyroid: 'Щитовидна жлеза',
   blood: 'Кръвна картина и съсирване',
   other: 'Други',
-};
+});
 
 export const isCheck = (code) => Object.prototype.hasOwnProperty.call(CHECKS, code);
 export const labName = (code) => (LABS[code] || CHECKS[code] || { name: code }).name;

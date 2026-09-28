@@ -347,6 +347,23 @@ input.invalid, select.invalid { border-color: var(--danger); }
 }
 .alert-strip.info { background: var(--info-soft); color: var(--brand-dark); }
 .alert-strip.warn { background: var(--warn-soft); color: var(--warn); }
+.alert-strip.ok { background: var(--ok-soft); color: var(--ok); }
+
+/* проверка на сигурността и компютъра */
+.sys-group { margin-top: 16px; }
+.sys-group h3 { font-size: 14px; margin: 0 0 6px; color: var(--ink-2); }
+.sys-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--line); }
+.sys-row:first-of-type { border-top: 0; }
+.sys-title { font-size: 14px; font-weight: 550; }
+.sys-icon {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 12.5px; font-weight: 800; margin-top: 1px;
+}
+.sys-row.ok .sys-icon { background: var(--ok-soft); color: var(--ok); }
+.sys-row.info .sys-icon { background: var(--info-soft); color: var(--info); font-style: italic; font-family: Georgia, serif; }
+.sys-row.warn .sys-icon { background: var(--warn-soft); color: var(--warn); }
+.sys-row.bad .sys-icon { background: var(--danger-soft); color: var(--danger); }
+.sys-row.bad .sys-title { color: var(--danger); }
 
 /* пръстен за обхват на имунизациите */
 .ring { display: flex; align-items: center; gap: 12px; }
@@ -393,6 +410,9 @@ svg.growth .point.danger { fill: var(--danger); }
 .timeline .entry:last-child { padding-bottom: 0; }
 
 .loading { padding: 50px; text-align: center; color: var(--ink-3); }
+.boot-error { max-width: 560px; margin: 60px auto; padding: 24px; background: #fff; border: 1px solid #dfe6ec; border-radius: 12px; }
+.boot-error h1 { font-size: 20px; margin: 0 0 10px; color: #c62828; }
+.boot-error .boot-address { font-family: monospace; color: #5b6f80; }
 .spinner {
   width: 22px; height: 22px; border: 2.5px solid var(--line);
   border-top-color: var(--brand); border-radius: 50%;

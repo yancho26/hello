@@ -17,13 +17,14 @@
 
 import { CLASSES, DRUGS, classesOf, componentsOf, drugName } from './drugs.js';
 import { addDays, addMonths, daysBetween, today } from './dates.js';
+import { table } from './table.js';
 
-export const SEVERITY = {
+export const SEVERITY = table({
   contra: { label: 'противопоказано', order: 0 },
   major: { label: 'сериозно', order: 1 },
   moderate: { label: 'внимание', order: 2 },
   info: { label: 'сведение', order: 3 },
-};
+});
 
 /* --------------------------------- взаимодействия --------------------------------- */
 
@@ -546,7 +547,7 @@ export function renewals(patient, { asOf = today(), rxDays = 7, protocolDays = 3
 export const SCHEDULE_SLOTS = [['m', 'сутрин'], ['n', 'обед'], ['e', 'вечер'], ['b', 'преди сън']];
 
 /** Храни и напитки, които имат значение при приема (ползва се от хранителния режим). */
-export const FOOD_INTERACTIONS = {
+export const FOOD_INTERACTIONS = table({
   VKA: 'Витамин К (зелени листни зеленчуци) — не ги избягвайте, но ги яжте в постоянни количества; ограничете алкохола и сока от червена боровинка.',
   rivaroxaban: 'Ривароксабан 15 и 20 мг се приема с храна.',
   simvastatin: 'Без грейпфрут и сок от грейпфрут.',
@@ -575,7 +576,7 @@ export const FOOD_INTERACTIONS = {
   ALLOPURINOL: 'Поне 2 литра течности дневно, ако няма ограничение.',
   CORTICOSTEROID: 'Ограничете солта и простите захари; калций и витамин D.',
   MAOI: 'Храни с тирамин (отлежали сирена, колбаси) — опасни.',
-};
+});
 
 /** Кои от записите за храни засягат пациента. */
 export function foodNotes(patient, asOf = today()) {

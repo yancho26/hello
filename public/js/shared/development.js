@@ -18,31 +18,32 @@
  */
 
 import { growthAge } from './growth.js';
+import { table } from './table.js';
 
 export const DEV_SOURCE = 'CDC/AAP „Learn the Signs. Act Early.“, ревизия 2022 г.';
 
-export const DEV_DOMAINS = {
+export const DEV_DOMAINS = table({
   social: { key: 'social', label: 'Социално-емоционално', short: 'Социално', icon: '🫂' },
   language: { key: 'language', label: 'Реч и общуване', short: 'Реч', icon: '💬' },
   cognitive: { key: 'cognitive', label: 'Познавателно (учене, мислене, решаване)', short: 'Познавателно', icon: '🧩' },
   motor: { key: 'motor', label: 'Моторика и движение', short: 'Моторика', icon: '🤸' },
-};
+});
 
 export const DOMAIN_ORDER = ['social', 'language', 'cognitive', 'motor'];
 
 /* Скринингите, препоръчани от Американската академия по педиатрия на
  * определени възрасти, независимо дали има притеснение. */
-export const SCREENING_AT = {
+export const SCREENING_AT = table({
   9: ['general'],
   18: ['general', 'autism'],
   24: ['autism'],
   30: ['general'],
-};
+});
 
-export const SCREENING_LABELS = {
+export const SCREENING_LABELS = table({
   general: 'Общ скрининг на развитието (напр. ASQ-3, PEDS)',
   autism: 'Скрининг за аутистичен спектър (M-CHAT-R/F)',
-};
+});
 
 /** Инструменти, чиито резултати се записват. Самите въпросници не се
  *  възпроизвеждат тук — те се ползват от оригиналния си източник. */
@@ -54,11 +55,11 @@ export const SCREENING_TOOLS = [
   { id: 'other', label: 'Друг инструмент', kind: 'general' },
 ];
 
-export const SCREENING_RESULTS = {
+export const SCREENING_RESULTS = table({
   negative: { label: 'отрицателен — без данни за отклонение', severity: 0 },
   borderline: { label: 'граничен — контрол след 1–3 месеца', severity: 1 },
   positive: { label: 'положителен — насочване за оценка', severity: 2 },
-};
+});
 
 /* ------------------------------ етапи по възраст ------------------------------ */
 
@@ -423,11 +424,11 @@ export const RED_FLAGS = [
 
 /* ------------------------------ оценка ------------------------------ */
 
-export const MILESTONE_ANSWERS = {
+export const MILESTONE_ANSWERS = table({
   yes: { label: 'да', short: '✓' },
   not_yet: { label: 'още не', short: '—' },
   unsure: { label: 'не се знае', short: '?' },
-};
+});
 
 /**
  * Възрастта, по която се преценява развитието. При недоносеност се ползва
@@ -489,7 +490,7 @@ export function assessRecord(record) {
   };
 }
 
-export const ACTIONS = {
+export const ACTIONS = table({
   ok: {
     label: 'Развитие по възраст',
     detail: 'Всички етапи за възрастта са покрити. Наблюдението продължава на следващия профилактичен преглед.',
@@ -518,7 +519,7 @@ export const ACTIONS = {
     detail: 'Загуба на вече придобито умение. Насочете без изчакване, независимо от останалите находки.',
     severity: 2,
   },
-};
+});
 
 /**
  * Обобщение на развитието за досието.

@@ -12,6 +12,8 @@
  * Скалите подпомагат, но не поставят диагноза.
  */
 
+import { table } from './table.js';
+
 export const FREQ = [
   [0, 'Изобщо не'],
   [1, 'Няколко дни'],
@@ -43,7 +45,7 @@ const GAD7_ITEMS = [
 
 const band = (score, bands) => bands.find(([max]) => score <= max);
 
-export const TOOLS = {
+export const TOOLS = table({
   phq9: {
     name: 'PHQ-9 — депресия', short: 'PHQ-9', max: 27, adult: true,
     intro: 'През последните 2 седмици колко често сте имали някой от следните проблеми?',
@@ -196,7 +198,7 @@ export const TOOLS = {
       };
     },
   },
-};
+});
 
 /** Стойностите на отговорите по реда на въпросите. */
 export function answerValues(tool, answers) {

@@ -10,8 +10,10 @@
  * със свободен текст — то се записва в листа, но не участва в проверките.
  */
 
+import { table } from './table.js';
+
 /** Фармакологични групи — етикетите се показват в интерфейса. */
-export const CLASSES = {
+export const CLASSES = table({
   ACEI: 'АСЕ-инхибитор',
   ARB: 'сартан (ARB)',
   ARNI: 'ARNI',
@@ -99,11 +101,11 @@ export const CLASSES = {
   SEROTONERGIC: 'серотонинергично',
   CNS: 'действа върху ЦНС',
   ANTICHOL_BURDEN: 'антихолинергично натоварване',
-};
+});
 
 const d = (bg, classes, atc, brands = [], extra = {}) => ({ bg, classes, atc, brands, ...extra });
 
-export const DRUGS = {
+export const DRUGS = table({
   /* ---------------------------- сърдечно-съдови ---------------------------- */
   perindopril: d('Периндоприл', ['ACEI'], 'C09AA04', ['Престариум', 'Prestarium']),
   ramipril: d('Рамиприл', ['ACEI'], 'C09AA05', ['Тритейс', 'Tritace', 'Амприлан', 'Ampril']),
@@ -324,7 +326,7 @@ export const DRUGS = {
   potassium_chloride: d('Калиев хлорид', ['K_SUPPLEMENT'], 'A12BA01', ['Калинор', 'Kalinor']),
   folic_acid: d('Фолиева киселина', [], 'B03BB01', ['Фолиева киселина']),
   cyanocobalamin: d('Витамин B12', [], 'B03BA01', ['Витамин B12']),
-};
+});
 
 /** Всички групи на лекарство, включително на съставките на комбинации. */
 export function classesOf(drugId) {
