@@ -2,8 +2,10 @@
 # истински Windows.
 #
 # Готовият инсталатор е в Actions → това изпълнение → Artifacts →
-# DetskaKonsultacia-Setup. При етикет v* (например v1.0.0) се публикува и
-# като Release.
+# DocUp-Setup. При етикет v* (например v3.0.0) се публикува и като Release.
+#
+# Проверява се и преминаването от „Детска консултация“ 2.2.0 (старото име):
+# тя се сглобява от своя commit, инсталира се и се обновява до DocUp.
 
 name: Windows инсталатор
 
@@ -51,43 +53,142 @@ jobs:
       - run: npm run build:win
       - uses: actions/upload-artifact@v4
         with:
-          name: DetskaKonsultacia-Setup
+          name: DocUp-Setup
           path: dist/
           retention-days: 90
           if-no-files-found: error
 
+  build-legacy:
+    name: Сглобяване на „Детска консултация“ 2.2.0 (за прехода)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 2a7cd09c5c3c6ef35dbb052a968c84cf9a0ec2ed
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: NSIS
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - name: Node.js за Windows (кеш)
+        uses: actions/cache@v4
+        with:
+          path: build/cache
+          key: nodejs-${{ hashFiles('scripts/build-windows.mjs') }}
+      - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: legacy-2.2.0
+          path: dist/DetskaKonsultacia-Setup-*.exe
+          retention-days: 7
+          if-no-files-found: error
+
   smoke-test:
     name: Проверка (Windows)
-    needs: build
+    needs: [build, build-legacy]
     runs-on: windows-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: DetskaKonsultacia-Setup
+          name: DocUp-Setup
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: legacy-2.2.0
+          path: legacy
+      - name: Преминаване от „Детска консултация“ 2.2.0 към DocUp
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base    = 'http://localhost:8080'
+          $old     = 'C:\Program Files\DetskaKonsultacia\DetskaKonsultacia.exe'
+          $new     = 'C:\Program Files\DocUp\DocUp.exe'
+          $menu    = 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs'
+          $legacy  = (Get-ChildItem legacy\DetskaKonsultacia-Setup-*.exe | Select-Object -First 1).FullName
+          $update  = (Get-ChildItem dist\DocUp-Update-*.exe | Select-Object -First 1).FullName
+          $version = [regex]::Match($update, 'Update-(.+)\.exe$').Groups[1].Value
+          $env:DETSKA_NO_BROWSER = '1'
+
+          function Wait-Up([int]$seconds = 60) {
+            for ($i = 0; $i -lt $seconds; $i++) {
+              try { $st = Invoke-RestMethod "$base/api/state"; if ($st.app -in 'docup', 'detska-konsultacia') { return $st } } catch {}
+              Start-Sleep 1
+            }
+            return $null
+          }
+
+          Write-Host '== Инсталиране на старата версия 2.2.0'
+          Start-Process $legacy -ArgumentList '/S' -Wait
+          if (-not (Test-Path $old)) { throw 'Старата версия не е инсталирана.' }
+          Start-Process $old -ArgumentList '--background'
+          $st = Wait-Up
+          if ($st.app -ne 'detska-konsultacia') { throw 'Старата версия не тръгна.' }
+          $body = @{ practiceName = 'Преход'; doctorName = 'д-р Стара'; pin = '4321' } | ConvertTo-Json
+          Invoke-RestMethod -Method Post "$base/api/setup" -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -SessionVariable s | Out-Null
+          $child = @{ name = 'Мария Старова'; birthDate = (Get-Date).AddYears(-3).ToString('yyyy-MM-dd'); sex = 'f' } | ConvertTo-Json
+          Invoke-RestMethod -Method Post "$base/api/patients" -Body ([Text.Encoding]::UTF8.GetBytes($child)) -ContentType 'application/json; charset=utf-8' -WebSession $s | Out-Null
+
+          Write-Host "== Файл за обновяване на DocUp $version върху работещата стара версия"
+          $u = Start-Process $update -ArgumentList '/S' -PassThru -Wait
+          if ($u.ExitCode -ne 0) { throw "Обновяването върна код $($u.ExitCode)." }
+          $st = Wait-Up
+          if ($st.app -ne 'docup') {
+            Get-Content 'C:\ProgramData\DocUp\logs\server.log' -Tail 30 -ErrorAction SilentlyContinue
+            throw 'DocUp не тръгна след прехода.'
+          }
+          if (-not (Test-Path $new)) { throw 'DocUp.exe липсва.' }
+          if (Test-Path 'C:\Program Files\DetskaKonsultacia') { throw 'Старата папка на програмата остана.' }
+          if (Test-Path 'C:\ProgramData\DetskaKonsultacia') { throw 'Данните не са преместени.' }
+          $data = Get-Content 'C:\ProgramData\DocUp\data\practice.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          if ($data.patients.Count -ne 1 -or $data.practice.name -ne 'Преход') { throw 'Данните не са пренесени.' }
+          $list = Invoke-RestMethod "$base/api/patients" -WebSession $s
+          if ($list.total -ne 1) { throw 'Сесията отпреди прехода не важи.' }
+          $key = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+          if ((Get-ItemProperty "$key\DocUp").DisplayVersion -ne $version) { throw 'DocUp липсва в Приложения.' }
+          if (Test-Path "$key\DetskaKonsultacia") { throw 'Старата програма остана в Приложения.' }
+          foreach ($l in "$menu\DocUp\DocUp.lnk", "$menu\Startup\DocUp.lnk", 'C:\Users\Public\Desktop\DocUp.lnk') {
+            if (-not (Test-Path $l)) { throw "Липсва пряк път $l." }
+          }
+          foreach ($l in "$menu\Детска консултация", "$menu\Startup\Детска консултация.lnk", 'C:\Users\Public\Desktop\Детска консултация.lnk') {
+            if (Test-Path $l) { throw "Остана стар пряк път $l." }
+          }
+          netsh advfirewall firewall show rule name=DocUp | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Правилото в защитната стена не е пренесено.' }
+          netsh advfirewall firewall show rule name=DocUp | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'Старото правило в защитната стена остана.' }
+          Write-Host 'Преходът е успешен.'
+
+          Write-Host '== Почистване преди основната проверка'
+          Start-Process $new -ArgumentList '--stop', '--quiet' -Wait
+          Start-Process 'C:\Program Files\DocUp\uninstall.exe' -ArgumentList '/S' -Wait
+          for ($i = 0; $i -lt 30 -and (Test-Path $new); $i++) { Start-Sleep 1 }
+          Remove-Item 'C:\ProgramData\DocUp' -Recurse -Force
+          $global:LASTEXITCODE = 0
       - name: Инсталиране, работа, спиране, обновяване, деинсталиране
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe    = 'C:\Program Files\DetskaKonsultacia\DetskaKonsultacia.exe'
-          $data   = 'C:\ProgramData\DetskaKonsultacia\data\practice.json'
-          $desk   = 'C:\Users\Public\Desktop\Детска консултация.lnk'
+          $exe    = 'C:\Program Files\DocUp\DocUp.exe'
+          $data   = 'C:\ProgramData\DocUp\data\practice.json'
+          $desk   = 'C:\Users\Public\Desktop\DocUp.lnk'
           $base   = 'http://localhost:8080'
-          $setup  = (Get-ChildItem dist\DetskaKonsultacia-Setup-*.exe | Select-Object -First 1).FullName
-          $update = (Get-ChildItem dist\DetskaKonsultacia-Update-*.exe | Select-Object -First 1).FullName
+          $setup  = (Get-ChildItem dist\DocUp-Setup-*.exe | Select-Object -First 1).FullName
+          $update = (Get-ChildItem dist\DocUp-Update-*.exe | Select-Object -First 1).FullName
           $version = [regex]::Match($setup, 'Setup-(.+)\.exe$').Groups[1].Value
           $env:DETSKA_NO_BROWSER = '1'
 
           function Wait-Up([int]$seconds = 60, [string]$url = $base) {
             for ($i = 0; $i -lt $seconds; $i++) {
-              try { $st = Invoke-RestMethod "$url/api/state"; if ($st.app -eq 'detska-konsultacia') { return $true } } catch {}
+              try { $st = Invoke-RestMethod "$url/api/state"; if ($st.app -eq 'docup') { return $true } } catch {}
               Start-Sleep 1
             }
             return $false
           }
           function Wait-Down([int]$seconds = 20) {
             for ($i = 0; $i -lt $seconds; $i++) {
-              if (-not (Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue)) { return $true }
+              if (-not (Get-Process DocUp -ErrorAction SilentlyContinue)) { return $true }
               Start-Sleep 1
             }
             return $false
@@ -99,19 +200,19 @@ jobs:
           if (-not (Test-Path $exe)) { throw 'Програмата не е инсталирана.' }
           Get-Item $exe | Format-List Name, Length, VersionInfo
           Get-ChildItem 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs' -Recurse -Filter *.lnk |
-            Where-Object FullName -like '*Детска*' | ForEach-Object FullName
-          icacls C:\ProgramData\DetskaKonsultacia
-          netsh advfirewall firewall show rule name=DetskaKonsultacia
+            Where-Object FullName -like '*DocUp*' | ForEach-Object FullName
+          icacls C:\ProgramData\DocUp
+          netsh advfirewall firewall show rule name=DocUp
           if ($LASTEXITCODE -ne 0) { throw 'Липсва правилото в защитната стена.' }
 
           Write-Host '== Стартиране'
           Start-Process $exe -ArgumentList '--background'
           if (-not (Wait-Up)) {
-            Get-Content 'C:\ProgramData\DetskaKonsultacia\logs\server.log' -ErrorAction SilentlyContinue
+            Get-Content 'C:\ProgramData\DocUp\logs\server.log' -ErrorAction SilentlyContinue
             throw 'Сървърът не отговаря.'
           }
           $page = Invoke-WebRequest "$base/" -UseBasicParsing
-          if ($page.Content -notmatch 'Детска консултация') { throw 'Интерфейсът не се зарежда.' }
+          if ($page.Content -notmatch 'DocUp') { throw 'Интерфейсът не се зарежда.' }
           foreach ($f in 'js/shared/growth.js', 'js/connection.js', 'js/views/history-dialog.js', 'js/views/adult-patient.js', 'js/shared/nutrition.js', 'js/shared/drugs.js', 'js/boot-check.js', 'favicon.svg') {
             if ((Invoke-WebRequest "$base/$f" -UseBasicParsing).StatusCode -ne 200) { throw "Липсва вграден файл $f." }
           }
@@ -125,7 +226,7 @@ jobs:
           if ($code -ne '421') { throw "Чужд адрес в Host върна $code вместо 421." }
           $code = & curl.exe -s -o NUL -w '%{http_code}' -H "Host: $($env:COMPUTERNAME):8080" "$base/api/state"
           if ($code -ne '200') { throw "Името на компютъра в Host върна $code." }
-          Get-Process DetskaKonsultacia | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
+          Get-Process DocUp | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
 
           Write-Host '== Запис на данни'
           $body = @{ practiceName = 'Проверка'; doctorName = 'д-р Тест'; pin = '1234' } | ConvertTo-Json
@@ -196,7 +297,7 @@ jobs:
           if (-not $boot.server.canStop -or -not $boot.server.local) { throw 'Бутонът за спиране не е достъпен на този компютър.' }
 
           Write-Host '== Външно копие'
-          $extra = 'C:\ExtraCopy\Детска консултация'
+          $extra = 'C:\ExtraCopy\DocUp'
           $patch = @{ extraBackupDir = $extra } | ConvertTo-Json
           $res = Invoke-RestMethod -Method Patch "$base/api/settings" -Body ([Text.Encoding]::UTF8.GetBytes($patch)) -ContentType 'application/json; charset=utf-8' -WebSession $s
           if (-not $res.extraBackup.ok) { throw 'Външното копие не е направено.' }
@@ -205,7 +306,7 @@ jobs:
           Write-Host '== Второ стартиране — само отваря браузъра'
           $second = Start-Process $exe -ArgumentList '--background' -PassThru -Wait
           if ($second.ExitCode -ne 0) { throw 'Второто стартиране не завърши чисто.' }
-          if ((Get-Process DetskaKonsultacia -ErrorAction SilentlyContinue).Count -ne 1) { throw 'Стартирано е второ копие.' }
+          if ((Get-Process DocUp -ErrorAction SilentlyContinue).Count -ne 1) { throw 'Стартирано е второ копие.' }
 
           Write-Host '== Спиране от бутона в програмата'
           Invoke-RestMethod -Method Post "$base/api/system/stop" -Body '{}' -ContentType 'application/json' -WebSession $s | Out-Null
@@ -224,10 +325,10 @@ jobs:
           if (-not (Wait-Up 45)) { throw 'След тихо обновяване програмата не тръгна отново.' }
           if ((Patients) -ne 6) { throw 'Обновяването засегна данните.' }
           if (Test-Path $desk) { throw 'Обновяването върна иконата, която потребителят беше махнал.' }
-          if (-not (Test-Path 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\Детска консултация.lnk')) { throw 'Автоматичното стартиране изчезна.' }
-          netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
+          if (-not (Test-Path 'C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\DocUp.lnk')) { throw 'Автоматичното стартиране изчезна.' }
+          netsh advfirewall firewall show rule name=DocUp | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Правилото в защитната стена изчезна.' }
-          $ver = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DetskaKonsultacia').DisplayVersion
+          $ver = (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DocUp').DisplayVersion
           if ($ver -ne $version) { throw "Версията в Приложения е $ver." }
 
           Write-Host '== Пълен инсталатор върху работеща програма'
@@ -249,23 +350,23 @@ jobs:
           $blocker.Start()
           Start-Process $exe -ArgumentList '--background'
           if (-not (Wait-Up 60 'http://localhost:8081')) {
-            Get-Content 'C:\ProgramData\DetskaKonsultacia\logs\server.log' -Tail 20 -ErrorAction SilentlyContinue
+            Get-Content 'C:\ProgramData\DocUp\logs\server.log' -Tail 20 -ErrorAction SilentlyContinue
             throw 'Програмата не премина на порт 8081.'
           }
-          $cfg = Get-Content 'C:\ProgramData\DetskaKonsultacia\config.json' -Raw -Encoding utf8 | ConvertFrom-Json
+          $cfg = Get-Content 'C:\ProgramData\DocUp\config.json' -Raw -Encoding utf8 | ConvertFrom-Json
           if ($cfg.port -ne 8081) { throw "Новият порт не е запомнен: $($cfg.port)." }
           $again = Start-Process $exe -ArgumentList '--background' -PassThru -Wait
-          if ($again.ExitCode -ne 0 -or (Get-Process DetskaKonsultacia).Count -ne 1) { throw 'Второ стартиране на резервния порт пусна ново копие.' }
+          if ($again.ExitCode -ne 0 -or (Get-Process DocUp).Count -ne 1) { throw 'Второ стартиране на резервния порт пусна ново копие.' }
           $stop = Start-Process $exe -ArgumentList '--stop', '--quiet' -PassThru -Wait
           if (-not (Wait-Down)) { throw 'Програмата на порт 8081 не спря.' }
           $blocker.Stop()
 
           Write-Host '== Тихо деинсталиране'
-          Start-Process 'C:\Program Files\DetskaKonsultacia\uninstall.exe' -ArgumentList '/S' -Wait
+          Start-Process 'C:\Program Files\DocUp\uninstall.exe' -ArgumentList '/S' -Wait
           for ($i = 0; $i -lt 30 -and (Test-Path $exe); $i++) { Start-Sleep 1 }
           if (Test-Path $exe) { throw 'Програмата не е премахната.' }
           if (-not (Test-Path $data)) { throw 'Деинсталирането изтри данните.' }
-          netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
+          netsh advfirewall firewall show rule name=DocUp | Out-Null
           if ($LASTEXITCODE -eq 0) { throw 'Правилото в защитната стена остана.' }
 
           Write-Host '== Файл за обновяване без инсталирана програма'
@@ -286,11 +387,11 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: DetskaKonsultacia-Setup
+          name: DocUp-Setup
           path: dist
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/DetskaKonsultacia-Setup-*.exe
-            dist/DetskaKonsultacia-Update-*.exe
+            dist/DocUp-Setup-*.exe
+            dist/DocUp-Update-*.exe
             dist/SHA256SUMS.txt

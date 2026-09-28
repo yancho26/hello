@@ -1,20 +1,22 @@
-/* Детска консултация — оформление на интерфейса.
+/* DocUp — оформление на интерфейса.
+   Цветовете следват марката (docup.health): основен лилав #7169CE, тъмен #5151B2;
+   за текст и бутони е малко по-тъмен нюанс, за да се чете добре.
    Светла основа, спокойни цветове, едър и четлив текст: приложението се
    ползва бързо, често с дете на кушетката. */
 
 :root {
-  --bg: #f2f5f8;
+  --bg: #f3f3f8;
   --surface: #ffffff;
-  --surface-2: #f7f9fb;
-  --ink: #16232f;
-  --ink-2: #5b6f80;
-  --ink-3: #8798a6;
-  --line: #dfe6ec;
-  --line-strong: #c6d2dc;
+  --surface-2: #f8f8fc;
+  --ink: #1b1b2f;
+  --ink-2: #5d5f78;
+  --ink-3: #8a8ca3;
+  --line: #e2e2ec;
+  --line-strong: #c9c9d8;
 
-  --brand: #0d6ea8;
-  --brand-dark: #0a5583;
-  --brand-soft: #e7f1f9;
+  --brand: #6159c4;
+  --brand-dark: #4b4aa6;
+  --brand-soft: #efeefb;
 
   --danger: #c62828;
   --danger-soft: #fdeceb;
@@ -22,14 +24,14 @@
   --warn-soft: #fff2de;
   --ok: #16744a;
   --ok-soft: #e5f4ec;
-  --info: #0d6ea8;
-  --info-soft: #e7f1f9;
-  --muted-soft: #eef2f5;
+  --info: #6159c4;
+  --info-soft: #efeefb;
+  --muted-soft: #efeff5;
 
   --radius: 12px;
   --radius-sm: 8px;
-  --shadow: 0 1px 2px rgba(16, 35, 50, .06), 0 4px 14px rgba(16, 35, 50, .06);
-  --shadow-lg: 0 8px 40px rgba(16, 35, 50, .18);
+  --shadow: 0 1px 2px rgba(27, 27, 47, .06), 0 4px 14px rgba(27, 27, 47, .06);
+  --shadow-lg: 0 8px 40px rgba(27, 27, 47, .18);
   --header-h: 58px;
 }
 
@@ -75,9 +77,11 @@ header.app {
 }
 
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; white-space: nowrap; }
-.brand .mark { width: 34px; height: 34px; flex: none; display: block; }
-.brand .name { font-size: 15px; }
-.brand .sub { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.brand .wordmark { height: 26px; width: auto; flex: none; display: block; }
+.brand .sub {
+  font-size: 12px; color: var(--ink-2); font-weight: 550; max-width: 190px;
+  overflow: hidden; text-overflow: ellipsis; padding-left: 10px; border-left: 1px solid var(--line);
+}
 
 nav.main { display: flex; gap: 2px; }
 nav.main a {
@@ -210,7 +214,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 20px 18px 60px; }
 .badge.due { background: var(--warn-soft); color: var(--warn); }
 .badge.soon { background: var(--info-soft); color: var(--info); }
 .badge.done { background: var(--ok-soft); color: var(--ok); }
-.badge.deferred { background: #f0ecfb; color: #59409c; }
+.badge.deferred { background: #e8f0f7; color: #2f5a80; }
 .badge.refused { background: var(--muted-soft); color: var(--ink-2); }
 .badge.future, .badge.skipped { background: var(--muted-soft); color: var(--ink-3); }
 .badge.missed { background: var(--muted-soft); color: var(--ink-2); text-decoration: line-through; }
@@ -277,7 +281,7 @@ input.invalid, select.invalid { border-color: var(--danger); }
 /* --------------------------------- прозорци ---------------------------------- */
 
 .overlay {
-  position: fixed; inset: 0; z-index: 60; background: rgba(14, 28, 40, .45);
+  position: fixed; inset: 0; z-index: 60; background: rgba(24, 22, 48, .45);
   display: flex; align-items: flex-start; justify-content: center;
   padding: 40px 16px; overflow-y: auto;
 }
@@ -421,6 +425,8 @@ svg.growth .point.danger { fill: var(--danger); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .setup-screen { max-width: 460px; margin: 8vh auto; }
+.setup-brand { text-align: center; margin-bottom: 18px; }
+.setup-brand img { height: 46px; width: auto; display: block; margin: 0 auto 6px; }
 .login-doctors { display: flex; flex-direction: column; gap: 8px; }
 .login-doctors button {
   display: flex; align-items: center; gap: 10px; padding: 11px 13px;
@@ -506,7 +512,7 @@ body.offline main { opacity: .55; pointer-events: none; }
 
 .stopped-screen {
   min-height: 100vh; display: grid; place-items: center; padding: 24px;
-  background: linear-gradient(180deg, #1a86c4, #0a4f7a);
+  background: linear-gradient(180deg, #7f77dc, #4b4aa6);
 }
 .stopped-card {
   max-width: 520px; padding: 32px; border-radius: 16px; background: var(--surface);
@@ -625,10 +631,10 @@ svg.trend .limit { stroke: var(--warn); stroke-width: 1.2; stroke-dasharray: 5 4
 svg.trend .limit-text { fill: var(--warn); font-size: 11.5px; font-weight: 600; }
 svg.trend .line { fill: none; stroke-width: 2.6; stroke-linejoin: round; }
 svg.trend .line.a { stroke: var(--brand); }
-svg.trend .line.b { stroke: #7a52c7; }
+svg.trend .line.b { stroke: #0d7fa8; }
 svg.trend .pt { stroke: #fff; stroke-width: 2; }
 svg.trend .pt.a { fill: var(--brand); }
-svg.trend .pt.b { fill: #7a52c7; }
+svg.trend .pt.b { fill: #0d7fa8; }
 svg.trend .pt.flag { fill: var(--danger); }
 
 /* диалози */

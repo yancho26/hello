@@ -1,19 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- DocUp: стетоскоп в цвета на марката (docup.health) -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a86c4"/>
-      <stop offset="1" stop-color="#0a5583"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7f77dc"/>
+      <stop offset="1" stop-color="#5151b2"/>
     </linearGradient>
   </defs>
   <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
-  <circle cx="72" cy="80" r="34" fill="#fff"/>
-  <circle cx="184" cy="80" r="34" fill="#fff"/>
-  <circle cx="72" cy="80" r="16" fill="#f3c6a8"/>
-  <circle cx="184" cy="80" r="16" fill="#f3c6a8"/>
-  <circle cx="128" cy="142" r="82" fill="#fff"/>
-  <circle cx="98" cy="126" r="11" fill="#17324d"/>
-  <circle cx="158" cy="126" r="11" fill="#17324d"/>
-  <ellipse cx="128" cy="172" rx="36" ry="28" fill="#f3c6a8"/>
-  <ellipse cx="128" cy="160" rx="14" ry="10" fill="#17324d"/>
-  <path d="M128 170 v10 M114 186 q14 10 28 0" stroke="#17324d" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <g fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M48 50 H76 M128 50 H156"/>
+    <path d="M62 50 V108 a40 40 0 0 0 80 0 V50"/>
+    <path d="M102 148 V168 a40 40 0 0 0 80 0 V158"/>
+  </g>
+  <circle cx="182" cy="134" r="26" fill="#fff"/>
+  <circle cx="182" cy="134" r="10" fill="#6159c4"/>
 </svg>

@@ -1,24 +1,32 @@
-; Инсталатор и файл за обновяване на „Детска консултация“ за Windows 10/11 (64-битов).
+; Инсталатор и файл за обновяване на DocUp за Windows 10/11 (64-битов).
 ;
 ; Сглобява се със scripts/build-windows.mjs, който подава:
-;   VERSION, SOURCE_DIR (DetskaKonsultacia.exe и лиценза на Node.js),
+;   VERSION, SOURCE_DIR (DocUp.exe и лиценза на Node.js),
 ;   ICON, WELCOME (странична картинка 164×314), README и OUTFILE,
 ;   а за файла за обновяване — и UPDATE.
 ;
-; Пълен инсталатор (DetskaKonsultacia-Setup-<версия>.exe):
-;   - копира програмата в C:\Program Files\DetskaKonsultacia;
-;   - създава C:\ProgramData\DetskaKonsultacia за данните — обща за всички
+; Пълен инсталатор (DocUp-Setup-<версия>.exe):
+;   - копира програмата в C:\Program Files\DocUp;
+;   - създава C:\ProgramData\DocUp за данните — обща за всички
 ;     потребители на компютъра и извън OneDrive;
 ;   - преки пътища в менюто Старт и (по избор) на работния плот;
 ;   - (по избор) стартиране при влизане в Windows и правило в защитната стена
 ;     само за частни и домейн мрежи — за достъп от другите компютри в кабинета.
 ;   При вече инсталирана програма предварително са избрани досегашните избори.
 ;
-; Файл за обновяване (DetskaKonsultacia-Update-<версия>.exe):
+; Файл за обновяване (DocUp-Update-<версия>.exe):
 ;   - работи само върху съществуваща инсталация и не пита нищо освен „Напред“;
 ;   - подменя програмата и запазва данните, преките пътища, автоматичното
 ;     стартиране и правилото в защитната стена;
 ;   - ако програмата е работила, я стартира отново.
+;
+; Преминаване от „Детска консултация“ (до версия 2.2 програмата се казваше
+; така): двата файла разпознават старата инсталация, спират я, преместват
+; C:\ProgramData\DetskaKonsultacia в C:\ProgramData\DocUp, пренасят иконата на
+; работния плот, автоматичното стартиране и правилото в защитната стена под
+; новото име и премахват старата програма от „Приложения“. Ако папката с
+; данните не може да бъде преместена (зает файл), програмата ги чете от
+; старото място, а следващото обновяване опитва отново.
 ;
 ; Деинсталирането НЕ изтрива данните, освен ако потребителят изрично
 ; потвърди два пъти. При тихо деинсталиране (/S) данните винаги остават.
@@ -40,16 +48,30 @@ SetCompressor /SOLID lzma
 
 ${StrStr}
 
-!define APP_NAME "Детска консултация"
-!define APP_ID "DetskaKonsultacia"
-!define APP_EXE "DetskaKonsultacia.exe"
+!define APP_NAME "DocUp"
+!define APP_ID "DocUp"
+!define APP_EXE "DocUp.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}"
 ; $APPDATA при SetShellVarContext all е C:\ProgramData.
 !define DATA_ROOT "$APPDATA\${APP_ID}"
 !define FIREWALL_RULE "${APP_ID}"
 
+; Старото име (до версия 2.2).
+!define LEGACY_NAME "Детска консултация"
+!define LEGACY_ID "DetskaKonsultacia"
+!define LEGACY_EXE "DetskaKonsultacia.exe"
+!define LEGACY_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${LEGACY_ID}"
+!define LEGACY_DATA "$APPDATA\${LEGACY_ID}"
+!define LEGACY_RULE "${LEGACY_ID}"
+
 Var WasRunning
 Var OldVersion
+Var LegacyDir
+Var HadDesktop
+Var HadStartup
+Var HadFirewall
+Var DataRoot
+Var WelcomeExtra
 
 Name "${APP_NAME}"
 OutFile "${OUTFILE}"
@@ -76,12 +98,12 @@ ShowUninstDetails show
 
 !ifdef UPDATE
   !define MUI_WELCOMEPAGE_TITLE "Обновяване на ${APP_NAME}"
-  !define MUI_WELCOMEPAGE_TEXT "Програмата ще бъде обновена от версия $OldVersion до ${VERSION}.$\r$\n$\r$\nЗа около минута тя ще бъде спряна и другите компютри в кабинета временно няма да имат достъп.$\r$\n$\r$\nДанните, настройките и преките пътища се запазват."
+  !define MUI_WELCOMEPAGE_TEXT "$WelcomeExtraПрограмата ще бъде обновена от версия $OldVersion до ${VERSION}.$\r$\n$\r$\nЗа около минута тя ще бъде спряна и другите компютри в кабинета временно няма да имат достъп.$\r$\n$\r$\nДанните, настройките и преките пътища се запазват."
   !define MUI_FINISHPAGE_TITLE "Обновяването е завършено"
   !define MUI_FINISHPAGE_TEXT "${APP_NAME} е обновена до версия ${VERSION}.$\r$\n$\r$\nКакво е новото ще видите при отваряне на програмата."
 !else
   !define MUI_WELCOMEPAGE_TITLE "Инсталиране на ${APP_NAME}"
-  !define MUI_WELCOMEPAGE_TEXT "Програма за проследяване на деца пациенти в практиката: имунизации, профилактични прегледи, растеж и развитие.$\r$\n$\r$\nПрограмата работи изцяло на този компютър и се отваря в браузъра. Данните не се изпращат в интернет.$\r$\n$\r$\nАко вече е инсталирана, тя ще бъде спряна и обновена. Данните се запазват."
+  !define MUI_WELCOMEPAGE_TEXT "$WelcomeExtraПлатформа за общопрактикуващи лекари: деца и възрастни, имунизации, профилактика, хронични заболявания и лекарства.$\r$\n$\r$\nПрограмата работи изцяло на този компютър и се отваря в браузъра. Данните не се изпращат в интернет.$\r$\n$\r$\nАко вече е инсталирана, тя ще бъде спряна и обновена. Данните се запазват."
   !define MUI_FINISHPAGE_TITLE "${APP_NAME} е инсталирана"
   !define MUI_FINISHPAGE_TEXT "Програмата се отваря в браузъра на адрес http://localhost:8080$\r$\n$\r$\nАдресът за другите компютри в кабинета е в „Настройки → Данни и копия“."
   !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\Прочети ме.txt"
@@ -144,6 +166,68 @@ VIAddVersionKey /LANG=${LANG_BULGARIAN} "LegalCopyright" "Включва Node.js
   Pop $0
 !macroend
 
+; Старата „Детска консултация“: спиране, преместване на данните и премахване
+; на програмата, преките пътища, правилото и записа в „Приложения“.
+!macro MigrateLegacy
+  ${If} $LegacyDir != ""
+    DetailPrint "Преминаване от „${LEGACY_NAME}“ към ${APP_NAME}…"
+    nsExec::ExecToStack 'tasklist /FI "IMAGENAME eq ${LEGACY_EXE}" /NH'
+    Pop $0
+    Pop $1
+    ${StrStr} $2 $1 "${LEGACY_EXE}"
+    ${If} $2 != ""
+      StrCpy $WasRunning 1
+    ${EndIf}
+    ${If} ${FileExists} "$LegacyDir\${LEGACY_EXE}"
+      nsExec::Exec '"$LegacyDir\${LEGACY_EXE}" --stop --quiet'
+      Pop $0
+    ${EndIf}
+    Sleep 500
+    nsExec::Exec 'taskkill /F /IM ${LEGACY_EXE}'
+    Pop $0
+    Sleep 500
+  ${EndIf}
+
+  ; Данните — и при повторен опит след неуспешно преместване.
+  ${If} ${FileExists} "${LEGACY_DATA}\*.*"
+    ${IfNot} ${FileExists} "${DATA_ROOT}\config.json"
+    ${AndIfNot} ${FileExists} "${DATA_ROOT}\data\practice.json"
+      RMDir "${DATA_ROOT}" ; празна папка от предишен неуспешен опит
+    ${EndIf}
+    ${IfNot} ${FileExists} "${DATA_ROOT}\*.*"
+      ClearErrors
+      Rename "${LEGACY_DATA}" "${DATA_ROOT}"
+      ${If} ${Errors}
+        DetailPrint "Папката с данните не беше преместена — програмата ще ги чете от ${LEGACY_DATA}."
+      ${Else}
+        DetailPrint "Данните са преместени в ${DATA_ROOT}."
+      ${EndIf}
+    ${EndIf}
+  ${EndIf}
+
+  ${If} $LegacyDir != ""
+    Delete /REBOOTOK "$LegacyDir\${LEGACY_EXE}"
+    Delete "$LegacyDir\Node.js-LICENSE.txt"
+    Delete "$LegacyDir\Прочети ме.txt"
+    Delete "$LegacyDir\uninstall.exe"
+    RMDir "$LegacyDir"
+    RMDir /r "$SMPROGRAMS\${LEGACY_NAME}"
+    Delete "$DESKTOP\${LEGACY_NAME}.lnk"
+    Delete "$SMSTARTUP\${LEGACY_NAME}.lnk"
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${LEGACY_RULE}"'
+    Pop $0
+    DeleteRegKey HKLM "${LEGACY_KEY}"
+    DetailPrint "„${LEGACY_NAME}“ е заменена от ${APP_NAME}."
+  ${EndIf}
+
+  ; Ако данните са останали на старото място, програмата ги чете оттам.
+  StrCpy $DataRoot "${DATA_ROOT}"
+  ${IfNot} ${FileExists} "${DATA_ROOT}\*.*"
+  ${AndIf} ${FileExists} "${LEGACY_DATA}\*.*"
+    StrCpy $DataRoot "${LEGACY_DATA}"
+  ${EndIf}
+!macroend
+
 ; Програмата, преките пътища в менюто Старт и записът в „Приложения“.
 !macro InstallProgram
   SetOutPath "$INSTDIR"
@@ -154,14 +238,14 @@ VIAddVersionKey /LANG=${LANG_BULGARIAN} "LegalCopyright" "Включва Node.js
 
   ; Папка за данните, в която всеки потребител на компютъра може да пише.
   ; S-1-5-32-545 е групата „Потребители“ независимо от езика на Windows.
-  CreateDirectory "${DATA_ROOT}"
-  nsExec::ExecToLog 'icacls "${DATA_ROOT}" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q'
+  CreateDirectory "$DataRoot"
+  nsExec::ExecToLog 'icacls "$DataRoot" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q'
   Pop $0
 
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\Спиране на ${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "--stop" "$INSTDIR\${APP_EXE}" 0
-  CreateShortCut "$SMPROGRAMS\${APP_NAME}\Папка с данните.lnk" "${DATA_ROOT}"
+  CreateShortCut "$SMPROGRAMS\${APP_NAME}\Папка с данните.lnk" "$DataRoot"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\Прочети ме.lnk" "$INSTDIR\Прочети ме.txt"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\Деинсталиране.lnk" "$INSTDIR\uninstall.exe"
 
@@ -194,6 +278,31 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
+; Досегашните избори — под новото или под старото име.
+Function RememberChoices
+  StrCpy $HadDesktop 0
+  ${If} ${FileExists} "$DESKTOP\${APP_NAME}.lnk"
+  ${OrIf} ${FileExists} "$DESKTOP\${LEGACY_NAME}.lnk"
+    StrCpy $HadDesktop 1
+  ${EndIf}
+  StrCpy $HadStartup 0
+  ${If} ${FileExists} "$SMSTARTUP\${APP_NAME}.lnk"
+  ${OrIf} ${FileExists} "$SMSTARTUP\${LEGACY_NAME}.lnk"
+    StrCpy $HadStartup 1
+  ${EndIf}
+  StrCpy $HadFirewall 0
+  nsExec::Exec 'netsh advfirewall firewall show rule name="${FIREWALL_RULE}"'
+  Pop $0
+  ${If} $0 == 0
+    StrCpy $HadFirewall 1
+  ${EndIf}
+  nsExec::Exec 'netsh advfirewall firewall show rule name="${LEGACY_RULE}"'
+  Pop $0
+  ${If} $0 == 0
+    StrCpy $HadFirewall 1
+  ${EndIf}
+FunctionEnd
+
 Function un.onInit
   SetRegView 64
   SetShellVarContext all
@@ -206,7 +315,22 @@ FunctionEnd
 Section "-Обновяване" SecUpdate
   SetShellVarContext all
   !insertmacro StopRunning
+  !insertmacro MigrateLegacy
   !insertmacro InstallProgram
+  ; Иконата, автоматичното стартиране и правилото остават такива, каквито са били
+  ; (и се пренасят под новото име след „Детска консултация“).
+  ${If} $HadDesktop == 1
+    CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "" "$INSTDIR\${APP_EXE}" 0
+  ${EndIf}
+  ${If} $HadStartup == 1
+    CreateShortCut "$SMSTARTUP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}" "--background" "$INSTDIR\${APP_EXE}" 0
+  ${EndIf}
+  ${If} $HadFirewall == 1
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE}"'
+    Pop $0
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\${APP_EXE}" enable=yes profile=private,domain'
+    Pop $0
+  ${EndIf}
   DetailPrint "Обновено от $OldVersion до ${VERSION}. Данните и настройките са запазени."
 SectionEnd
 
@@ -216,6 +340,7 @@ Section "!${APP_NAME}" SecMain
   SectionIn RO
   SetShellVarContext all
   !insertmacro StopRunning
+  !insertmacro MigrateLegacy
   !insertmacro InstallProgram
   ; Изборите по-долу се прилагат наново при всяко инсталиране.
   Delete "$DESKTOP\${APP_NAME}.lnk"
@@ -241,7 +366,7 @@ Section "Достъп от другите компютри в кабинета" 
 SectionEnd
 
 !insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "Самата програма. Данните се пазят в ${DATA_ROOT}."
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecMain} "Самата програма. Данните се пазят в $DataRoot."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop} "Икона на работния плот за бързо отваряне."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecAutostart} "Програмата тръгва във фонов режим при влизане в Windows, така че другите компютри винаги да могат да се свържат."
   !insertmacro MUI_DESCRIPTION_TEXT ${SecFirewall} "Разрешава връзки от другите компютри в частната мрежа на кабинета. Не се отнася за публични мрежи."
@@ -263,18 +388,40 @@ Function .onInit
   SetRegView 64
   SetShellVarContext all
   StrCpy $WasRunning 0
+  StrCpy $WelcomeExtra ""
+  StrCpy $DataRoot "${DATA_ROOT}"
   ReadRegStr $OldVersion HKLM "${UNINST_KEY}" "DisplayVersion"
 
+  ; Инсталирана „Детска консултация“ (преди преименуването)?
+  ReadRegStr $LegacyDir HKLM "${LEGACY_KEY}" "InstallLocation"
+  ${If} $LegacyDir != ""
+    ${If} $OldVersion == ""
+      ReadRegStr $OldVersion HKLM "${LEGACY_KEY}" "DisplayVersion"
+      ${If} $OldVersion == ""
+        StrCpy $OldVersion "1.0.0"
+      ${EndIf}
+    ${EndIf}
+    StrCpy $WelcomeExtra "„${LEGACY_NAME}“ вече се казва ${APP_NAME}. Данните, настройките и преките пътища се пренасят под новото име.$\r$\n$\r$\n"
+  ${EndIf}
+  Call RememberChoices
+
 !ifdef UPDATE
-  ; Файлът за обновяване работи само върху съществуваща инсталация.
+  ; Файлът за обновяване работи само върху съществуваща инсталация —
+  ; на DocUp или на „Детска консултация“.
   ReadRegStr $0 HKLM "${UNINST_KEY}" "InstallLocation"
-  ${If} $0 == ""
-  ${OrIfNot} ${FileExists} "$0\${APP_EXE}"
-    MessageBox MB_ICONSTOP "${APP_NAME} не е инсталирана на този компютър.$\r$\n$\r$\nЗа първо инсталиране използвайте DetskaKonsultacia-Setup-${VERSION}.exe." /SD IDOK
+  ${If} $0 != ""
+  ${AndIf} ${FileExists} "$0\${APP_EXE}"
+    StrCpy $INSTDIR $0
+  ${ElseIf} $LegacyDir != ""
+  ${AndIf} ${FileExists} "$LegacyDir\${LEGACY_EXE}"
+    ; Новата папка е до старата: C:\Program Files\DetskaKonsultacia → C:\Program Files\DocUp.
+    ${GetParent} "$LegacyDir" $1
+    StrCpy $INSTDIR "$1\${APP_ID}"
+  ${Else}
+    MessageBox MB_ICONSTOP "${APP_NAME} не е инсталирана на този компютър.$\r$\n$\r$\nЗа първо инсталиране използвайте DocUp-Setup-${VERSION}.exe." /SD IDOK
     SetErrorLevel 2
     Quit
   ${EndIf}
-  StrCpy $INSTDIR $0
   ${If} $OldVersion == ""
     StrCpy $OldVersion "1.0.0"
   ${EndIf}
@@ -289,17 +436,22 @@ Function .onInit
     reinstall:
   ${EndIf}
 !else
+  ; Първа инсталация на DocUp върху „Детска консултация“ — до старата папка.
+  ReadRegStr $0 HKLM "${UNINST_KEY}" "InstallLocation"
+  ${If} $0 == ""
+  ${AndIf} $LegacyDir != ""
+    ${GetParent} "$LegacyDir" $1
+    StrCpy $INSTDIR "$1\${APP_ID}"
+  ${EndIf}
   ; При обновяване с пълния инсталатор досегашните избори остават избрани.
   ${If} $OldVersion != ""
-    ${IfNot} ${FileExists} "$DESKTOP\${APP_NAME}.lnk"
+    ${If} $HadDesktop == 0
       SectionSetFlags ${SecDesktop} 0
     ${EndIf}
-    ${IfNot} ${FileExists} "$SMSTARTUP\${APP_NAME}.lnk"
+    ${If} $HadStartup == 0
       SectionSetFlags ${SecAutostart} 0
     ${EndIf}
-    nsExec::Exec 'netsh advfirewall firewall show rule name="${FIREWALL_RULE}"'
-    Pop $0
-    ${If} $0 != 0
+    ${If} $HadFirewall == 0
       SectionSetFlags ${SecFirewall} 0
     ${EndIf}
   ${EndIf}

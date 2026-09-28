@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /* Сглобява инсталатора и файла за обновяване за Windows:
  *
- *   dist/DetskaKonsultacia-Setup-<версия>.exe    пълен инсталатор
- *   dist/DetskaKonsultacia-Update-<версия>.exe   обновяване на инсталирана програма
+ *   dist/DocUp-Setup-<версия>.exe    пълен инсталатор
+ *   dist/DocUp-Update-<версия>.exe   обновяване на инсталирана програма
+ *                                    (и на „Детска консултация“ до 2.2)
  *
  * Стъпки:
  *   1. esbuild събира desktop/main.js и сървъра в един CommonJS файл;
@@ -18,9 +19,9 @@
  * `choco install nsis`.
  *
  * Аргументи:
- *   --exe-only     без инсталатор, само build/win/DetskaKonsultacia.exe
+ *   --exe-only     без инсталатор, само build/win/DocUp.exe
  *   --console      с конзолен прозорец (за отстраняване на проблеми)
- *   --linux-test   допълнително build/linux/detska-konsultacia от същия
+ *   --linux-test   допълнително build/linux/docup от същия
  *                  blob — за проверка под Linux (само на Linux x64)
  */
 
@@ -33,7 +34,7 @@ import { fileURLToPath } from 'node:url';
 
 const NODE_VERSION = '24.21.0';
 const SEA_FUSE = 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2';
-const EXE_NAME = 'DetskaKonsultacia.exe';
+const EXE_NAME = 'DocUp.exe';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BUILD = path.join(ROOT, 'build');
@@ -250,10 +251,10 @@ async function brandExe(nodeExe) {
   const lang = vi.getAllLanguagesForStringValues()[0] || { lang: 1033, codepage: 1200 };
   for (const key of ['Comments', 'PrivateBuild', 'SpecialBuild', 'LegalTrademarks']) vi.removeStringValue(lang, key);
   vi.setStringValues(lang, {
-    CompanyName: 'Детска консултация',
-    FileDescription: 'Детска консултация — проследяване на деца пациенти',
-    ProductName: 'Детска консултация',
-    InternalName: 'DetskaKonsultacia',
+    CompanyName: 'DocUp',
+    FileDescription: 'DocUp — платформа за общопрактикуващи лекари',
+    ProductName: 'DocUp',
+    InternalName: 'DocUp',
     OriginalFilename: EXE_NAME,
     FileVersion: VERSION,
     ProductVersion: VERSION,
@@ -317,7 +318,7 @@ fs.rmSync(winDir, { recursive: true, force: true });
 fs.mkdirSync(seaDir, { recursive: true });
 fs.mkdirSync(winDir, { recursive: true });
 
-console.log(`Детска консултация ${VERSION} за Windows x64 · Node.js ${NODE_VERSION}`);
+console.log(`DocUp ${VERSION} за Windows x64 · Node.js ${NODE_VERSION}`);
 
 const mainFile = await bundle(seaDir);
 const blob = await makeBlob(seaDir, mainFile);
@@ -346,7 +347,7 @@ if (args.has('--linux-test')) {
   step('Проверочен изпълним файл за Linux');
   const linuxDir = path.join(BUILD, 'linux');
   fs.mkdirSync(linuxDir, { recursive: true });
-  const target = path.join(linuxDir, 'detska-konsultacia');
+  const target = path.join(linuxDir, 'docup');
   fs.copyFileSync(await hostNode(), target);
   fs.chmodSync(target, 0o755);
   await inject(target, blob);
@@ -357,13 +358,13 @@ if (!args.has('--exe-only')) {
   fs.mkdirSync(DIST, { recursive: true });
   // По-стари сглобки не остават до новите — в dist е само текущата версия.
   for (const f of fs.readdirSync(DIST)) {
-    if (/^DetskaKonsultacia-(Setup|Update)-.*\.exe$/.test(f)) fs.rmSync(path.join(DIST, f));
+    if (/^(DocUp|DetskaKonsultacia)-(Setup|Update)-.*\.exe$/.test(f)) fs.rmSync(path.join(DIST, f));
   }
   const makensis = findMakensis();
   const sums = [];
   for (const kind of ['Setup', 'Update']) {
     step(kind === 'Setup' ? 'Пълен инсталатор (NSIS)' : 'Файл за обновяване (NSIS)');
-    const outFile = path.join(DIST, `DetskaKonsultacia-${kind}-${VERSION}.exe`);
+    const outFile = path.join(DIST, `DocUp-${kind}-${VERSION}.exe`);
     execFileSync(makensis, [
       '-V2', '-INPUTCHARSET', 'UTF8',
       `-DVERSION=${VERSION}`,

@@ -1,5 +1,5 @@
 {
-  "name": "Детска консултация — демонстрация",
+  "name": "DocUp — демонстрация",
 
   "image": "mcr.microsoft.com/devcontainers/base:bookworm",
   "features": {
@@ -9,7 +9,7 @@
   "forwardPorts": [8080],
   "portsAttributes": {
     "8080": {
-      "label": "Детска консултация",
+      "label": "DocUp",
       "onAutoForward": "openBrowser"
     }
   },

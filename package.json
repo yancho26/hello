@@ -1,7 +1,7 @@
 {
-  "name": "detska-konsultacia",
-  "version": "2.2.0",
-  "description": "Платформа за проследяване на деца пациенти в общопрактикуваща лекарска практика",
+  "name": "docup",
+  "version": "3.0.0",
+  "description": "DocUp — платформа за общопрактикуващи лекари: деца и възрастни",
   "type": "module",
   "private": true,
   "scripts": {

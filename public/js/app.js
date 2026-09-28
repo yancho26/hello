@@ -114,10 +114,8 @@ function shell() {
 
   const header = h('header.app', null,
     h('div.brand', null,
-      h('img.mark', { src: '/favicon.svg', alt: '', width: 34, height: 34 }),
-      h('div', null,
-        h('div.name', null, 'Детска консултация'),
-        h('div.sub', null, state.practice.name))),
+      h('img.wordmark', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 72, height: 26 }),
+      h('div.sub', { title: state.practice.name }, state.practice.name)),
     h('nav.main', null, VIEWS.map(v =>
       h('a', { href: '#/' + v.path, dataset: { path: v.path } }, v.label))),
     h('div.search-wrap', null,
@@ -170,7 +168,7 @@ export async function stopProgram() {
   const ok = await confirmDialog({
     title: 'Спиране на програмата',
     message: 'Програмата ще спре и за другите компютри в кабинета. Всички данни вече са записани. '
-      + 'За да я стартирате отново, щракнете два пъти върху иконата „Детска консултация“ на работния плот.',
+      + 'За да я стартирате отново, щракнете два пъти върху иконата „DocUp“ на работния плот.',
     confirmLabel: 'Спри програмата',
     danger: true,
   });
@@ -244,11 +242,19 @@ function setupScreen() {
     h('button.btn.primary.block', { type: 'submit' }, 'Създай практиката'));
 
   mount(root, h('main', null, h('div.setup-screen', null,
-    card('Добре дошли', { icon: '🧸' },
+    brandBlock(),
+    card('Добре дошли в DocUp', { icon: '👋' },
       h('p.muted', null,
         'Това е първото стартиране. Настройте практиката — отнема по-малко от минута. '
         + 'Данните остават само на този компютър.'),
       form))));
+}
+
+/** Логото над екрана за вход и първоначалната настройка. */
+function brandBlock() {
+  return h('div.setup-brand', null,
+    h('img', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 141, height: 51 }),
+    h('div.small.muted', null, 'Платформа за общопрактикуващи лекари'));
 }
 
 function loginScreen(doctors) {
@@ -280,7 +286,8 @@ function loginScreen(doctors) {
   };
 
   mount(root, h('main', null, h('div.setup-screen', null,
-    card(state.practice.name, { icon: '🧸' },
+    brandBlock(),
+    card(state.practice.name, { icon: '🏥' },
       h('p.muted', null, 'Изберете себе си, за да продължите.'),
       h('div.login-doctors', null, doctors.filter(d => d.active).map(doc =>
         h('button', { onclick: () => showPin(doc) },

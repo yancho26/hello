@@ -350,7 +350,7 @@ async function dataTab(rerender) {
       const blob = new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `detska-konsultacia-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `docup-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -423,8 +423,10 @@ async function dataTab(rerender) {
 
   const program = srv.version ? card('Програмата', { icon: '⚙️' },
     h('dl.kv', null,
-      h('dt', null, 'Версия'), h('dd', null, `${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}`),
-      h('dt', null, 'Работи на'), h('dd', null, srv.local ? 'този компютър' : 'друг компютър в кабинета')),
+      h('dt', null, 'Програма'), h('dd', null, `DocUp ${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}`),
+      h('dt', null, 'Работи на'), h('dd', null, srv.local ? 'този компютър' : 'друг компютър в кабинета'),
+      h('dt', null, 'Сайт'), h('dd', null,
+        h('a', { href: 'https://docup.health/', target: '_blank', rel: 'noopener noreferrer' }, 'docup.health'))),
     h('div.row', { style: { marginTop: '12px' } },
       h('button.btn', { onclick: () => whatsNew({ all: true }) }, 'Какво е новото'),
       canStopHere()
@@ -477,7 +479,7 @@ function extraBackupCard(srv, rerender) {
   const local = srv.local !== false;
 
   const pathInput = input({
-    value: current, placeholder: 'например E:\\Детска консултация или \\\\сървър\\копия',
+    value: current, placeholder: 'например E:\\DocUp или \\\\сървър\\копия',
     disabled: !local, 'aria-label': 'Папка за външно копие',
   });
 

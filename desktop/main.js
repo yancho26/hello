@@ -1,4 +1,4 @@
-/* Входна точка на инсталираната версия за Windows (DetskaKonsultacia.exe).
+/* Входна точка на инсталираната версия за Windows (DocUp.exe).
  *
  * Изпълнимият файл съдържа Node.js, сървъра и целия интерфейс. При стартиране:
  *   - ако програмата вече работи, само отваря браузъра;
@@ -10,9 +10,13 @@
  *   --stop         спира работещото копие; с --quiet не показва съобщение.
  *
  * Папки (под Windows):
- *   C:\ProgramData\DetskaKonsultacia\data        данните и резервните копия
- *   C:\ProgramData\DetskaKonsultacia\logs        дневник на сървъра
- *   C:\ProgramData\DetskaKonsultacia\config.json порт и други настройки
+ *   C:\ProgramData\DocUp\data        данните и резервните копия
+ *   C:\ProgramData\DocUp\logs        дневник на сървъра
+ *   C:\ProgramData\DocUp\config.json порт и други настройки
+ *
+ * До версия 2.2 програмата се казваше „Детска консултация“ и папката беше
+ * C:\ProgramData\DetskaKonsultacia. Инсталаторът на 3.0 я премества; ако това
+ * не е станало (например файл е бил зает), данните се четат от старото място.
  *
  * Съжителство с другите програми на компютъра:
  *   - ако портът (8080) е зает от друга програма, се избира следващ свободен
@@ -29,10 +33,10 @@ import util from 'node:util';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { Store } from '../lib/store.js';
-import { APP_ID, banner, createAppServer, localAddresses } from '../lib/http.js';
+import { APP_ID, LEGACY_APP_IDS, banner, createAppServer, localAddresses } from '../lib/http.js';
 import { diskStatic, memoryStatic } from '../lib/static.js';
 
-const TITLE = 'Детска консултация';
+const TITLE = 'DocUp';
 const IS_WINDOWS = process.platform === 'win32';
 const sea = process.getBuiltinModule?.('node:sea');
 const IS_SEA = !!sea?.isSea();
@@ -41,9 +45,20 @@ const IS_SEA = !!sea?.isSea();
 
 const args = new Set(process.argv.slice(1).filter(a => a.startsWith('--')));
 
-const HOME = path.resolve(process.env.DETSKA_HOME || (IS_WINDOWS
-  ? path.join(process.env.ProgramData || 'C:\\ProgramData', 'DetskaKonsultacia')
-  : path.join(os.homedir(), '.detska-konsultacia')));
+/** Променлива на средата: новото име DOCUP_…, а старото DETSKA_… още важи. */
+const env = (name) => process.env[`DOCUP_${name}`] || process.env[`DETSKA_${name}`] || '';
+
+function resolveHome() {
+  if (env('HOME')) return { home: path.resolve(env('HOME')), legacy: false };
+  const base = IS_WINDOWS ? (process.env.ProgramData || 'C:\\ProgramData') : os.homedir();
+  const current = path.join(base, IS_WINDOWS ? 'DocUp' : '.docup');
+  const old = path.join(base, IS_WINDOWS ? 'DetskaKonsultacia' : '.detska-konsultacia');
+  const used = (dir) => fs.existsSync(path.join(dir, 'config.json')) || fs.existsSync(path.join(dir, 'data', 'practice.json'));
+  if (!used(current) && used(old)) return { home: old, legacy: true };
+  return { home: current, legacy: false };
+}
+
+const { home: HOME, legacy: LEGACY_HOME } = resolveHome();
 const CONFIG_FILE = path.join(HOME, 'config.json');
 const CONTROL_FILE = path.join(HOME, 'control.json');
 const LOG_DIR = path.join(HOME, 'logs');
@@ -51,8 +66,12 @@ const LOG_DIR = path.join(HOME, 'logs');
 /* Бележки за „Настройки → Сигурност и компютър“: неща от средата, които
  * програмата е заобиколила. */
 const envNotes = [];
+if (LEGACY_HOME) {
+  envNotes.push(`Данните са в старата папка ${HOME} (отпреди преименуването на DocUp). Всичко работи; `
+    + 'при следващо обновяване инсталаторът ще опита отново да ги премести.');
+}
 if (IS_SEA && process.env.NODE_OPTIONS) {
-  envNotes.push('На компютъра има системна настройка NODE_OPTIONS от друга програма — „Детска консултация“ не я използва.');
+  envNotes.push('На компютъра има системна настройка NODE_OPTIONS от друга програма — DocUp не я използва.');
   delete process.env.NODE_OPTIONS; // и не я предава на прозорците, които отваря
 }
 
@@ -138,7 +157,7 @@ function setupLogging() {
 /* ------------------------------ системни неща ----------------------------- */
 
 function openBrowser(url) {
-  if (process.env.DETSKA_NO_BROWSER) return;
+  if (env('NO_BROWSER')) return;
   let cmd;
   let cmdArgs;
   if (IS_WINDOWS) {
@@ -163,7 +182,7 @@ function openBrowser(url) {
 /** Показва прозорец със съобщение. Под Windows — чрез вградения PowerShell. */
 function messageBox(text, { error = false } = {}) {
   (error ? console.error : console.log)('[съобщение]', text.replace(/\n/g, ' '));
-  if (!IS_WINDOWS || process.env.DETSKA_NO_DIALOGS) return Promise.resolve();
+  if (!IS_WINDOWS || env('NO_DIALOGS')) return Promise.resolve();
   return new Promise(resolve => {
     const script = 'Add-Type -AssemblyName System.Windows.Forms; '
       + '[void][System.Windows.Forms.MessageBox]::Show($env:DK_TEXT, $env:DK_TITLE, '
@@ -203,7 +222,10 @@ function probe(host, port) {
       res.on('data', chunk => { raw += chunk; });
       res.on('end', () => {
         try {
-          resolve(JSON.parse(raw).app === APP_ID ? 'ours' : 'other');
+          // Работеща „Детска консултация“ (преди преименуването) също е „наша“ —
+          // второ копие върху същите данни не бива да се стартира.
+          const app = JSON.parse(raw).app;
+          resolve(app === APP_ID || LEGACY_APP_IDS.includes(app) ? 'ours' : 'other');
         } catch {
           resolve('other');
         }
@@ -390,7 +412,7 @@ async function main() {
       console.error('[управление] control.json не е записан:', err.message);
     }
     console.log(`${TITLE} ${version} (${IS_SEA ? 'вграден' : 'от изходен код'}), PID ${process.pid}`
-      + banner({ port, dataDir, stopHint: 'Спиране: „Спиране на Детска консултация“ в менюто Старт' }));
+      + banner({ port, dataDir, stopHint: 'Спиране: „Спиране на DocUp“ в менюто Старт' }));
     for (const note of [portNote, ...envNotes].filter(Boolean)) console.log('[среда]', note);
     if (!background) openBrowser(url);
     if (portNote && host !== '127.0.0.1') {
