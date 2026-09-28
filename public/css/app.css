@@ -789,3 +789,25 @@ select.mapped { border-color: var(--ok); font-weight: 600; }
   width: 64px; height: 64px; margin: 0 auto 10px; border-radius: 50%; background: var(--ok-soft); color: var(--ok);
   display: grid; place-items: center; font-size: 34px; font-weight: 700;
 }
+
+/* ------------------------- модули за специалисти ------------------------- */
+
+.pct-bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; min-width: 80px; }
+.pct-bar > div { height: 100%; border-radius: 3px; }
+.path-table tr.selected td { background: var(--brand-soft); font-weight: 600; }
+.agp-bar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 6px; }
+.agp-bar > div { height: 100%; }
+.nodule { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; background: var(--surface-2); }
+.nodule .btn.xs { margin-left: 2px; }
+.nodule-preview { padding: 10px 12px; border-radius: var(--radius-sm); background: var(--brand-soft); min-height: 44px; }
+details.worklist { border-top: 1px solid var(--line); }
+details.worklist:first-child { border-top: 0; }
+details.worklist > summary { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; font-weight: 600; }
+details.worklist > summary::-webkit-details-marker { display: none; }
+details.worklist > summary::before { content: '▸'; color: var(--ink-3); transition: transform .15s; }
+details.worklist[open] > summary::before { transform: rotate(90deg); }
+details.worklist[open] > summary { background: var(--surface-2); }
+@media print {
+  details.worklist > summary::before { content: ''; }
+  .agp-bar > div { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

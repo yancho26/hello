@@ -396,6 +396,10 @@ export function lastDone(patient, reqId) {
       if (a.tool === tool && (!last || a.date > last)) last = a.date;
     }
   }
+  // Структурираните изследвания на специалиста (ЕКГ, ехокардиография, преглед на стъпалата).
+  for (const s of patient.studies || []) {
+    if ((req.codes || []).includes(s.kind) && (!last || s.date > last)) last = s.date;
+  }
   return last;
 }
 

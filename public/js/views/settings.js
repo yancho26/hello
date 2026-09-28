@@ -11,6 +11,7 @@ import { formatDate } from '../shared/dates.js';
 import { CALENDAR_VERIFIED, GROUPS } from '../shared/calendar.js';
 import { CV_REGIONS } from '../shared/clinical.js';
 import { downloadTemplate, openImportDialog } from './import-dialog.js';
+import { MODULES } from '../shared/specialty.js';
 
 let scheduleTrack = 'child';
 
@@ -97,7 +98,31 @@ async function practiceTab(rerender) {
       'Калибрирането на SCORE2 и SCORE2-Diabetes по сърдечно-съдовата смъртност в страната. България е в региона с много висок риск.')),
     h('div.full', null, h('button.btn.primary', { type: 'submit' }, 'Запази')));
 
-  return card('Данни на практиката', { icon: '🏥' }, form);
+  return h('div.stack', null, card('Данни на практиката', { icon: '🏥' }, form), modulesCard(rerender));
+}
+
+/** Модули за специалисти от извънболничната помощ — включват се за цялата практика. */
+function modulesCard(rerender) {
+  const on = state.settings.modules || {};
+  const toggle = async (id, value, box) => {
+    try {
+      await api.updateSettings({ modules: { [id]: value } });
+      await refreshBootstrap();
+      toast(value ? `Модулът „${MODULES[id].name}“ е включен — в досиетата на възрастните има нов раздел.` : `Модулът „${MODULES[id].name}“ е изключен. Въведените данни се пазят.`, 'ok');
+      rerender();
+    } catch (err) {
+      box.checked = !value;
+      toast(err.message, 'error');
+    }
+  };
+  return card('Модули за специалисти (СИМП)', { icon: '🧩' },
+    h('p.small.muted', null, 'За кабинети на специалисти и медицински центрове. Всеки модул добавя раздел в досието на възрастен пациент, '
+      + 'консултативно заключение за личния лекар и списък за действие в „Справки“.'),
+    h('div.stack', { style: { gap: '10px' } }, Object.entries(MODULES).map(([id, m]) => {
+      const box = h('input', { type: 'checkbox', checked: !!on[id] });
+      box.addEventListener('change', () => toggle(id, box.checked, box));
+      return h('label.check', null, box, h('span', null, h('strong', null, `${m.icon} ${m.name}`), h('div.tiny.dim', null, m.about)));
+    })));
 }
 
 /* ------------------------------- потребители --------------------------------- */
@@ -153,8 +178,10 @@ function doctorDialog(doctor, rerender) {
       form = h('form.form-grid', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div.full', null, field('Име', input({ name: 'name', required: true, value: doctor ? doctor.name : '' }))),
         h('div.full', null, field('Длъжност', input({
-          name: 'role', value: doctor ? doctor.role || '' : 'Общопрактикуващ лекар',
-        }))),
+          name: 'role', value: doctor ? doctor.role || '' : 'Общопрактикуващ лекар', list: 'roleChoices',
+        }), 'Изберете от списъка или напишете своя.'),
+        h('datalist#roleChoices', null, ['Общопрактикуващ лекар', 'Кардиолог', 'Ендокринолог', 'Педиатър', 'Медицинска сестра', 'Регистратор']
+          .map(r => h('option', { value: r })))),
         h('div', null, field(doctor ? 'Нов ПИН' : 'ПИН',
           input({ name: 'pin', type: 'password', inputmode: 'numeric', pattern: '\\d{4,8}' }),
           '4–8 цифри')),

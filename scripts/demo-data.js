@@ -394,6 +394,58 @@ function makeAdults(store, t) {
         else delete p.records['ad-zoster-2'];
       }
 
+      /* --- изследвания на специалистите (модули „Кардиология“ и „Ендокринология“) --- */
+      p.studies = [];
+      p.nodules = [];
+      const study = (date, kind, values, text = '') => p.studies.push({
+        id: `demo-st-${n}-${p.studies.length}`, date, kind, values, text, doctorId: p.doctorId, recordedAt: date + 'T10:00:00.000Z',
+      });
+      if (profile === 'af') {
+        const hr = Math.round(between(72, 96));
+        study(addDays(t, -Math.floor(between(20, 120))), 'ecg', { rhythm: 'af', hr, qrs: Math.round(between(88, 112)), qt: Math.round(between(360, 410)), lbbb: false }, 'Предсърдно мъждене с умерена камерна честота.');
+        if (k === 2) {
+          study(addMonths(t, -14), 'echo', { ef: 30, lvedd: 64, lavi: 44, ee: 15.5, trv: 2.9, tapse: 16 }, 'Дилатативна кардиомиопатия, глобална хипокинезия.');
+          study(addMonths(t, -3), 'echo', { ef: 34, lvedd: 62, lavi: 41, ee: 14.2, trv: 2.7, tapse: 17 }, 'Леко подобрение на систолната функция.');
+          study(addMonths(t, -3), 'nyha', { nyha: 2 });
+          res(addMonths(t, -3), 'ntprobnp', 1850);
+          res(addMonths(t, -9), 'ntprobnp', 2900);
+        }
+      }
+      if (profile === 'htn' && k < 2) {
+        const day = Math.round(bpBase + between(-4, 4));
+        study(addDays(t, -Math.floor(between(30, 200))), 'abpm', {
+          sys24: day - 4, dia24: Math.round((day - 4) * 0.6), sysDay: day, diaDay: Math.round(day * 0.62),
+          sysNight: Math.round(day * (k === 0 ? 0.97 : 0.86)), diaNight: Math.round(day * 0.52), valid: 88,
+        });
+      }
+      if (profile === 'metabolic' && k < 3) {
+        study(addDays(t, -Math.floor(between(20, 90))), 'smbg', { days: 30, fasting: r1(hba1c > 7.5 ? between(8.2, 9.6) : between(6.2, 7.1), 1), post: r1(hba1c > 7.5 ? between(10.5, 12.8) : between(8.2, 9.8), 1), hypo: k === 1 ? 2 : 0, hypo2: 0, severe: 0 });
+        study(addDays(t, -Math.floor(between(60, 300))), 'foot', { lops: k === 0, pad: false, deformity: k === 0, ulcerHistory: false, amputation: false, esrd: false, ulcer: false }, k === 0 ? 'Намалена вибрационна и тактилна чувствителност, Hallux valgus.' : 'Без находка.');
+        if (k === 0) {
+          med('insulin_glargine', 'ед.', { b: String(Math.round(weight0 * 0.55)) }, { indication: 'dm2', protocol: true });
+          study(addDays(t, -14), 'cgm', { days: 14, active: 94, tir: 54, low: 2.6, veryLow: 0.6, high: 31, veryHigh: 11.8, mean: 9.8, cv: 34.5 });
+        }
+      }
+      if (profile === 'thyroid') {
+        const last = p.results.filter(r => r.code === 'tsh').sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+        if (last) res(last.date, 'ft4', last.value > 4 ? between(10.8, 12.5) : between(13.5, 17.5));
+        res(addMonths(t, -30), 'atpo', between(180, 620));
+        if (k === 0) {
+          p.nodules.push({
+            id: `demo-nd-${n}-1`, lobe: 'right', location: 'среден сегмент', status: 'active', createdAt: addMonths(t, -26) + 'T10:00:00.000Z',
+            exams: [
+              { id: `demo-ue-${n}-1`, date: addMonths(t, -26), dims: [11, 9, 8], composition: 'solid', echogenicity: 'mild', shape: 'oval', margins: 'smooth', microcalc: false, note: '', category: 4 },
+              { id: `demo-ue-${n}-2`, date: addMonths(t, -13), dims: [13, 10, 9], composition: 'solid', echogenicity: 'mild', shape: 'oval', margins: 'smooth', microcalc: false, note: '', category: 4 },
+            ],
+            fna: [],
+          }, {
+            id: `demo-nd-${n}-2`, lobe: 'left', location: 'долна трета', status: 'active', createdAt: addMonths(t, -13) + 'T10:00:00.000Z',
+            exams: [{ id: `demo-ue-${n}-3`, date: addMonths(t, -13), dims: [24, 18, 15], composition: 'mixed', echogenicity: 'iso', shape: 'oval', margins: 'smooth', microcalc: false, note: '', category: 3 }],
+            fna: [{ id: `demo-fn-${n}-1`, date: addMonths(t, -12), bethesda: 2, note: 'колоиден възел' }],
+          });
+        }
+      }
+
       if (rnd() < 0.15) {
         p.reminders.push({
           id: 'demo-ar-' + n, date: addDays(t, Math.floor(between(-15, 30))),
@@ -429,7 +481,10 @@ function main() {
     { id: 'demo-doc-1', name: 'д-р Мария Иванова', role: 'Общопрактикуващ лекар', pin: null, active: true },
     { id: 'demo-doc-2', name: 'д-р Петър Стоянов', role: 'Общопрактикуващ лекар', pin: hashPin('1234'), active: true },
   ];
-  store.data.settings = { horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '', cvRegion: 'very_high' };
+  store.data.settings = {
+    horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '', cvRegion: 'very_high',
+    modules: { cardio: true, endo: true },
+  };
   // Примерните данни са „нови“ — без прозорец „Какво е новото“ при първото отваряне.
   store.data.appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
   store.data.patients = [];

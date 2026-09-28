@@ -6,6 +6,7 @@ import { state } from '../app.js';
 import { card, empty, h, mount, stat, table } from '../ui/components.js';
 import { formatAge, formatDate } from '../shared/dates.js';
 import { setPatientsView } from './patients.js';
+import { MODULES, enabledModules } from '../shared/specialty.js';
 
 const bar = (pct, colour) => h('div.row.tight', null,
   h('span.mono', { style: { color: colour, fontWeight: '650', minWidth: '42px' } }, pct === null ? '—' : pct + '%'),
@@ -15,9 +16,11 @@ const colourFor = (pct) => (pct >= 95 ? 'var(--ok)' : pct >= 80 ? 'var(--warn)' 
 const controlColour = (pct) => (pct >= 70 ? 'var(--ok)' : pct >= 50 ? 'var(--warn)' : 'var(--danger)');
 
 export async function renderReports(host) {
-  const [reports, tasks] = await Promise.all([
+  const modules = enabledModules(state.settings);
+  const [reports, tasks, ...worklists] = await Promise.all([
     api.reports(),
     api.tasks({ horizon: 1 }),
+    ...modules.map(m => api.specialty(m).catch(() => null)),
   ]);
 
   const t = reports.totals;
@@ -107,6 +110,8 @@ export async function renderReports(host) {
         + 'при дислипидемия и атеросклеротично ССЗ, TSH, пикочна киселина, бъбречна функция, PHQ-9/GAD-7. '
         + 'Процентът е от пациентите с данни. Щракнете върху ред за списъка.') : null),
 
+    worklists.filter(Boolean).map(w => [h('div', { style: { height: '16px' } }), worklistCard(w)]),
+
     h('div', { style: { height: '16px' } }),
 
     h('div.grid.cols-2', null,
@@ -141,4 +146,20 @@ export async function renderReports(host) {
     h('p.tiny.muted', { style: { marginTop: '14px' } },
       'Обхватът при децата се изчислява по задължителните имунизации, чийто срок вече е настъпил; отказът на родител се брои като неимунизиран. '
       + 'Профилактиката при възрастните включва текущите задължителни дейности по календара — годишен преглед, скрининги и Td.'));
+}
+
+/** Списък за действие по модул на специалист: групи сигнали с пациентите. */
+function worklistCard(w) {
+  const m = MODULES[w.module];
+  const total = new Set(w.groups.flatMap(g => g.patients.map(p => p.id))).size;
+  return card(`${m.name} — списък за действие`, { icon: m.icon, tight: true },
+    w.groups.length
+      ? h('div', null, w.groups.map(g => h('details.worklist', null,
+        h('summary', null, h('span.grow', null, g.label), h('span.badge.' + (g.patients.some(p => p.severity >= 3) ? 'overdue' : g.patients.some(p => p.severity === 2) ? 'due' : 'soon'), null, g.patients.length)),
+        table(['Пациент', 'Възраст', 'Какво'], g.patients.map(p => h('tr.clickable', { onclick: () => { location.hash = '#/patient/' + p.id; } },
+          h('td.name-cell', null, p.name),
+          h('td.small.nowrap', null, formatAge(p.birthDate)),
+          h('td.small', null, p.text)))))),
+      h('div.body.tiny.muted', null, `Прегледани ${w.considered} досиета на възрастни, свързани с модула; ${total} пациенти със сигнал. Щракнете върху група за списъка.`))
+      : empty(`Няма сигнали в ${w.considered} прегледани досиета.`, '✓'));
 }

@@ -103,6 +103,16 @@ export const api = {
   nutrition: (id, data) => request('POST', `/api/patients/${id}/nutrition`, data),
   deleteNutrition: (id, nid) => request('DELETE', `/api/patients/${id}/nutrition/${nid}`),
 
+  addStudy: (id, data) => request('POST', `/api/patients/${id}/studies`, data),
+  deleteStudy: (id, sid) => request('DELETE', `/api/patients/${id}/studies/${sid}`),
+  addNodule: (id, data) => request('POST', `/api/patients/${id}/nodules`, data),
+  updateNodule: (id, nid, data) => request('PATCH', `/api/patients/${id}/nodules/${nid}`, data),
+  deleteNodule: (id, nid) => request('DELETE', `/api/patients/${id}/nodules/${nid}`),
+  addNoduleExam: (id, nid, data) => request('POST', `/api/patients/${id}/nodules/${nid}/exams`, data),
+  addNoduleFna: (id, nid, data) => request('POST', `/api/patients/${id}/nodules/${nid}/fna`, data),
+  deleteNoduleEntry: (id, nid, list, eid) => request('DELETE', `/api/patients/${id}/nodules/${nid}/${list}/${eid}`),
+  specialty: (module, params) => request('GET', `/api/specialty/${module}` + qs(params)),
+
   tasks: (params) => request('GET', '/api/tasks' + qs(params)),
   reports: (params) => request('GET', '/api/reports' + qs(params)),
   audit: (limit) => request('GET', '/api/audit' + qs({ limit })),

@@ -34,9 +34,15 @@ const PAIRS = [
   ['ACEI', 'ARNI', 'contra', 'Висок риск от ангиоедем.', 'АСЕ-инхибиторът се спира поне 36 часа преди сакубитрил/валсартан.'],
   ['ACEI', 'MRA', 'moderate', 'Риск от хиперкалиемия.', 'Калий и креатинин след 1 седмица и на 1, 2, 3 и 6 месец, после периодично.'],
   ['ARB', 'MRA', 'moderate', 'Риск от хиперкалиемия.', 'Калий и креатинин след започване и периодично.'],
+  ['ACEI', 'FINERENONE', 'moderate', 'Риск от хиперкалиемия.', 'Калий след 4 седмици и периодично; не започвайте при калий >5,0.'],
+  ['ARB', 'FINERENONE', 'moderate', 'Риск от хиперкалиемия.', 'Калий след 4 седмици и периодично; не започвайте при калий >5,0.'],
   ['ACEI', 'K_SUPPLEMENT', 'major', 'Хиперкалиемия.', 'Калиеви добавки само при документирана хипокалиемия и с контрол на калия.'],
   ['ARB', 'K_SUPPLEMENT', 'major', 'Хиперкалиемия.', 'Калиеви добавки само при документирана хипокалиемия и с контрол на калия.'],
   ['MRA', 'K_SUPPLEMENT', 'major', 'Хиперкалиемия.', 'Избягвайте комбинацията.'],
+  ['FINERENONE', 'MRA', 'contra', 'Два минералкортикоидни антагониста — тежка хиперкалиемия.', 'Финеренонът не се комбинира със спиронолактон или еплеренон.'],
+  ['FINERENONE', 'K_SUPPLEMENT', 'major', 'Хиперкалиемия.', 'Избягвайте комбинацията.'],
+  ['FINERENONE', 'CYP3A4_STRONG', 'contra', 'Силните CYP3A4 инхибитори повишават многократно нивото на финеренон.', 'Спрете финеренона за времето на лечението.'],
+  ['FINERENONE', 'TMP_SMX', 'major', 'Хиперкалиемия.', 'Изберете друг антибиотик или изследвайте калия.'],
   ['ACEI', 'TMP_SMX', 'major', 'Триметопримът задържа калий — хиперкалиемия, особено при възрастни и ХБЗ.', 'Изберете друг антибиотик или изследвайте калия.'],
   ['ARB', 'TMP_SMX', 'major', 'Триметопримът задържа калий — хиперкалиемия.', 'Изберете друг антибиотик или изследвайте калия.'],
   ['MRA', 'TMP_SMX', 'major', 'Хиперкалиемия.', 'Изберете друг антибиотик.'],
@@ -162,6 +168,7 @@ const RENAL = [
   ['GLP1', 15, 'egfr', 'major', 'Не се препоръчва при терминална бъбречна недостатъчност.'],
   ['NSAID', 30, 'egfr', 'contra', 'Избягвайте НСПВС при eGFR <30.'],
   ['NSAID', 60, 'egfr', 'moderate', 'eGFR <60: възможно най-кратко, с контрол на креатинина.'],
+  ['finerenone', 25, 'egfr', 'moderate', 'Не започвайте при eGFR <25; вече започнато лечение може да продължи до диализа.'],
   ['MRA', 30, 'egfr', 'major', 'eGFR <30: висок риск от хиперкалиемия — избягвайте.'],
   ['MRA', 45, 'egfr', 'moderate', 'eGFR 30–44: по-ниска доза и чест контрол на калия.'],
   ['K_SUPPLEMENT', 45, 'egfr', 'major', 'Хиперкалиемия при намалена бъбречна функция.'],
@@ -270,10 +277,12 @@ const MONITORING = [
   ['ACEI', 'renal', 12], ['ACEI', 'k', 12],
   ['ARB', 'renal', 12], ['ARB', 'k', 12],
   ['MRA', 'renal', 6], ['MRA', 'k', 6],
+  ['FINERENONE', 'renal', 12], ['FINERENONE', 'k', 4],
   ['THIAZIDE', 'renal', 12], ['THIAZIDE', 'k', 12], ['THIAZIDE', 'na', 12],
   ['LOOP', 'renal', 12], ['LOOP', 'k', 12],
   ['DIGOXIN', 'renal', 12], ['DIGOXIN', 'k', 12],
-  ['STATIN', 'lipids', 12],
+  ['STATIN', 'lipids', 12], ['EZETIMIBE', 'lipids', 12], ['PCSK9', 'lipids', 12],
+  ['PCSK9_SIRNA', 'lipids', 12], ['BEMPEDOIC', 'lipids', 12],
   ['FIBRATE', 'renal', 12], ['FIBRATE', 'liver', 12],
   ['METFORMIN', 'renal', 12], ['METFORMIN', 'b12', 24],
   ['SGLT2', 'renal', 12],
@@ -560,6 +569,7 @@ export const FOOD_INTERACTIONS = table({
   ACEI: 'Без солеви заместители с калий (KCl) — риск от хиперкалиемия.',
   ARB: 'Без солеви заместители с калий (KCl) — риск от хиперкалиемия.',
   MRA: 'Без солеви заместители с калий; внимание с храни, много богати на калий.',
+  FINERENONE: 'Без солеви заместители с калий и без грейпфрут и сок от грейпфрут.',
   THIAZIDE: 'Храни, богати на калий (ако няма ограничение), компенсират загубата му.',
   LOOP: 'Храни, богати на калий (ако няма ограничение), компенсират загубата му.',
   LEVOTHYROXINE: 'На гладно с вода, 30–60 минути преди закуска; кафе, мляко, соя, калций и желязо — поне 4 часа по-късно.',
@@ -595,6 +605,65 @@ export function foodNotes(patient, asOf = today()) {
   }
   return out;
 }
+
+/* ------------------------------ числова доза ------------------------------ */
+
+const FRACTIONS = table({ '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3 });
+
+/** Брой таблетки (единици) в едно поле на приема: „1“, „½“, „1/2“, „0,5“, „1½“. */
+export function parseCount(value) {
+  const s = String(value ?? '').trim().replace(',', '.');
+  if (!s || s === '-' || s === '—') return 0;
+  let m = /^(\d+)?\s*([½¼¾⅓⅔])$/.exec(s);
+  if (m) return (m[1] ? Number(m[1]) : 0) + FRACTIONS[m[2]];
+  m = /^(\d+)\s*\/\s*(\d+)$/.exec(s);
+  if (m && Number(m[2]) > 0) return Number(m[1]) / Number(m[2]);
+  const n = Number(s);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Количеството в един прием от полето „Доза“: число и единица.
+ * „5 мг“ → 5 mg; „2,5mg“ → 2,5 mg; „49/51 мг“ → 49 mg (първата съставка);
+ * „75 мкг“ → 75 µg; „18 ед.“ → 18 U. Без число → null.
+ */
+export function parseDose(text) {
+  const s = String(text ?? '').toLowerCase().replace(/\s+/g, ' ');
+  const m = /(\d+(?:[.,]\d+)?)/.exec(s);
+  if (!m) return null;
+  const amount = Number(m[1].replace(',', '.'));
+  if (!(amount > 0)) return null;
+  // Мерната единица е веднага след числото (или след „/51“ при комбинация).
+  const rest = s.slice(m.index + m[0].length).replace(/^\s*(?:\/\s*\d+(?:[.,]\d+)?\s*)*/, '');
+  if (/^(мкг|mcg|µg|μg|ug)/.test(rest)) return { amount, unit: 'µg' };
+  if (/^(ед|iu|u\b|unit|единиц|e\.)/.test(rest)) return { amount, unit: 'U' };
+  if (/^(g\b|гр?(?![а-я]))/.test(rest)) return { amount: amount * 1000, unit: 'mg' };
+  return { amount, unit: 'mg' };
+}
+
+/**
+ * Дневното количество на лекарство: доза × брой приеми от разписанието.
+ * Когато в „Доза“ няма число, а в полетата на приема има (обичайно за
+ * инсулин: 10 – 0 – 8), числата от приема се приемат за единици.
+ * Връща { perIntake, unit, intakes, daily } или null, ако не може да се изчисли.
+ */
+export function dailyDose(m) {
+  if (!m || m.prn) return null;
+  const counts = SCHEDULE_SLOTS.map(([k]) => parseCount(m.schedule?.[k]));
+  if (counts.some(c => c === null)) return null;
+  const sum = counts.reduce((a, b) => a + b, 0);
+  const dose = parseDose(m.dose);
+  if (dose && sum > 0) {
+    const intakes = counts.filter(c => c > 0).length;
+    return { perIntake: dose.amount * Math.max(...counts), unit: dose.unit, intakes, daily: round6(dose.amount * sum) };
+  }
+  if (!dose && sum > 0 && m.drug && classesOf(m.drug).has('INSULIN')) {
+    return { perIntake: Math.max(...counts), unit: 'U', intakes: counts.filter(c => c > 0).length, daily: round6(sum) };
+  }
+  return null;
+}
+
+const round6 = (v) => Math.round(v * 1e6) / 1e6;
 
 export const monthsLeft = (m, asOf = today()) =>
   m.protocolUntil ? Math.round(daysBetween(asOf, m.protocolUntil) / 30.44) : null;

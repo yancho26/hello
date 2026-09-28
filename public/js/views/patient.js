@@ -18,7 +18,7 @@ import { historyDialog } from './history-dialog.js';
 import { printImmunisationCard } from './print.js';
 import { developmentTab } from './development.js';
 import { planRow } from './plan-row.js';
-import { ADULT_TABS, ADULT_VIEWS, adultHeaderAlerts, adultTabCount } from './adult-patient.js';
+import { ADULT_VIEWS, adultHeaderAlerts, adultTabCount, adultTabs } from './adult-patient.js';
 import { nutritionTab } from './nutrition-view.js';
 import { dosingTab } from './dosing.js';
 import { printAdultSummary, printMedList } from './adult-print.js';
@@ -54,7 +54,7 @@ export async function renderPatient(host, id) {
     openTab: (tab) => { activeTab = tab; renderTab(); },
     addVisit: (type) => addVisitDialog(ctx, type),
   };
-  const tabs = isAdult ? ADULT_TABS : TABS;
+  const tabs = isAdult ? adultTabs() : TABS;
   if (!tabs.some(t => t.id === activeTab)) activeTab = 'overview';
 
   const tabBar = h('div.tabs.no-print', null, tabs.map(t => {

@@ -15,6 +15,7 @@ import {
 import { activeMeds, checkMedications, foodNotes, medMonitoring, renewals } from './meds.js';
 import { classesOf } from './drugs.js';
 import { mentalSummary } from './mental.js';
+import { endoMonitoring } from './endo.js';
 
 const years = (p, asOf) => ageInMonthsExact(p.birthDate, asOf) / 12;
 
@@ -154,7 +155,7 @@ export function adultSummary(p, { asOf = today(), region = 'very_high', horizonD
     calculators.fib4 = fib4(age, labs.ast.value, labs.alt.value, labs.plt.value);
   }
 
-  const monitoringExtra = medMonitoring(p, { crcl }, asOf);
+  const monitoringExtra = [...medMonitoring(p, { crcl }, asOf), ...endoMonitoring(p)];
   const monitoring = monitoringTasks(p, { asOf, horizonDays, extra: monitoringExtra });
 
   const medCtx = {

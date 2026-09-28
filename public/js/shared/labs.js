@@ -34,6 +34,10 @@ export const LABS = table({
     alt: [factor('mg/dL', 1 / 18.016)],
     note: '5,6–6,9 mmol/L — нарушена гликемия на гладно; ≥7,0 — диабет (при потвърждение).',
   },
+  cpep: {
+    name: 'C-пептид', short: 'C-пептид', unit: 'nmol/L', decimals: 2,
+    range: [0.37, 1.47], min: 0, max: 20, group: 'glucose', alt: [factor('ng/mL', 0.331)],
+  },
   tchol: {
     name: 'Общ холестерол', short: 'Общ хол.', unit: 'mmol/L', decimals: 2,
     range: [0, 5.2], min: 1, max: 20, group: 'lipids', alt: [factor('mg/dL', 1 / 38.67)],
@@ -51,6 +55,16 @@ export const LABS = table({
   tg: {
     name: 'Триглицериди', short: 'ТГ', unit: 'mmol/L', decimals: 2,
     range: [0, 1.7], min: 0.1, max: 50, group: 'lipids', alt: [factor('mg/dL', 1 / 88.57)],
+  },
+  lpa: {
+    name: 'Липопротеин(а) в mg/dL', short: 'Lp(a)', unit: 'mg/dL', decimals: 0,
+    range: [0, 30], min: 0, max: 600, group: 'lipids', alt: [factor('g/L', 100)],
+    note: 'Изследва се поне веднъж в живота. >50 mg/dL повишава сърдечно-съдовия риск (ESC/EAS 2025).',
+  },
+  lpan: {
+    name: 'Липопротеин(а) в nmol/L', short: 'Lp(a) nmol', unit: 'nmol/L', decimals: 0,
+    range: [0, 62], min: 0, max: 1500, group: 'lipids',
+    note: 'Когато лабораторията дава резултата в nmol/L. >105 nmol/L повишава риска. Не се преобразува в mg/dL — връзката зависи от изоформата.',
   },
   creat: {
     name: 'Креатинин', short: 'Креатинин', unit: 'µmol/L', decimals: 0,
@@ -90,7 +104,19 @@ export const LABS = table({
   },
   ft4: {
     name: 'fT4', short: 'fT4', unit: 'pmol/L', decimals: 1,
-    range: [12, 22], min: 1, max: 150, group: 'thyroid',
+    range: [12, 22], min: 1, max: 150, group: 'thyroid', alt: [factor('ng/dL', 12.87)],
+  },
+  ft3: {
+    name: 'fT3', short: 'fT3', unit: 'pmol/L', decimals: 1,
+    range: [3.1, 6.8], min: 0.5, max: 60, group: 'thyroid', alt: [factor('pg/mL', 1.536)],
+  },
+  atpo: {
+    name: 'Антитела срещу тиреоидна пероксидаза (anti-TPO)', short: 'Anti-TPO', unit: 'IU/mL', decimals: 0,
+    range: [0, 34], min: 0, max: 20000, group: 'thyroid', note: 'Границата зависи от метода на лабораторията.',
+  },
+  trab: {
+    name: 'Антитела срещу TSH-рецептора (TRAb)', short: 'TRAb', unit: 'IU/L', decimals: 2,
+    range: [0, 1.75], min: 0, max: 200, group: 'thyroid', note: 'Границата зависи от метода на лабораторията.',
   },
   hb: {
     name: 'Хемоглобин', short: 'Hb', unit: 'g/L', decimals: 0,
@@ -116,6 +142,14 @@ export const LABS = table({
   vitd: {
     name: '25-OH витамин D', short: 'Вит. D', unit: 'nmol/L', decimals: 0,
     range: [50, 125], min: 1, max: 500, group: 'other', alt: [factor('ng/mL', 2.496)],
+  },
+  ca: {
+    name: 'Калций (общ)', short: 'Ca', unit: 'mmol/L', decimals: 2,
+    range: [2.15, 2.55], min: 0.5, max: 5, group: 'other', alt: [factor('mg/dL', 0.2495)],
+  },
+  pth: {
+    name: 'Паратхормон (PTH)', short: 'PTH', unit: 'pg/mL', decimals: 1,
+    range: [15, 65], min: 0, max: 5000, group: 'other', alt: [factor('pmol/L', 9.43)],
   },
   urate: {
     name: 'Пикочна киселина', short: 'Пик. к-на', unit: 'µmol/L', decimals: 0,

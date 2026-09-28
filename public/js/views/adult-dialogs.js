@@ -282,9 +282,11 @@ export function alertStrip(a) {
 const PANELS = [
   { label: 'Диабет', codes: ['hba1c', 'glucose', 'creat', 'uacr', 'tchol', 'ldl', 'hdl', 'tg'] },
   { label: 'Липиден профил', codes: ['tchol', 'ldl', 'hdl', 'tg'] },
+  { label: 'Липопротеин(а)', codes: ['lpa', 'lpan'] },
   { label: 'Бъбреци', codes: ['creat', 'uacr', 'k', 'na'] },
   { label: 'Черен дроб', codes: ['alt', 'ast', 'plt'] },
-  { label: 'Щитовидна жлеза', codes: ['tsh', 'ft4'] },
+  { label: 'Щитовидна жлеза', codes: ['tsh', 'ft4', 'ft3', 'atpo', 'trab'] },
+  { label: 'Сърдечна недостатъчност', codes: ['ntprobnp', 'creat', 'k', 'na', 'hb'] },
   { label: 'Кръвна картина', codes: ['hb', 'plt', 'wbc', 'ferritin'] },
 ];
 

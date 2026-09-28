@@ -23,6 +23,9 @@ import {
   medDialog, openForRequirement, renewDialog, resultsDialog, runsOut, stopMedDialog,
 } from './adult-dialogs.js';
 import { printMedList } from './adult-print.js';
+import { cardioTab } from './cardio-view.js';
+import { endoTab } from './endo-view.js';
+import { MODULES, enabledModules } from '../shared/specialty.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 const lastText = (t) => (t.last ? ` · последно ${formatDate(t.last)}`
@@ -43,9 +46,16 @@ export const ADULT_TABS = [
   { id: 'reminders', label: 'Напомняния' },
 ];
 
+/** Разделите на досието — включените модули на специалистите идват веднага след обзора. */
+export function adultTabs() {
+  const mods = enabledModules(state.settings).map(id => ({ id, label: MODULES[id].name }));
+  return [ADULT_TABS[0], ...mods, ...ADULT_TABS.slice(1)];
+}
+
 /** Броячи до имената на разделите. */
 export function adultTabCount(id, ctx) {
   const { a, p, data } = ctx;
+  if (MODULES[id]) return (data.specialty?.[id]?.alerts || []).filter(x => x.severity >= 2).length;
   if (id === 'chronic') return a.monitoring.filter(t => t.status === 'overdue' || t.status === 'due').length;
   if (id === 'meds') return a.medAlerts.filter(x => x.severity === 'contra' || x.severity === 'major').length
     + a.renewals.filter(r => r.status === 'overdue').length;
@@ -74,6 +84,8 @@ export function adultHeaderAlerts(ctx) {
 
 export const ADULT_VIEWS = {
   overview: overviewTab,
+  cardio: cardioTab,
+  endo: endoTab,
   chronic: chronicTab,
   meds: medsTab,
   labs: labsTab,
