@@ -166,6 +166,17 @@ VIAddVersionKey /LANG=${LANG_BULGARIAN} "LegalCopyright" "Включва Node.js
   Pop $0
 !macroend
 
+; Правилото на старата програма в защитната стена — по име и по пътя до
+; програмата (така се махат и правилата, които Windows е създал сам).
+!macro RemoveLegacyRule
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${LEGACY_RULE}"'
+  Pop $0
+  ${If} $LegacyDir != ""
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=all program="$LegacyDir\${LEGACY_EXE}"'
+    Pop $0
+  ${EndIf}
+!macroend
+
 ; Старата „Детска консултация“: спиране, преместване на данните и премахване
 ; на програмата, преките пътища, правилото и записа в „Приложения“.
 !macro MigrateLegacy
@@ -214,8 +225,7 @@ VIAddVersionKey /LANG=${LANG_BULGARIAN} "LegalCopyright" "Включва Node.js
     RMDir /r "$SMPROGRAMS\${LEGACY_NAME}"
     Delete "$DESKTOP\${LEGACY_NAME}.lnk"
     Delete "$SMSTARTUP\${LEGACY_NAME}.lnk"
-    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${LEGACY_RULE}"'
-    Pop $0
+    !insertmacro RemoveLegacyRule
     DeleteRegKey HKLM "${LEGACY_KEY}"
     DetailPrint "„${LEGACY_NAME}“ е заменена от ${APP_NAME}."
   ${EndIf}
@@ -331,6 +341,8 @@ Section "-Обновяване" SecUpdate
     nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow program="$INSTDIR\${APP_EXE}" enable=yes profile=private,domain'
     Pop $0
   ${EndIf}
+  ; Още веднъж, след като старата програма е спряла окончателно.
+  !insertmacro RemoveLegacyRule
   DetailPrint "Обновено от $OldVersion до ${VERSION}. Данните и настройките са запазени."
 SectionEnd
 
@@ -358,6 +370,7 @@ Section "Стартиране при влизане в Windows" SecAutostart
 SectionEnd
 
 Section "Достъп от другите компютри в кабинета" SecFirewall
+  !insertmacro RemoveLegacyRule
   DetailPrint "Правило в защитната стена (частни и домейн мрежи)…"
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE}"'
   Pop $0

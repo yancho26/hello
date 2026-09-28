@@ -156,8 +156,11 @@ jobs:
           }
           netsh advfirewall firewall show rule name=DocUp | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Правилото в защитната стена не е пренесено.' }
-          netsh advfirewall firewall show rule name=DocUp | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw 'Старото правило в защитната стена остана.' }
+          netsh advfirewall firewall show rule name=DetskaKonsultacia | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            netsh advfirewall firewall show rule name=DetskaKonsultacia verbose
+            throw 'Старото правило в защитната стена остана.'
+          }
           Write-Host 'Преходът е успешен.'
 
           Write-Host '== Почистване преди основната проверка'
