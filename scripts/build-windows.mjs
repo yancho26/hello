@@ -39,7 +39,13 @@ const EXE_NAME = 'DocUp.exe';
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const BUILD = path.join(ROOT, 'build');
 const CACHE = path.join(BUILD, 'cache');
-const DIST = path.join(ROOT, 'dist');
+const DIST = path.resolve(process.env.DOCUP_DIST || path.join(ROOT, 'dist'));
+
+/* Само за проверката в GitHub: отпечатъци на еднократни тестови ключове,
+ * създадени при сглобяването (DOCUP_TEST_KEY_HASHES=отпечатък,…). Версията,
+ * която се раздава на практиките, се сглобява без тях. */
+const TEST_KEY_HASHES = String(process.env.DOCUP_TEST_KEY_HASHES || '').split(',').map(s => s.trim()).filter(Boolean);
+if (TEST_KEY_HASHES.some(h => !/^[0-9a-f]{64}$/.test(h))) throw new Error('DOCUP_TEST_KEY_HASHES: очакват се SHA-256 отпечатъци.');
 const args = new Set(process.argv.slice(2));
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const VERSION = pkg.version;
@@ -195,7 +201,7 @@ async function bundle(outDir) {
     format: 'cjs',
     target: 'node24',
     outfile,
-    define: { __APP_VERSION__: JSON.stringify(VERSION) },
+    define: { __APP_VERSION__: JSON.stringify(VERSION), __TEST_KEY_HASHES__: JSON.stringify(TEST_KEY_HASHES) },
     legalComments: 'none',
     logLevel: 'warning',
   });
@@ -318,7 +324,8 @@ fs.rmSync(winDir, { recursive: true, force: true });
 fs.mkdirSync(seaDir, { recursive: true });
 fs.mkdirSync(winDir, { recursive: true });
 
-console.log(`DocUp ${VERSION} за Windows x64 · Node.js ${NODE_VERSION}`);
+console.log(`DocUp ${VERSION} за Windows x64 · Node.js ${NODE_VERSION}`
+  + (TEST_KEY_HASHES.length ? ` · ПРОВЕРОЧНА версия с ${TEST_KEY_HASHES.length} тестов ключ` : ''));
 
 const mainFile = await bundle(seaDir);
 const blob = await makeBlob(seaDir, mainFile);

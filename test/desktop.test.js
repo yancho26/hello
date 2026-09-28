@@ -56,13 +56,16 @@ test('данни, останали в старата папка на „Детс
   try {
     const state = await waitFor(`http://127.0.0.1:${port}/api/state`);
     assert.equal(state.app, 'docup');
-    assert.equal(state.practice.name, 'Стара практика');
-    const boot = await waitFor(`http://127.0.0.1:${port}/api/bootstrap`);
-    assert.equal(boot.server.dataDir, legacyData);
-    assert.equal(boot.counts.patients, 1);
-    assert.ok(!fs.existsSync(path.join(home, '.docup', 'data')), 'не се създава празна нова папка');
-    const check = await waitFor(`http://127.0.0.1:${port}/api/system/check`);
-    assert.ok(check.items.some(i => /старата папка/.test(i.title)), 'бележка в проверката на компютъра');
+    // Инсталираната програма иска продуктов ключ, преди да покаже каквото и да е.
+    assert.equal(state.needsActivation, true);
+    assert.equal(state.practice, undefined);
+    const blocked = await fetch(`http://127.0.0.1:${port}/api/bootstrap`);
+    assert.equal(blocked.status, 403);
+    assert.equal((await blocked.json()).needsActivation, true);
+    // Програмата работи от старата папка: там са control.json и дневникът.
+    assert.ok(fs.existsSync(path.join(home, '.detska-konsultacia', 'control.json')));
+    assert.ok(fs.existsSync(path.join(home, '.detska-konsultacia', 'logs', 'server.log')));
+    assert.ok(!fs.existsSync(path.join(home, '.docup')), 'не се създава празна нова папка');
   } finally {
     child.kill();
     await exited(child);

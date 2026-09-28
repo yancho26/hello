@@ -23,4 +23,4 @@ if [ ! -f ./demo-data/practice.json ]; then
   DATA_DIR=./demo-data node scripts/demo-data.js --force
 fi
 
-DATA_DIR=./demo-data node server.js
+DOCUP_DEMO=1 DATA_DIR=./demo-data node server.js

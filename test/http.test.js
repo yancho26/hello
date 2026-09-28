@@ -12,6 +12,7 @@ async function withServer(opts, fn) {
   const store = new Store(dir);
   const server = createAppServer({
     store,
+    requireActivation: false,
     serveStatic: memoryStatic({ 'index.html': '<!doctype html><title>t</title>', 'js/app.js': 'x=1' }),
     ...opts(store),
   });

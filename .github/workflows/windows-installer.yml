@@ -57,6 +57,20 @@ jobs:
           path: dist/
           retention-days: 90
           if-no-files-found: error
+      # Истинските продуктови ключове не са в хранилището. За проверката се
+      # сглобява отделна версия, която приема и един еднократен ключ, създаден
+      # тук. Тя се пази един ден и не е за раздаване.
+      - name: Проверочна версия с еднократен тестов ключ
+        run: |
+          HASH=$(node --input-type=module -e "import fs from 'node:fs'; import { generateKey, keyHash, formatKey } from './lib/license.js'; const k = generateKey(); fs.writeFileSync('test-key.txt', formatKey(k)); console.log(keyHash(k));")
+          DOCUP_TEST_KEY_HASHES=$HASH DOCUP_DIST=dist-test npm run build:win
+          mv test-key.txt dist-test/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-build
+          path: dist-test/
+          retention-days: 1
+          if-no-files-found: error
 
   build-legacy:
     name: Сглобяване на „Детска консултация“ 2.2.0 (за прехода)
@@ -92,7 +106,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: DocUp-Setup
+          name: smoke-test-build
           path: dist
       - uses: actions/download-artifact@v4
         with:
@@ -139,6 +153,12 @@ jobs:
             throw 'DocUp не тръгна след прехода.'
           }
           if (-not (Test-Path $new)) { throw 'DocUp.exe липсва.' }
+          # След обновяването DocUp иска продуктов ключ, преди да покаже данните.
+          if (-not $st.needsActivation) { throw 'DocUp не поиска продуктов ключ.' }
+          $blocked = Invoke-WebRequest "$base/api/patients" -WebSession $s -SkipHttpErrorCheck -UseBasicParsing
+          if ($blocked.StatusCode -ne 403) { throw "Данните се виждат без ключ ($($blocked.StatusCode))." }
+          $key = (Get-Content dist\test-key.txt -Raw).Trim()
+          Invoke-RestMethod -Method Post "$base/api/activate" -Body (@{ key = $key } | ConvertTo-Json) -ContentType 'application/json' | Out-Null
           if (Test-Path 'C:\Program Files\DetskaKonsultacia') { throw 'Старата папка на програмата остана.' }
           if (Test-Path 'C:\ProgramData\DetskaKonsultacia') { throw 'Данните не са преместени.' }
           $data = Get-Content 'C:\ProgramData\DocUp\data\practice.json' -Raw -Encoding utf8 | ConvertFrom-Json
@@ -230,6 +250,18 @@ jobs:
           $code = & curl.exe -s -o NUL -w '%{http_code}' -H "Host: $($env:COMPUTERNAME):8080" "$base/api/state"
           if ($code -ne '200') { throw "Името на компютъра в Host върна $code." }
           Get-Process DocUp | Format-Table Id, ProcessName, MainWindowHandle, WorkingSet64
+
+          Write-Host '== Активиране с продуктов ключ'
+          $st = Invoke-RestMethod "$base/api/state"
+          if (-not $st.needsActivation) { throw 'Програмата не поиска продуктов ключ.' }
+          $code = (Invoke-WebRequest -Method Post "$base/api/setup" -Body '{}' -ContentType 'application/json' -SkipHttpErrorCheck -UseBasicParsing).StatusCode
+          if ($code -ne 403) { throw "Настройката е достъпна без ключ ($code)." }
+          $code = (Invoke-WebRequest -Method Post "$base/api/activate" -Body (@{ key = 'DOCUP-00000-00000-00000-00000' } | ConvertTo-Json) -ContentType 'application/json' -SkipHttpErrorCheck -UseBasicParsing).StatusCode
+          if ($code -eq 200) { throw 'Приет е невалиден ключ.' }
+          $key = (Get-Content dist\test-key.txt -Raw).Trim()
+          $act = Invoke-RestMethod -Method Post "$base/api/activate" -Body (@{ key = $key } | ConvertTo-Json) -ContentType 'application/json'
+          if (-not $act.license.active) { throw 'Активирането не успя.' }
+          Write-Host "Активиран с $($act.license.key)"
 
           Write-Host '== Запис на данни'
           $body = @{ practiceName = 'Проверка'; doctorName = 'д-р Тест'; pin = '1234' } | ConvertTo-Json

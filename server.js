@@ -20,12 +20,15 @@ const PORT = Number(process.env.PORT) || 8080;
 const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+// Демонстрацията с измислени данни (Codespaces) работи без продуктов ключ.
+const DEMO = process.env.DOCUP_DEMO === '1';
 
 const store = new Store(DATA_DIR);
 store.noteAppVersion(VERSION);
 
 const server = createAppServer({
   store,
+  requireActivation: !DEMO,
   serveStatic: diskStatic(path.join(ROOT, 'public')),
   info: () => ({
     version: VERSION,

@@ -11,7 +11,7 @@ class ApiError extends Error {
 let onUnauthorized = null;
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
-const PUBLIC = new Set(['/api/state', '/api/login', '/api/setup', '/api/logout']);
+const PUBLIC = new Set(['/api/state', '/api/login', '/api/setup', '/api/logout', '/api/activate']);
 
 async function request(method, path, body) {
   let res;
@@ -36,6 +36,8 @@ async function request(method, path, body) {
   if (res.status === 401 && onUnauthorized && !PUBLIC.has(path.split('?')[0])) {
     onUnauthorized();
   }
+  // Програмата не е активирана (например ключът е сменен от друг компютър) — към екрана за ключ.
+  if (res.status === 403 && data && data.needsActivation) location.reload();
   if (!res.ok) {
     throw new ApiError(res.status, (data && data.error) || `Грешка ${res.status}.`);
   }
@@ -54,6 +56,7 @@ export const api = {
   setup: (data) => request('POST', '/api/setup', data),
   login: (doctorId, pin) => request('POST', '/api/login', { doctorId, pin }),
   logout: () => request('POST', '/api/logout', {}),
+  activate: (key) => request('POST', '/api/activate', { key }),
   bootstrap: () => request('GET', '/api/bootstrap'),
 
   patients: (params) => request('GET', '/api/patients' + qs(params)),

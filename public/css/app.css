@@ -426,6 +426,20 @@ svg.growth .point.danger { fill: var(--danger); }
 
 .setup-screen { max-width: 460px; margin: 8vh auto; }
 .setup-brand { text-align: center; margin-bottom: 18px; }
+.key-field {
+  display: flex; align-items: center; border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+  background: var(--surface); overflow: hidden;
+}
+.key-field:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.key-prefix {
+  padding: 0 4px 0 12px; font: 600 16px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--ink-3);
+}
+.key-field .key-input {
+  flex: 1; min-width: 0; border: 0; outline: 0; box-shadow: none; padding: 12px 12px 12px 0;
+  font: 600 16px/1 ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .06em; background: transparent;
+}
+.key-error { color: var(--danger); font-size: 13.5px; font-weight: 550; min-height: 0; }
+.key-error:empty { display: none; }
 .setup-brand img { height: 46px; width: auto; display: block; margin: 0 auto 6px; }
 .login-doctors { display: flex; flex-direction: column; gap: 8px; }
 .login-doctors button {

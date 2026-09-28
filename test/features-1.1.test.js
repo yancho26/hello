@@ -18,7 +18,7 @@ async function withApp(opts, fn) {
   const store = new Store(dir);
   store.settings.requireLogin = false;
   store.data.doctors.push({ id: 'd1', name: 'д-р Тест', role: 'ОПЛ', active: true });
-  const server = createAppServer({ store, serveStatic: memoryStatic({ 'index.html': 'x' }), ...opts(store) });
+  const server = createAppServer({ store, serveStatic: memoryStatic({ 'index.html': 'x' }), requireActivation: false, ...opts(store) });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = async (method, url, body, headers = {}) => {

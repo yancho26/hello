@@ -25,6 +25,8 @@ export const state = {
   scheduleById: new Map(),
   /* Адреси и папки на сървъра — показват се в „Настройки → Данни“. */
   server: null,
+  /* Продуктовият ключ: активирана ли е програмата и с кой ключ. */
+  license: null,
 };
 
 const VIEWS = [
@@ -250,6 +252,60 @@ function setupScreen() {
       form))));
 }
 
+/* ------------------------------ активиране ---------------------------------- */
+
+/** Поле за продуктов ключ: главни букви и тирета на всеки 5 знака, докато се пише. */
+export function productKeyField() {
+  const input = h('input.key-input', {
+    name: 'key', autocomplete: 'off', spellcheck: false, autocapitalize: 'characters',
+    placeholder: 'XXXXX-XXXXX-XXXXX-XXXXX', maxlength: 29, required: true, autofocus: true,
+    'aria-label': 'Продуктов ключ',
+  });
+  input.addEventListener('input', () => {
+    const clean = input.value.toUpperCase().replace(/^\s*DOCUP[\s-]*/, '').replace(/[^0-9A-Z]/g, '').slice(0, 20);
+    input.value = clean.match(/.{1,5}/g)?.join('-') || '';
+  });
+  return { input, field: h('div.key-field', null, h('span.key-prefix', null, 'DOCUP-'), input), value: () => 'DOCUP-' + input.value };
+}
+
+function activationScreen() {
+  const key = productKeyField();
+  const error = h('div.key-error', { role: 'alert' });
+  const button = h('button.btn.primary.block', { type: 'submit' }, 'Активирай');
+  const form = h('form.stack', {
+    style: { gap: '12px' },
+    onsubmit: async (e) => {
+      e.preventDefault();
+      error.textContent = '';
+      button.disabled = true;
+      try {
+        await api.activate(key.value());
+        toast('DocUp е активиран.', 'ok');
+        setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        error.textContent = err.message;
+        button.disabled = false;
+        key.input.focus();
+      }
+    },
+  }, key.field, error, button);
+
+  mount(root, h('main', null, h('div.setup-screen', null,
+    brandBlock(),
+    card('Активиране на DocUp', { icon: '🔑' },
+      h('p.muted', { style: { marginTop: 0 } },
+        'Въведете продуктовия ключ, който сте получили от DocUp. Програмата се активира веднъж, '
+        + 'на компютъра, на който работи — другите компютри в кабинета не се нуждаят от ключ.'),
+      form,
+      h('p.small.muted', { style: { margin: '14px 0 0' } },
+        'Данните на практиката са запазени и ще се покажат веднага след активирането.'),
+      h('p.small.muted', { style: { margin: '6px 0 0' } },
+        'Нямате ключ? ',
+        h('a', { href: 'https://docup.health/', target: '_blank', rel: 'noopener noreferrer' }, 'docup.health'),
+        ' · ',
+        h('a', { href: 'mailto:business@docup.health' }, 'business@docup.health'))))));
+}
+
 /** Логото над екрана за вход и първоначалната настройка. */
 function brandBlock() {
   return h('div.setup-brand', null,
@@ -350,6 +406,8 @@ async function start() {
     return;
   }
 
+  if (info.needsActivation) { activationScreen(); return; }
+
   state.practice = info.practice || state.practice;
   state.doctors = info.doctors || [];
 
@@ -365,6 +423,7 @@ async function start() {
   state.settings = boot.settings;
   state.server = boot.server || null;
   state.extraBackup = boot.extraBackup || null;
+  state.license = boot.license || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 
   shell();
@@ -390,6 +449,7 @@ export async function refreshBootstrap() {
   state.settings = boot.settings;
   state.server = boot.server || null;
   state.extraBackup = boot.extraBackup || null;
+  state.license = boot.license || null;
   state.scheduleById = new Map(boot.schedule.map(i => [i.id, i]));
 }
 

@@ -22,7 +22,7 @@ async function withServer(setup, fn) {
   const dir = tmp('dk-sec-');
   const store = new Store(dir);
   setup?.(store);
-  const server = createAppServer({ store, serveStatic: memoryStatic({ 'index.html': '<!doctype html>' }) });
+  const server = createAppServer({ store, serveStatic: memoryStatic({ 'index.html': '<!doctype html>' }), requireActivation: false });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const call = async (method, url, body, headers = {}) => {

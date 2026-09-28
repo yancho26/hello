@@ -1,7 +1,7 @@
 /* Настройки: практика, потребители, календар, данни, сигурност и журнал. */
 
 import { api } from '../api.js';
-import { canStopHere, refreshBootstrap, state, stopProgram } from '../app.js';
+import { canStopHere, productKeyField, refreshBootstrap, state, stopProgram } from '../app.js';
 import { whatsNew } from '../whats-new.js';
 import {
   badge, card, confirmDialog, decimalFields, empty, field, h, input, modal, mount,
@@ -426,9 +426,13 @@ async function dataTab(rerender) {
       h('dt', null, 'Програма'), h('dd', null, `DocUp ${srv.version}${srv.edition === 'windows' ? ' за Windows' : ''}`),
       h('dt', null, 'Работи на'), h('dd', null, srv.local ? 'този компютър' : 'друг компютър в кабинета'),
       h('dt', null, 'Сайт'), h('dd', null,
-        h('a', { href: 'https://docup.health/', target: '_blank', rel: 'noopener noreferrer' }, 'docup.health'))),
+        h('a', { href: 'https://docup.health/', target: '_blank', rel: 'noopener noreferrer' }, 'docup.health')),
+      state.license?.active ? h('dt', null, 'Лиценз') : null,
+      state.license?.active ? h('dd', null, 'активиран · ', h('span.mono', null, state.license.key),
+        state.license.activatedAt ? h('span.small.muted', null, ` · от ${formatDate(state.license.activatedAt.slice(0, 10))}`) : null) : null),
     h('div.row', { style: { marginTop: '12px' } },
       h('button.btn', { onclick: () => whatsNew({ all: true }) }, 'Какво е новото'),
+      state.license?.active ? h('button.btn', { onclick: () => changeKeyDialog(rerender) }, 'Смени продуктовия ключ') : null,
       canStopHere()
         ? h('button.btn.danger', { onclick: stopProgram }, '⏻ Спри програмата')
         : null),
@@ -470,6 +474,36 @@ async function dataTab(rerender) {
       h('p.small.muted', { style: { marginBottom: 0 } },
         'Данните на пациентите са лични данни за здравословно състояние. Достъпът до компютъра, '
         + 'резервните копия и мрежата на кабинета са отговорност на практиката като администратор на лични данни.')));
+}
+
+/* Смяна на продуктовия ключ (например при нов лиценз). */
+function changeKeyDialog(rerender) {
+  const key = productKeyField();
+  const error = h('div.key-error', { role: 'alert' });
+  modal({
+    title: 'Смяна на продуктовия ключ',
+    body: () => h('form#keyForm.stack', {
+      style: { gap: '10px' },
+      onsubmit: (e) => e.preventDefault(),
+    }, h('p.small.muted', { style: { margin: 0 } }, 'Текущият ключ е заменен само ако новият е валиден.'), key.field, error),
+    actions: (close) => [
+      h('button.btn', { onclick: () => close() }, 'Отказ'),
+      h('button.btn.primary', {
+        onclick: async () => {
+          error.textContent = '';
+          try {
+            const res = await api.activate(key.value());
+            state.license = { ...state.license, ...res.license };
+            close();
+            toast('Продуктовият ключ е сменен.', 'ok');
+            rerender();
+          } catch (err) {
+            error.textContent = err.message;
+          }
+        },
+      }, 'Смени'),
+    ],
+  });
 }
 
 /* Външно копие: флашка, втори диск или мрежова папка. */
@@ -654,6 +688,7 @@ async function auditTab() {
   const LABELS = {
     login: 'вписване', login_failed: 'неуспешен вход', setup: 'първоначална настройка',
     login_locked: 'входът е временно заключен', sessions_revoked: 'затворени отворени сесии',
+    activated: 'активиране с продуктов ключ', activation_failed: 'невалиден продуктов ключ',
     patient_create: 'ново досие', patient_update: 'промяна в досие',
     patient_archive: 'архивиране', patient_restore: 'връщане от архив',
     record_set: 'отбелязана дейност', record_clear: 'премахнат запис',
@@ -680,7 +715,7 @@ async function auditTab() {
     const when = new Date(e.ts);
     const details = e.action === 'patients_import'
       ? `${e.source || ''} · нови ${e.created}, допълнени ${e.updated}, пропуснати ${e.skipped}`
-      : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.date && formatDate(e.date),
+      : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.key, e.date && formatDate(e.date),
         e.ip && `от ${e.ip}`, e.network && `достъп: ${NETWORK_LABELS[e.network] || e.network}`].filter(Boolean).join(' · ');
     return h('tr', null,
       h('td.nowrap.small.mono', null,
