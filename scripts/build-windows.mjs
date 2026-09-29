@@ -258,7 +258,7 @@ async function brandExe(nodeExe) {
   for (const key of ['Comments', 'PrivateBuild', 'SpecialBuild', 'LegalTrademarks']) vi.removeStringValue(lang, key);
   vi.setStringValues(lang, {
     CompanyName: 'DocUp',
-    FileDescription: 'DocUp — платформа за общопрактикуващи лекари',
+    FileDescription: 'DocUp — платформа за ОПЛ и специалисти',
     ProductName: 'DocUp',
     InternalName: 'DocUp',
     OriginalFilename: EXE_NAME,

@@ -1,7 +1,7 @@
 {
   "name": "docup",
   "version": "4.0.0",
-  "description": "DocUp — платформа за общопрактикуващи лекари: деца и възрастни",
+  "description": "DocUp — платформа за общопрактикуващи лекари и специалисти (СИМП)",
   "type": "module",
   "private": true,
   "scripts": {
