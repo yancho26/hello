@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Store, normalizeData } from '../lib/store.js';
+import { Workspaces } from '../lib/workspaces.js';
 import { createAppServer } from '../lib/http.js';
 import { memoryStatic } from '../lib/static.js';
 import { addMonths, today } from '../public/js/shared/dates.js';
@@ -336,7 +337,12 @@ test('изследванията на специалиста се проверя
 });
 
 test('проверката при зареждане поправя модулите и възлите', () => {
+  // Практиката на ОПЛ няма модули на специалисти — отметките от 3.3 не се пренасят.
+  const gp = { settings: { modules: { cardio: true, endo: true } }, patients: [] };
+  normalizeData(gp);
+  assert.deepEqual(gp.settings.modules, { cardio: false, endo: false });
   const d = {
+    kind: 'simp',
     settings: { modules: { cardio: 'yes', endo: true, evil: true } },
     patients: [{ id: 'p', name: 'X', nodules: [{ id: 'n', exams: [{ dims: ['12', -3, 'x', 5, 7] }, 'junk'], fna: 'oops' }], studies: [{ id: 's', kind: 'echo' }] }],
   };
@@ -350,9 +356,12 @@ test('проверката при зареждане поправя модули
 
 /* ----------------------------- приложен интерфейс ----------------------------- */
 
-test('API: модулите се включват от настройките; изследвания, възли и списък за действие', async () => {
+test('API: специалностите на СИМП се включват от настройките; изследвания, възли и списък за действие', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dk-spec-'));
-  const store = new Store(dir);
+  const gpStore = new Store(dir);
+  gpStore.data.settings.requireLogin = false;
+  const spaces = new Workspaces(gpStore);
+  const store = spaces.simp;
   store.data.settings.requireLogin = false;
   store.data.patients.push(
     {
@@ -364,14 +373,18 @@ test('API: модулите се включват от настройките; �
     { id: 'k1', name: 'Дете', sex: 'm', birthDate: born(8), createdAt: born(1) },
   );
   store.migrate();
-  const server = createAppServer({ store, serveStatic: memoryStatic({ 'index.html': 'x' }), requireActivation: false });
+  const server = createAppServer({ workspaces: spaces, serveStatic: memoryStatic({ 'index.html': 'x' }), requireActivation: false });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const call = async (method, url, body) => {
-    const res = await fetch(base + url, { method, body: body && JSON.stringify(body), headers: body ? { 'Content-Type': 'application/json' } : {} });
+  const call = async (method, url, body, ws = 'simp') => {
+    const headers = { Cookie: `ws=${ws}` };
+    if (body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(base + url, { method, body: body && JSON.stringify(body), headers });
     return { status: res.status, data: await res.json().catch(() => null) };
   };
   try {
+    const gpTry = await call('PATCH', '/api/settings', { modules: { cardio: true } }, 'gp');
+    assert.equal(gpTry.status, 400, 'в практиката на ОПЛ няма специалности');
     const off = await call('POST', '/api/patients/a1/studies', { kind: 'echo', values: { ef: 35 } });
     assert.equal(off.status, 400);
     assert.match(off.data.error, /не е включен/);
@@ -422,12 +435,11 @@ test('API: модулите се включват от настройките; �
     assert.ok(list.data.groups.some(g => g.id === 'thyroid' || g.id === 'nodule_follow') || list.data.groups.length === 0);
     assert.equal((await call('GET', '/api/specialty/nope')).status, 404);
 
-    // Контролната ехография идва в задачите, когато наближи.
+    // Контролната ехография идва на таблото на СИМП, когато наближи.
     store.patient('a1').nodules[0].fna = [];
     store.patient('a1').updatedAt = new Date().toISOString();
-    const tasks = await call('GET', '/api/tasks?horizon=365');
-    const all = Object.values(tasks.data.buckets).flat();
-    assert.ok(all.some(t => t.itemId === 'nodule:' + nid), 'ехографията на възела е в задачите');
+    const overview = await call('GET', '/api/simp/overview?horizon=365');
+    assert.ok(overview.data.nodules.some(t => t.id === nid), 'ехографията на възела е на таблото');
 
     assert.equal((await call('PATCH', `/api/patients/a1/nodules/${nid}`, { status: 'removed' })).data.nodule.status, 'removed');
     assert.equal((await call('DELETE', `/api/patients/a1/nodules/${nid}/fna/nothing`)).status, 404);
@@ -441,6 +453,7 @@ test('API: модулите се включват от настройките; �
     server.closeAllConnections?.();
     await new Promise(r => server.close(r));
     await store.writePromise.catch(() => {});
+    await gpStore.writePromise.catch(() => {});
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

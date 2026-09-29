@@ -1,6 +1,6 @@
 {
   "name": "docup",
-  "version": "3.3.0",
+  "version": "4.0.0",
   "description": "DocUp — платформа за общопрактикуващи лекари: деца и възрастни",
   "type": "module",
   "private": true,

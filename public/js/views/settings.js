@@ -28,7 +28,10 @@ const TABS = [
 
 export async function renderSettings(host) {
   const rerender = () => renderSettings(host);
-  const bar = h('div.tabs.no-print', null, TABS.map(t =>
+  // Календарът за имунизации и профилактика е на практиката на ОПЛ.
+  const tabs = TABS.filter(t => state.kind !== 'simp' || t.id !== 'schedule');
+  if (!tabs.some(t => t.id === tab)) tab = 'practice';
+  const bar = h('div.tabs.no-print', null, tabs.map(t =>
     h('button' + (tab === t.id ? '.active' : ''), {
       onclick: () => { tab = t.id; rerender(); },
     }, t.label)));
@@ -56,7 +59,7 @@ async function practiceTab(rerender) {
     const d = Object.fromEntries(new FormData(form));
     try {
       await api.updateSettings({
-        practice: { name: d.name, address: d.address, phone: d.phone },
+        practice: { name: d.name, address: d.address, phone: d.phone, ...(state.kind === 'simp' ? { rzi: d.rzi } : {}) },
         horizonDays: d.horizonDays,
         requireLogin: d.requireLogin === 'on',
         autoLogoutMinutes: Number(d.autoLogoutMinutes || 0),
@@ -72,6 +75,8 @@ async function practiceTab(rerender) {
 
   form = h('form.form-grid', { onsubmit: (e) => { e.preventDefault(); save(); } },
     h('div.full', null, field('Име на практиката', input({ name: 'name', value: state.practice.name, required: true }))),
+    state.kind === 'simp' ? h('div', null, field('Регистрационен номер в РЗИ', input({ name: 'rzi', value: state.practice.rzi || '', inputmode: 'numeric', maxlength: 10 }),
+      'Печата се на амбулаторния лист.')) : null,
     h('div', null, field('Телефон', input({ name: 'phone', value: state.practice.phone || '' }))),
     h('div', null, field('Адрес', input({ name: 'address', value: state.practice.address || '' }))),
     h('div', null, field('Хоризонт за „предстоящи“',
@@ -98,26 +103,61 @@ async function practiceTab(rerender) {
       'Калибрирането на SCORE2 и SCORE2-Diabetes по сърдечно-съдовата смъртност в страната. България е в региона с много висок риск.')),
     h('div.full', null, h('button.btn.primary', { type: 'submit' }, 'Запази')));
 
-  return h('div.stack', null, card('Данни на практиката', { icon: '🏥' }, form), modulesCard(rerender));
+  return h('div.stack', null, card('Данни на практиката', { icon: '🏥' }, form),
+    state.kind === 'simp' ? [modulesCard(rerender), agendaCard(rerender)] : null);
 }
 
-/** Модули за специалисти от извънболничната помощ — включват се за цялата практика. */
+const WEEKDAYS_BG = ['понеделник', 'вторник', 'сряда', 'четвъртък', 'петък', 'събота', 'неделя'];
+
+/** Работно време за графика и сроковете за направления и протоколи (СИМП). */
+function agendaCard(rerender) {
+  const ag = state.settings.agenda || { start: '08:00', end: '16:00', slot: 20, days: [1, 2, 3, 4, 5] };
+  let form;
+  const save = async () => {
+    const fd = new FormData(form);
+    try {
+      await api.updateSettings({
+        agenda: { start: fd.get('start'), end: fd.get('end'), slot: Number(fd.get('slot')), days: fd.getAll('day').map(Number) },
+        secondaryDays: Number(fd.get('secondaryDays')),
+        protocolWarnDays: Number(fd.get('protocolWarnDays')),
+      });
+      await refreshBootstrap();
+      toast('Работното време е запазено.', 'ok');
+      rerender();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+  form = h('form.form-grid', { onsubmit: (e) => { e.preventDefault(); save(); } },
+    h('div', null, field('Начало на работния ден', input({ name: 'start', type: 'time', value: ag.start, required: true }))),
+    h('div', null, field('Край на работния ден', input({ name: 'end', type: 'time', value: ag.end, required: true }))),
+    h('div', null, field('Продължителност на един час', select([10, 15, 20, 30, 40, 45, 60].map(m => ({ value: m, label: `${m} минути`, selected: m === ag.slot })), { name: 'slot' }))),
+    h('div.full', null, h('div.lbl.small', { style: { fontWeight: 600, marginBottom: '6px' } }, 'Работни дни'),
+      h('div.row', { style: { flexWrap: 'wrap', gap: '6px 16px' } }, WEEKDAYS_BG.map((d, i) => h('label.check', null,
+        h('input', { type: 'checkbox', name: 'day', value: i + 1, checked: ag.days.includes(i + 1) }), h('span', null, d))))),
+    h('div', null, field('Срок за вторичен преглед (дни)', input({ name: 'secondaryDays', type: 'number', min: 1, max: 90, value: state.settings.secondaryDays || 30 }),
+      'След първичния преглед по същото направление. По НРД — 30 дни.')),
+    h('div', null, field('Предупреждение за протокол (дни преди изтичане)', input({ name: 'protocolWarnDays', type: 'number', min: 7, max: 120, value: state.settings.protocolWarnDays || 30 }))),
+    h('div.full', null, h('button.btn.primary', { type: 'submit' }, 'Запази')));
+  return card('Работно време и срокове', { icon: '🕘' },
+    h('p.small.muted', null, 'Графикът предлага свободните часове в работното време. Час извън него може да се запише ръчно.'), form);
+}
+
+/** Модулите с клинична логика по специалности — включват се за цялата практика за СИМП. */
 function modulesCard(rerender) {
   const on = state.settings.modules || {};
   const toggle = async (id, value, box) => {
     try {
       await api.updateSettings({ modules: { [id]: value } });
       await refreshBootstrap();
-      toast(value ? `Модулът „${MODULES[id].name}“ е включен — в досиетата на възрастните има нов раздел.` : `Модулът „${MODULES[id].name}“ е изключен. Въведените данни се пазят.`, 'ok');
+      toast(value ? `Модулът „${MODULES[id].name}“ е включен — в досиетата на пълнолетните има нов раздел.` : `Модулът „${MODULES[id].name}“ е изключен. Въведените данни се пазят.`, 'ok');
       rerender();
     } catch (err) {
       box.checked = !value;
       toast(err.message, 'error');
     }
   };
-  return card('Модули за специалисти (СИМП)', { icon: '🧩' },
-    h('p.small.muted', null, 'За кабинети на специалисти и медицински центрове. Всеки модул добавя раздел в досието на възрастен пациент, '
-      + 'консултативно заключение за личния лекар и списък за действие в „Справки“.'),
+  return card('Специалности на практиката', { icon: '🧩' },
+    h('p.small.muted', null, 'Всеки модул добавя раздел с клинична логика в досието на пълнолетен пациент, преглед, попълнен от раздела, '
+      + 'и списък за действие в „Справки“. Прегледите, направленията, протоколите, наблюдението и графикът работят за всяка специалност.'),
     h('div.stack', { style: { gap: '10px' } }, Object.entries(MODULES).map(([id, m]) => {
       const box = h('input', { type: 'checkbox', checked: !!on[id] });
       box.addEventListener('change', () => toggle(id, box.checked, box));
@@ -130,7 +170,7 @@ function modulesCard(rerender) {
 async function doctorsTab(rerender) {
   const rows = state.doctors.map(d => h('tr', null,
     h('td.name-cell', null, d.name),
-    h('td.small.muted', null, d.role || ''),
+    h('td.small.muted', null, d.role || '', d.uin ? h('div.tiny.dim', null, 'УИН ' + d.uin) : null),
     h('td', null, d.hasPin ? badge('done', 'с ПИН') : badge('', 'без ПИН')),
     h('td', null, d.active ? badge('done', 'активен') : badge('', 'спрян')),
     h('td.actions', null,
@@ -150,7 +190,10 @@ async function doctorsTab(rerender) {
     icon: '👥',
     actions: h('button.btn.sm.primary', { onclick: () => doctorDialog(null, rerender) }, '＋ Добави'),
     tight: true,
-  }, table(['Име', 'Длъжност', 'ПИН', 'Състояние', ''], rows));
+  }, table(['Име', 'Длъжност', 'ПИН', 'Състояние', ''], rows),
+  h('div.body.tiny.muted', null, state.kind === 'simp'
+    ? 'Това са потребителите на практиката за СИМП. Практиката на ОПЛ в същата инсталация има свои потребители и ПИН-ове.'
+    : 'Това са потребителите на практиката на ОПЛ. Практиката за СИМП в същата инсталация има свои потребители и ПИН-ове.'));
 }
 
 function doctorDialog(doctor, rerender) {
@@ -158,7 +201,7 @@ function doctorDialog(doctor, rerender) {
   const submit = async (close) => {
     const d = Object.fromEntries(new FormData(form));
     if (d.pin && d.pin !== d.pin2) { toast('Двата ПИН-а не съвпадат.', 'error'); return; }
-    const payload = { name: d.name, role: d.role };
+    const payload = { name: d.name, role: d.role, uin: d.uin };
     if (d.pin || (doctor && d.clearPin === 'on')) payload.pin = d.clearPin === 'on' ? '' : d.pin;
     try {
       if (doctor) await api.updateDoctor(doctor.id, payload);
@@ -177,11 +220,15 @@ function doctorDialog(doctor, rerender) {
     body: (close) => {
       form = h('form.form-grid', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div.full', null, field('Име', input({ name: 'name', required: true, value: doctor ? doctor.name : '' }))),
-        h('div.full', null, field('Длъжност', input({
-          name: 'role', value: doctor ? doctor.role || '' : 'Общопрактикуващ лекар', list: 'roleChoices',
+        h('div', null, field(state.kind === 'simp' ? 'Специалност / длъжност' : 'Длъжност', input({
+          name: 'role', value: doctor ? doctor.role || '' : state.kind === 'simp' ? '' : 'Общопрактикуващ лекар', list: 'roleChoices',
         }), 'Изберете от списъка или напишете своя.'),
-        h('datalist#roleChoices', null, ['Общопрактикуващ лекар', 'Кардиолог', 'Ендокринолог', 'Педиатър', 'Медицинска сестра', 'Регистратор']
+        h('datalist#roleChoices', null, (state.kind === 'simp'
+          ? ['Кардиолог', 'Ендокринолог', 'Невролог', 'Пулмолог', 'Гастроентеролог', 'Нефролог', 'Ревматолог', 'Педиатър', 'Хирург', 'Уролог', 'Офталмолог', 'Дерматолог', 'Акушер-гинеколог', 'Оториноларинголог', 'Психиатър', 'Медицинска сестра', 'Регистратор']
+          : ['Общопрактикуващ лекар', 'Педиатър', 'Медицинска сестра', 'Регистратор'])
           .map(r => h('option', { value: r })))),
+        h('div', null, field('УИН', input({ name: 'uin', value: doctor ? doctor.uin || '' : '', inputmode: 'numeric', maxlength: 10 }),
+          'Уникален идентификационен номер на лекаря — печата се на документите.')),
         h('div', null, field(doctor ? 'Нов ПИН' : 'ПИН',
           input({ name: 'pin', type: 'password', inputmode: 'numeric', pattern: '\\d{4,8}' }),
           '4–8 цифри')),

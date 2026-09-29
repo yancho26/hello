@@ -149,7 +149,7 @@ export async function renderReports(host) {
 }
 
 /** Списък за действие по модул на специалист: групи сигнали с пациентите. */
-function worklistCard(w) {
+export function worklistCard(w) {
   const m = MODULES[w.module];
   const total = new Set(w.groups.flatMap(g => g.patients.map(p => p.id))).size;
   return card(`${m.name} — списък за действие`, { icon: m.icon, tight: true },

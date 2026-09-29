@@ -11,7 +11,11 @@ import { renderPatient } from './views/patient.js';
 import { renderReports } from './views/reports.js';
 import { renderSettings } from './views/settings.js';
 import { renderCalendar } from './views/calendar.js';
+import { renderSimpDashboard } from './views/simp-dashboard.js';
+import { renderAgenda } from './views/agenda.js';
+import { renderSimpReports } from './views/simp-reports.js';
 import { findScheduleItem } from './shared/schedule.js';
+import { MODULES } from './shared/specialty.js';
 
 export const state = {
   doctor: null,
@@ -27,15 +31,34 @@ export const state = {
   server: null,
   /* Продуктовият ключ: активирана ли е програмата и с кой ключ. */
   license: null,
+  /* Видът на практиката, в която е влязъл потребителят: 'gp' (ОПЛ) или 'simp' (СИМП). */
+  kind: 'gp',
 };
 
-const VIEWS = [
-  { path: 'dashboard', label: 'Табло', render: renderDashboard },
-  { path: 'patients', label: 'Пациенти', render: renderPatients },
-  { path: 'calendar', label: 'Календар', render: renderCalendar },
-  { path: 'reports', label: 'Справки', render: renderReports },
-  { path: 'settings', label: 'Настройки', render: renderSettings },
-];
+/* Практиката на ОПЛ и практиката за СИМП имат различни табла, календар и справки. */
+const VIEWS_BY_KIND = {
+  gp: [
+    { path: 'dashboard', label: 'Табло', render: renderDashboard },
+    { path: 'patients', label: 'Пациенти', render: renderPatients },
+    { path: 'calendar', label: 'Календар', render: renderCalendar },
+    { path: 'reports', label: 'Справки', render: renderReports },
+    { path: 'settings', label: 'Настройки', render: renderSettings },
+  ],
+  simp: [
+    { path: 'dashboard', label: 'Табло', render: renderSimpDashboard },
+    { path: 'agenda', label: 'График', render: renderAgenda },
+    { path: 'patients', label: 'Пациенти', render: renderPatients },
+    { path: 'reports', label: 'Справки', render: renderSimpReports },
+    { path: 'settings', label: 'Настройки', render: renderSettings },
+  ],
+};
+const views = () => VIEWS_BY_KIND[state.kind] || VIEWS_BY_KIND.gp;
+
+/** Описанието на двата вида практики — на екрана за вход и в менюто. */
+export const KINDS = {
+  gp: { title: 'Обща медицина', short: 'ОПЛ', about: 'Практика на общопрактикуващ лекар', icon: '🏥' },
+  simp: { title: 'Специализирана помощ', short: 'СИМП', about: 'Специализирана извънболнична медицинска помощ: кабинет или център на лекари специалисти', icon: '🩺' },
+};
 
 const root = document.getElementById('root');
 
@@ -66,16 +89,26 @@ async function route() {
   mount(host, loading());
   try {
     if (head === 'patient' && rest[0]) {
-      await renderPatient(host, rest[0]);
+      // „#/patient/ид?exam=час“ — преглед, започнат от записан час в графика.
+      const [id, query = ''] = rest[0].split('?');
+      await renderPatient(host, id, new URLSearchParams(query));
       return;
     }
-    const view = VIEWS.find(v => v.path === head) || VIEWS[0];
+    const view = views().find(v => v.path === head) || views()[0];
     await view.render(host);
   } catch (err) {
     mount(host, card('Възникна грешка', {},
       h('p', null, err.message),
       h('button.btn', { onclick: () => route() }, 'Опитай отново')));
   }
+}
+
+/** Презарежда програмата от таблото — при вход, изход и смяна на практиката.
+ * Адресът се сменя без събитие „hashchange“, за да не се покаже за миг
+ * изглед от предишната практика. */
+export function restart() {
+  history.replaceState(null, '', location.pathname);
+  location.reload();
 }
 
 /* --------------------------------- обвивка ----------------------------------- */
@@ -117,8 +150,9 @@ function shell() {
   const header = h('header.app', null,
     h('div.brand', null,
       h('img.wordmark', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 72, height: 26 }),
-      h('div.sub', { title: state.practice.name }, state.practice.name)),
-    h('nav.main', null, VIEWS.map(v =>
+      h('div.sub', { title: `${KINDS[state.kind].about}: ${state.practice.name}` },
+        h('span.kind-chip.' + state.kind, null, KINDS[state.kind].short), state.practice.name)),
+    h('nav.main', null, views().map(v =>
       h('a', { href: '#/' + v.path, dataset: { path: v.path } }, v.label))),
     h('div.search-wrap', null,
       h('span.icon', null, '⌕'),
@@ -190,10 +224,15 @@ function userMenu() {
       h('div.muted.small', null, state.doctor ? state.doctor.role : ''),
       h('dl.kv', null,
         h('dt', null, 'Практика'), h('dd', null, state.practice.name),
+        h('dt', null, 'Вид'), h('dd', null, KINDS[state.kind].about),
         h('dt', null, 'Колеги'), h('dd', null, state.doctors.filter(d => d.active).length)),
       h('div.row', null,
         h('button.btn', { onclick: () => { location.hash = '#/settings'; document.querySelector('.overlay').remove(); } },
-          'Настройки')),
+          'Настройки'),
+        h('button.btn', {
+          title: 'Към екрана за вход с двете практики — ОПЛ и СИМП. Вписването тук остава.',
+          onclick: async () => { await api.chooseWorkspace(null); restart(); },
+        }, '⇄ Смени практиката')),
       state.server && state.server.canStop
         ? h('div.menu-section', null,
           h('div.lbl', null, 'Програмата'),
@@ -207,7 +246,7 @@ function userMenu() {
     actions: (close) => [
       h('button.btn', { onclick: () => close() }, 'Затвори'),
       h('button.btn.danger', {
-        onclick: async () => { await api.logout(); location.reload(); },
+        onclick: async () => { await api.logout(); restart(); },
       }, 'Изход'),
     ],
   });
@@ -215,25 +254,46 @@ function userMenu() {
 
 /* ------------------------ първоначална настройка и вход ---------------------- */
 
-function setupScreen() {
+function setupScreen(kind = 'gp') {
+  const simp = kind === 'simp';
+  const specialties = h('div.stack', { style: { gap: '8px' } }, Object.entries(MODULES).map(([id, m]) =>
+    h('label.check', null, h('input', { type: 'checkbox', name: 'specialty', value: id }),
+      h('span', null, h('strong', null, `${m.icon} ${m.name}`), h('div.tiny.dim', null, m.about)))));
   const form = h('form.stack', {
     onsubmit: async (e) => {
       e.preventDefault();
-      const data = Object.fromEntries(new FormData(e.target));
+      const fd = new FormData(e.target);
+      const data = Object.fromEntries(fd);
+      delete data.specialty;
       if (data.pin && data.pin !== data.pin2) {
         toast('Двете въвеждания на ПИН не съвпадат.', 'error');
         return;
       }
+      data.workspace = kind;
+      if (simp) data.specialties = fd.getAll('specialty');
       try {
         await api.setup(data);
-        location.reload();
+        restart();
       } catch (err) {
         toast(err.message, 'error');
       }
     },
   },
-    field('Име на практиката', input({ name: 'practiceName', required: true, placeholder: 'напр. АИППМП д-р Иванова' })),
-    field('Вашето име', input({ name: 'doctorName', required: true, placeholder: 'д-р Мария Иванова' })),
+    field('Име на практиката', input({
+      name: 'practiceName', required: true,
+      placeholder: simp ? 'напр. АИСИМП – Кардиология д-р Петров' : 'напр. АИППМП д-р Иванова',
+    })),
+    simp ? field('Регистрационен номер в РЗИ', input({ name: 'rzi', inputmode: 'numeric', maxlength: 10, placeholder: '10 цифри, по желание' }),
+      'Печата се на амбулаторния лист.') : null,
+    field('Вашето име', input({ name: 'doctorName', required: true, placeholder: simp ? 'д-р Петър Петров' : 'д-р Мария Иванова' })),
+    simp ? h('div.grid.cols-2', null,
+      field('Специалност', input({ name: 'role', list: 'setupRoles', placeholder: 'напр. Кардиолог' })),
+      field('УИН', input({ name: 'uin', inputmode: 'numeric', maxlength: 10, placeholder: '10 цифри' }))) : null,
+    simp ? h('datalist#setupRoles', null, ['Кардиолог', 'Ендокринолог', 'Невролог', 'Пулмолог', 'Гастроентеролог', 'Нефролог', 'Ревматолог', 'Педиатър', 'Хирург', 'Уролог', 'Офталмолог', 'Дерматолог', 'Акушер-гинеколог', 'Оториноларинголог', 'Психиатър']
+      .map(r => h('option', { value: r }))) : null,
+    simp ? h('div', null, h('div.lbl', { style: { fontWeight: 600, marginBottom: '6px' } }, 'Модули с клинична логика'),
+      specialties,
+      h('div.field-hint', null, 'Добавят раздел в досието и списък за действие. Може да се променят по-късно от „Настройки“. Прегледите, направленията, протоколите и графикът работят за всяка специалност.')) : null,
     field('Адрес на практиката', input({ name: 'address', placeholder: 'по желание' })),
     field('Телефон', input({ name: 'phone', type: 'tel', placeholder: 'по желание' })),
     h('hr', { style: { border: 0, borderTop: '1px solid var(--line)', margin: '4px 0' } }),
@@ -241,15 +301,18 @@ function setupScreen() {
       input({ name: 'pin', type: 'password', inputmode: 'numeric', pattern: '\\d{4,8}', placeholder: 'по желание' }),
       'Оставете празно, ако практиката е само ваша и компютърът не се ползва от други.'),
     field('Повторете ПИН', input({ name: 'pin2', type: 'password', inputmode: 'numeric' })),
-    h('button.btn.primary.block', { type: 'submit' }, 'Създай практиката'));
+    h('button.btn.primary.block', { type: 'submit' }, simp ? 'Създай практиката за СИМП' : 'Създай практиката'));
 
   mount(root, h('main', null, h('div.setup-screen', null,
     brandBlock(),
-    card('Добре дошли в DocUp', { icon: '👋' },
+    card(simp ? 'Нова практика за СИМП' : 'Нова практика на ОПЛ', { icon: KINDS[kind].icon },
       h('p.muted', null,
-        'Това е първото стартиране. Настройте практиката — отнема по-малко от минута. '
+        (simp
+          ? 'Практика за специализирана извънболнична помощ — със свои пациенти, потребители и ПИН, отделно от практиката на ОПЛ. '
+          : 'Настройте практиката на общопрактикуващия лекар — отнема по-малко от минута. ')
         + 'Данните остават само на този компютър.'),
-      form))));
+      form,
+      h('button.btn.ghost.sm', { style: { marginTop: '10px' }, onclick: () => restart() }, '← Назад към входа')))));
 }
 
 /* ------------------------------ активиране ---------------------------------- */
@@ -310,11 +373,21 @@ function activationScreen() {
 function brandBlock() {
   return h('div.setup-brand', null,
     h('img', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 141, height: 51 }),
-    h('div.small.muted', null, 'Платформа за общопрактикуващи лекари'));
+    h('div.small.muted', null, 'Платформа за общопрактикуващи лекари и специалисти'));
 }
 
-function loginScreen(doctors) {
-  const showPin = (doctor) => {
+/**
+ * Екранът за вход: двете практики една до друга — обща медицина (ОПЛ) и
+ * специализирана извънболнична помощ (СИМП). Всяка има свои потребители и ПИН.
+ */
+function entryScreen(info) {
+  const enter = async (ws) => {
+    try {
+      await api.chooseWorkspace(ws);
+      restart();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+  const showPin = (ws, doctor) => {
     modal({
       title: doctor.name,
       body: (close) => h('form#pinForm', {
@@ -322,9 +395,9 @@ function loginScreen(doctors) {
           e.preventDefault();
           const pin = e.target.pin.value;
           try {
-            await api.login(doctor.id, pin);
+            await api.login(doctor.id, pin, ws);
             close();
-            location.reload();
+            restart();
           } catch (err) {
             toast(err.message, 'error');
             e.target.pin.value = '';
@@ -341,16 +414,44 @@ function loginScreen(doctors) {
     });
   };
 
-  mount(root, h('main', null, h('div.setup-screen', null,
-    brandBlock(),
-    card(state.practice.name, { icon: '🏥' },
-      h('p.muted', null, 'Изберете себе си, за да продължите.'),
-      h('div.login-doctors', null, doctors.filter(d => d.active).map(doc =>
-        h('button', { onclick: () => showPin(doc) },
-          avatar(doc.name),
+  const option = (w) => {
+    const k = KINDS[w.id];
+    let body;
+    if (!w.ready) {
+      body = h('div.stack', { style: { gap: '10px' } },
+        h('p.small.muted', { style: { margin: 0 } }, 'Още не е създадена.'),
+        h('button.btn.primary', { onclick: () => setupScreen(w.id) }, w.id === 'simp' ? '＋ Създай практика за СИМП' : '＋ Създай практика на ОПЛ'));
+    } else if (w.signedIn || !w.requireLogin) {
+      body = h('div.stack', { style: { gap: '10px' } },
+        w.signedIn ? h('div.small', null, 'Вписан: ', h('strong', null, w.signedIn.name)) : null,
+        h('button.btn.primary', { onclick: () => enter(w.id) }, 'Влез →'));
+    } else {
+      body = h('div', null,
+        h('p.small.muted', { style: { margin: '0 0 8px' } }, 'Изберете себе си:'),
+        h('div.login-doctors', null, w.doctors.map(doc =>
+          h('button', { onclick: () => showPin(w.id, doc) },
+            avatar(doc.name),
+            h('div', null,
+              h('div', { style: { fontWeight: 600 } }, doc.name),
+              h('div.small.muted', null, doc.role || ''))))));
+    }
+    return h('section.card.entry-option' + (w.ready ? '' : '.empty-option') + (info.workspaceChosen && info.workspace === w.id ? '.current' : ''), null,
+      h('div.body', null,
+        h('div.entry-head', null,
+          h('span.entry-icon', null, k.icon),
           h('div', null,
-            h('div', { style: { fontWeight: 600 } }, doc.name),
-            h('div.small.muted', null, doc.role || '')))))))));
+            h('div.entry-kind', null, k.title, h('span.kind-chip.' + w.id, null, k.short)),
+            h('div.tiny.dim', null, k.about))),
+        w.ready ? h('div.entry-name', null, w.name) : null,
+        w.specialties && w.specialties.length ? h('div.tiny.dim', { style: { marginBottom: '8px' } }, w.specialties.join(' · ')) : null,
+        body));
+  };
+
+  mount(root, h('main', null, h('div.setup-screen.entry', null,
+    brandBlock(),
+    h('h1.entry-title', null, 'Вход в DocUp'),
+    h('p.muted.center', { style: { marginTop: 0 } }, 'Изберете практиката, в която ще работите.'),
+    h('div.entry-grid', null, (info.workspaces || []).map(option)))));
 }
 
 /* -------------------------------- клавиши ------------------------------------ */
@@ -380,7 +481,7 @@ function keyboardShortcuts() {
       // g после d/p/s — бърз преход между изгледите
       const once = (ev) => {
         document.removeEventListener('keydown', once, true);
-        const map = { d: 'dashboard', p: 'patients', k: 'calendar', s: 'settings', r: 'reports' };
+        const map = { d: 'dashboard', p: 'patients', k: state.kind === 'simp' ? 'agenda' : 'calendar', s: 'settings', r: 'reports' };
         if (map[ev.key]) { ev.preventDefault(); go(map[ev.key]); }
       };
       document.addEventListener('keydown', once, true);
@@ -395,7 +496,7 @@ async function start() {
   mount(root, h('main', null, loading('Свързване с данните на практиката…')));
   setUnauthorizedHandler(() => {
     // Сесията е изтекла: връщаме към екрана за вход, без да губим адреса.
-    if (!document.querySelector('.login-doctors')) location.reload();
+    if (!document.querySelector('.entry-grid')) location.reload();
   });
 
   let info;
@@ -410,13 +511,18 @@ async function start() {
 
   state.practice = info.practice || state.practice;
   state.doctors = info.doctors || [];
+  state.kind = info.kind === 'simp' ? 'simp' : 'gp';
 
-  if (info.needsSetup) { setupScreen(); return; }
-  if (!info.doctor && info.requireLogin) { loginScreen(info.doctors); return; }
+  // Първо се избира практиката (ОПЛ или СИМП); вход с ПИН — от същия екран.
+  if (!info.workspaceChosen) { entryScreen(info); return; }
+  if (info.needsSetup) { setupScreen(state.kind); return; }
+  if (!info.doctor && info.requireLogin) { entryScreen(info); return; }
 
   state.doctor = info.doctor || { name: 'Практиката', role: '', id: '' };
 
   const boot = await api.bootstrap();
+  state.kind = boot.kind === 'simp' ? 'simp' : 'gp';
+  document.body.dataset.kind = state.kind;
   state.practice = boot.practice;
   state.doctors = boot.doctors;
   state.schedule = boot.schedule;
@@ -443,6 +549,7 @@ export function scheduleItem(id) {
 /** Презарежда календара и настройките след промяна в „Настройки“. */
 export async function refreshBootstrap() {
   const boot = await api.bootstrap();
+  state.kind = boot.kind === 'simp' ? 'simp' : 'gp';
   state.practice = boot.practice;
   state.doctors = boot.doctors;
   state.schedule = boot.schedule;

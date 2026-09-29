@@ -446,6 +446,8 @@ function makeAdults(store, t) {
         }
       }
 
+      // За примерната практика за СИМП — кои пациенти са насочени към специалист.
+      Object.defineProperty(p, 'demoProfile', { value: { profile, k }, enumerable: false });
       if (rnd() < 0.15) {
         p.reminders.push({
           id: 'demo-ar-' + n, date: addDays(t, Math.floor(between(-15, 30))),
@@ -456,6 +458,141 @@ function makeAdults(store, t) {
       store.data.patients.push(p);
     }
   }
+}
+
+/* ------------------------- примерна практика за СИМП ------------------------- */
+
+const SIMP_DOCTORS = [
+  { id: 'demo-sd-1', name: 'д-р Николай Петров', role: 'Кардиолог', uin: '2300012345', pin: null, active: true },
+  { id: 'demo-sd-2', name: 'д-р Елена Георгиева', role: 'Ендокринолог', uin: '2300067890', pin: hashPin('1234'), active: true },
+];
+const CARDIO_PROFILES = ['af', 'htn'];
+const ENDO_PROFILES = ['metabolic', 'thyroid'];
+const PROTOCOL_DRUGS = {
+  empagliflozin: 'Емпаглифлозин 10 мг', dapagliflozin: 'Дапаглифлозин 10 мг', apixaban: 'Апиксабан 5 мг',
+  'sacubitril+valsartan': 'Сакубитрил/валсартан 49/51 мг', insulin_glargine: 'Инсулин гларжин',
+};
+const EXAM_TEXT = {
+  cardio: {
+    complaint: 'Без стенокардни оплаквания. Умора при по-голямо натоварване.',
+    findings: 'Общо състояние — добро. Дишане — везикуларно, без хрипове. Сърдечна дейност — ритмична, ясни тонове. Без отоци.',
+    recommendations: 'Продължава терапията. Домашно измерване на налягането. Контрол на липидите и креатинина преди следващия преглед.',
+  },
+  endo: {
+    complaint: 'Без хипогликемии. Спазва диетата непостоянно.',
+    findings: 'Общо състояние — добро. Щитовидна жлеза — не се палпира увеличена. Стъпала — запазена чувствителност, без рани.',
+    recommendations: 'HbA1c след 3 месеца. Ежегоден преглед на очните дъна. Преглед на стъпалата при всяко посещение.',
+  },
+};
+
+/** Пациентите от практиката на ОПЛ, насочени към кардиолог и ендокринолог. */
+function makeSimp(gp, t) {
+  const patients = [];
+  const appointments = [];
+  const gpDoctor = (id) => gp.data.doctors.find(d => d.id === id) || gp.data.doctors[0];
+  let n = 0;
+  for (const src of gp.data.patients) {
+    const prof = src.demoProfile;
+    if (!prof) continue;
+    const spec = CARDIO_PROFILES.includes(prof.profile) ? 'cardio' : ENDO_PROFILES.includes(prof.profile) ? 'endo' : null;
+    if (!spec) continue;
+    n++;
+    const doctorId = spec === 'cardio' ? 'demo-sd-1' : 'demo-sd-2';
+    const referrer = gpDoctor(src.doctorId);
+    const p = JSON.parse(JSON.stringify(src));
+    Object.assign(p, {
+      id: 'demo-s-' + String(n).padStart(3, '0'), doctorId, records: {}, optIn: [], reminders: [], visits: [],
+      development: [], assessments: [], nutritionPlans: [],
+      gp: { name: referrer.name, uin: '', phone: gp.data.practice.phone, practice: gp.data.practice.name },
+      referrals: [], protocols: [], followups: [],
+    });
+    const mainCond = spec === 'cardio'
+      ? (p.chronic.find(c => c.code === 'hf') || p.chronic.find(c => c.code === 'af') || p.chronic.find(c => c.code === 'htn'))
+      : (p.chronic.find(c => c.code === 'dm2') || p.chronic.find(c => c.code === 'hypothyroid'));
+    const dx = {
+      hf: ['I50.0', 'Застойна сърдечна недостатъчност'], af: ['I48', 'Предсърдно мъждене и трептене'], htn: ['I10', 'Есенциална (първична) хипертония'],
+      dm2: ['E11.9', 'Неинсулинозависим захарен диабет без усложнения'], hypothyroid: ['E03.9', 'Хипотиреоидизъм, неуточнен'],
+    }[mainCond?.code] || (spec === 'cardio' ? ['I10', 'Есенциална (първична) хипертония'] : ['E11.9', 'Неинсулинозависим захарен диабет без усложнения']);
+
+    // Първото направление — преди година и половина; следват диспансерни прегледи.
+    const firstDate = addDays(addMonths(t, -18), Math.floor(between(0, 60)));
+    const ref1 = {
+      id: `demo-rf-${n}-1`, number: `${firstDate.slice(2, 4)}${String(100 + n)}A${String(1000 + n).slice(-4)}C${n % 10}`.slice(0, 12).toUpperCase(),
+      issued: addDays(firstDate, -Math.floor(between(3, 12))), purpose: 'consult', specialty: spec,
+      fromName: referrer.name, fromUin: '', fromPractice: gp.data.practice.name, icd: dx[0], diagnosis: dx[1], note: '', closed: false,
+      doctorId, createdAt: firstDate + 'T09:00:00.000Z',
+    };
+    p.referrals.push(ref1);
+    const exam = (date, examType, referralId, extra = {}) => p.visits.push({
+      id: `demo-sv-${n}-${p.visits.length}`, simp: true, date, time: ['08:40', '09:20', '10:00', '11:20', '13:40'][p.visits.length % 5],
+      examType, type: { primary: 'Първичен преглед', secondary: 'Вторичен преглед', dispensary: 'Диспансерен преглед' }[examType],
+      nrn: '', specialty: spec, referralId, complaint: EXAM_TEXT[spec].complaint, findings: EXAM_TEXT[spec].findings,
+      investigations: '', diagnosis: dx[1], icd: dx[0], extraDx: [], treatment: '', recommendations: EXAM_TEXT[spec].recommendations,
+      nextDate: '', note: '', appointmentId: '', doctorId, recordedAt: date + 'T10:00:00.000Z', ...extra,
+    });
+    exam(firstDate, 'primary', ref1.id);
+    exam(addDays(firstDate, Math.floor(between(12, 25))), 'secondary', ref1.id);
+    const every = mainCond?.code === 'hf' ? 3 : 6;
+    let last = addDays(firstDate, 20);
+    while (addMonths(last, every) < addDays(t, -10)) {
+      last = addDays(addMonths(last, every), Math.floor(between(-5, 12)));
+      if (last >= t) break;
+      exam(last, 'dispensary', '');
+    }
+    // Някои пациенти изостават с диспансерния преглед — последният им не е състоял.
+    if (n % 4 === 0) {
+      while (p.visits.length > 2 && addMonths(p.visits.at(-1).date, every) > addDays(t, -45)) p.visits.pop();
+    }
+    p.followups.push({
+      id: `demo-fu-${n}`, icd: dx[0], diagnosis: dx[1], since: firstDate, everyMonths: every, specialty: spec,
+      status: 'active', note: '', doctorId, createdAt: firstDate + 'T10:00:00.000Z',
+    });
+    // Ново направление: при част от пациентите — очаква преглед или е в срока за вторичен.
+    if (n % 3 === 1) {
+      const issued = addDays(t, -Math.floor(between(2, 9)));
+      p.referrals.push({
+        ...ref1, id: `demo-rf-${n}-2`, number: `${t.slice(2, 4)}${String(200 + n)}B${String(2000 + n).slice(-4)}D${n % 10}`.slice(0, 12).toUpperCase(),
+        issued, purpose: n % 2 ? 'consult' : 'dispensary', createdAt: issued + 'T09:00:00.000Z',
+      });
+      if (n % 2) exam(addDays(issued, 2), 'primary', `demo-rf-${n}-2`);
+    }
+    // Протоколи за лекарствата, които се отпускат по протокол.
+    for (const m of p.meds.filter(x => PROTOCOL_DRUGS[x.drug])) {
+      const until = m.protocolUntil || addDays(t, Math.floor(between(-10, 300)));
+      p.protocols.push({
+        id: `demo-pr-${n}-${p.protocols.length}`, number: `${1000 + n * 7 + p.protocols.length}/${until.slice(0, 4)}`, kind: '1А',
+        drugs: [PROTOCOL_DRUGS[m.drug]], icd: dx[0], diagnosis: dx[1],
+        issued: addDays(addMonths(until, -12), 1), validUntil: until, note: '', status: 'active', renewedFrom: '',
+        doctorId, createdAt: addDays(addMonths(until, -12), 1) + 'T10:00:00.000Z',
+      });
+    }
+    // Изследванията на специалиста остават при него, не при личния лекар.
+    src.studies = [];
+    src.nodules = [];
+    patients.push(p);
+  }
+
+  // Часове: днес, утре и до края на седмицата.
+  const slots = ['08:00', '08:20', '08:40', '09:00', '09:20', '10:00', '10:20', '11:00', '11:40', '13:00', '13:20', '14:00'];
+  const book = (p, date, time, extra = {}) => appointments.push({
+    id: `demo-ap-${appointments.length + 1}`, date, time, minutes: 20, doctorId: p ? p.doctorId : 'demo-sd-1',
+    patientId: p ? p.id : '', name: p ? p.name : extra.name, phone: p ? p.phone : extra.phone || '',
+    reason: extra.reason || 'Диспансерен преглед', examType: extra.examType || 'dispensary', status: extra.status || 'booked',
+    note: '', examId: '', createdBy: '', createdAt: addDays(date, -7) + 'T09:00:00.000Z',
+  });
+  const cardio = patients.filter(p => p.doctorId === 'demo-sd-1');
+  const endo = patients.filter(p => p.doctorId === 'demo-sd-2');
+  cardio.slice(0, 4).forEach((p, i) => book(p, t, slots[i], { status: i === 0 ? 'done' : i === 1 ? 'arrived' : 'booked' }));
+  book(null, t, slots[5], { name: 'Тодор Иванов Колев', phone: '0888 123 456', reason: 'Сърцебиене', examType: 'primary' });
+  endo.slice(0, 3).forEach((p, i) => book(p, t, slots[i + 1], { status: i === 0 ? 'arrived' : 'booked' }));
+  for (let d = 1; d <= 6; d++) {
+    const date = addDays(t, d);
+    const wd = new Date(date + 'T12:00').getDay();
+    if (wd === 0 || wd === 6) continue;
+    const list = [...cardio, ...endo].filter((_, i) => (i + d) % 4 === 0);
+    list.slice(0, 4).forEach((p, i) => book(p, date, slots[i * 2]));
+  }
+  return { patients, appointments };
 }
 
 function main() {
@@ -483,7 +620,6 @@ function main() {
   ];
   store.data.settings = {
     horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '', cvRegion: 'very_high',
-    modules: { cardio: true, endo: true },
   };
   // Примерните данни са „нови“ — без прозорец „Какво е новото“ при първото отваряне.
   store.data.appVersion = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
@@ -682,6 +818,25 @@ function main() {
 
   makeAdults(store, t);
 
+  // Практиката за СИМП в същата инсталация — кардиолог и ендокринолог.
+  const simpData = makeSimp(store, t);
+  const simp = new Store(path.join(DATA_DIR, 'simp'), { kind: 'simp', license: store.license });
+  simp.data.practice = {
+    name: 'АИСИМП „Сърце и хормони“', address: 'гр. София, бул. Витоша 100', phone: '02 900 11 11', rzi: '2201132001',
+  };
+  simp.data.doctors = SIMP_DOCTORS;
+  simp.data.settings = {
+    horizonDays: 30, requireLogin: false, autoLogoutMinutes: 0, extraBackupDir: '', cvRegion: 'very_high',
+    modules: { cardio: true, endo: true },
+    agenda: { start: '08:00', end: '16:00', slot: 20, days: [1, 2, 3, 4, 5] },
+    secondaryDays: 30, protocolWarnDays: 30,
+  };
+  simp.data.appVersion = store.data.appVersion;
+  simp.data.patients = simpData.patients;
+  simp.data.appointments = simpData.appointments;
+  simp.migrate();
+  simp.persistSync();
+
   store.persistSync();
   const counts = store.patients.reduce((acc, p) => {
     acc.measurements += p.measurements.length;
@@ -704,6 +859,10 @@ function main() {
   ${counts.visits} прегледа
   ${counts.development} оценки на развитието
   2 потребителя (д-р Иванова — без ПИН, д-р Стоянов — ПИН 1234)
+
+Практика за СИМП (${path.join(DATA_DIR, 'simp')}):
+  ${simp.patients.length} пациенти при кардиолог и ендокринолог, ${simp.data.appointments.length} записани часа
+  2 потребителя (д-р Петров — без ПИН, д-р Георгиева — ПИН 1234)
 
 Стартирайте с:  npm start
 `);

@@ -11,7 +11,7 @@ class ApiError extends Error {
 let onUnauthorized = null;
 export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
-const PUBLIC = new Set(['/api/state', '/api/login', '/api/setup', '/api/logout', '/api/activate']);
+const PUBLIC = new Set(['/api/state', '/api/login', '/api/setup', '/api/logout', '/api/activate', '/api/workspace']);
 
 async function request(method, path, body) {
   let res;
@@ -54,7 +54,9 @@ export const api = {
 
   state: () => request('GET', '/api/state'),
   setup: (data) => request('POST', '/api/setup', data),
-  login: (doctorId, pin) => request('POST', '/api/login', { doctorId, pin }),
+  login: (doctorId, pin, workspace) => request('POST', '/api/login', { doctorId, pin, workspace }),
+  /** Избор на практиката при входа: 'gp', 'simp' или null (обратно към избора). */
+  chooseWorkspace: (workspace) => request('POST', '/api/workspace', { workspace }),
   logout: () => request('POST', '/api/logout', {}),
   activate: (key) => request('POST', '/api/activate', { key }),
   bootstrap: () => request('GET', '/api/bootstrap'),
@@ -112,6 +114,25 @@ export const api = {
   addNoduleFna: (id, nid, data) => request('POST', `/api/patients/${id}/nodules/${nid}/fna`, data),
   deleteNoduleEntry: (id, nid, list, eid) => request('DELETE', `/api/patients/${id}/nodules/${nid}/${list}/${eid}`),
   specialty: (module, params) => request('GET', `/api/specialty/${module}` + qs(params)),
+
+  // Практиката за СИМП.
+  addExam: (id, data) => request('POST', `/api/patients/${id}/exams`, data),
+  updateExam: (id, vid, data) => request('PUT', `/api/patients/${id}/exams/${vid}`, data),
+  addReferral: (id, data) => request('POST', `/api/patients/${id}/referrals`, data),
+  updateReferral: (id, rid, data) => request('PATCH', `/api/patients/${id}/referrals/${rid}`, data),
+  deleteReferral: (id, rid) => request('DELETE', `/api/patients/${id}/referrals/${rid}`),
+  addProtocol: (id, data) => request('POST', `/api/patients/${id}/protocols`, data),
+  updateProtocol: (id, prid, data) => request('PATCH', `/api/patients/${id}/protocols/${prid}`, data),
+  deleteProtocol: (id, prid) => request('DELETE', `/api/patients/${id}/protocols/${prid}`),
+  addFollowup: (id, data) => request('POST', `/api/patients/${id}/followups`, data),
+  updateFollowup: (id, fid, data) => request('PATCH', `/api/patients/${id}/followups/${fid}`, data),
+  deleteFollowup: (id, fid) => request('DELETE', `/api/patients/${id}/followups/${fid}`),
+  appointments: (params) => request('GET', '/api/appointments' + qs(params)),
+  addAppointment: (data) => request('POST', '/api/appointments', data),
+  updateAppointment: (aid, data) => request('PATCH', `/api/appointments/${aid}`, data),
+  deleteAppointment: (aid) => request('DELETE', `/api/appointments/${aid}`),
+  simpOverview: (params) => request('GET', '/api/simp/overview' + qs(params)),
+  simpReports: (params) => request('GET', '/api/simp/reports' + qs(params)),
 
   tasks: (params) => request('GET', '/api/tasks' + qs(params)),
   reports: (params) => request('GET', '/api/reports' + qs(params)),

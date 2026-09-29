@@ -112,9 +112,9 @@ export async function renderPatients(host) {
     chips,
     h('div', { style: { height: '12px' } }),
     list.length
-      ? card(null, { tight: true }, table(
-        ['Пациент', 'Възраст', 'ЕГН', 'Телефон', 'Следваща дейност', 'Обхват', ''],
-        list.map(p => patientRow(p, host))))
+      ? card(null, { tight: true }, state.kind === 'simp'
+        ? table(['Пациент', 'Възраст', 'ЕГН', 'Телефон', 'Последен преглед', 'Следващ час', 'Наблюдение', ''], list.map(p => simpRow(p)))
+        : table(['Пациент', 'Възраст', 'ЕГН', 'Телефон', 'Следваща дейност', 'Обхват', ''], list.map(p => patientRow(p, host))))
       : card(null, {}, empty(view.q
         ? `Няма съвпадение за „${view.q}“.`
         : view.archived ? 'Архивът е празен.' : view.condition || view.group ? 'Няма пациенти по този филтър.' : 'Все още няма записани пациенти.', '🔎'),
@@ -127,6 +127,7 @@ export async function renderPatients(host) {
 
 /** Списъкът, както е на екрана, като файл .xlsx. */
 function exportList(list) {
+  if (state.kind === 'simp') { exportSimpList(list); return; }
   const rows = [['Име', 'ЕГН', 'Дата на раждане', 'Възраст', 'Пол', 'Телефон', 'Хронични заболявания', 'Следваща дейност', 'Срок', 'Просрочени', 'Обхват %']];
   for (const p of list) {
     rows.push([
@@ -140,6 +141,52 @@ function exportList(list) {
     name: 'Пациенти', rows, widths: [30, 13, 14, 14, 5, 16, 40, 34, 12, 11, 10], dateColumns: [2, 8],
   }]), `pacienti-${today()}.xlsx`);
   toast(`Изтеглен е списък с ${list.length} ${list.length === 1 ? 'пациент' : 'пациенти'}.`, 'ok');
+}
+
+function exportSimpList(list) {
+  const rows = [['Име', 'ЕГН', 'Дата на раждане', 'Възраст', 'Пол', 'Телефон', 'Заболявания', 'Последен преглед', 'Диагноза', 'Следващ час', 'Диспансерен преглед до']];
+  for (const p of list) {
+    const s = p.simp || {};
+    rows.push([
+      p.name, p.egn || '', p.birthDate, formatAge(p.birthDate), p.sex === 'f' ? 'ж' : p.sex === 'm' ? 'м' : '', p.phone || '',
+      (p.chronic || []).map(c => CONDITIONS[c]?.name).filter(Boolean).join(', '),
+      s.lastExam ? s.lastExam.date : '', s.lastExam ? [s.lastExam.icd, s.lastExam.diagnosis].filter(Boolean).join(' ') : '',
+      s.nextAppt ? `${s.nextAppt.date} ${s.nextAppt.time}` : '', s.followup ? s.followup.due || '' : '',
+    ]);
+  }
+  downloadFile(makeXlsx([{
+    name: 'Пациенти', rows, widths: [30, 13, 14, 14, 5, 16, 36, 14, 40, 18, 14], dateColumns: [2, 7, 10],
+  }]), `pacienti-${today()}.xlsx`);
+  toast(`Изтеглен е списък с ${list.length} ${list.length === 1 ? 'пациент' : 'пациенти'}.`, 'ok');
+}
+
+const FOLLOW_BADGE = { overdue: ['overdue', 'просрочен'], due: ['due', 'дължим'], soon: ['soon', 'предстои'], ok: ['future', 'планиран'] };
+
+/** Ред в списъка на практиката за СИМП: прегледи, часове, наблюдение, протоколи. */
+function simpRow(p) {
+  const s = p.simp || {};
+  const alerts = [];
+  if (p.broken) alerts.push(badge('overdue', '⚠ повредени данни в досието'));
+  if (p.allergies && p.allergies.length) alerts.push(badge('alert', '⚠ алергия'));
+  if (s.protocolsExpired) alerts.push(badge('overdue', '📄 изтекъл протокол'));
+  else if (s.protocolsExpiring) alerts.push(badge('due', '📄 изтичащ протокол'));
+  if (s.referralsOpen) alerts.push(badge('soon', `📨 ${s.referralsOpen} ${s.referralsOpen === 1 ? 'направление' : 'направления'}`));
+  if (s.medSerious) alerts.push(badge('alert', '💊 ' + s.medSerious));
+  for (const code of (p.chronic || []).slice(0, 4)) alerts.push(badge('', SHORT[code] || CONDITIONS[code]?.name || code));
+  const f = s.followup;
+  return h('tr.clickable' + (p.needsAttention ? '.attention' : ''), { onclick: () => { location.hash = '#/patient/' + p.id; } },
+    h('td.name-cell', null,
+      h('div', null, p.name, ' ', h('span.dim', null, p.sex === 'f' ? '♀' : p.sex === 'm' ? '♂' : '')),
+      alerts.length ? h('div.row.tight', { style: { marginTop: '3px' } }, alerts) : null),
+    h('td.nowrap.small', null, h('div', null, formatAge(p.birthDate)), h('div.tiny.dim', null, formatDate(p.birthDate))),
+    h('td.mono.small', null, p.egn || '—'),
+    h('td.mono.small.nowrap', null, p.phone || '—'),
+    h('td.small', null, s.lastExam
+      ? h('div', null, h('div', null, formatDate(s.lastExam.date)), h('div.tiny.dim', null, [s.lastExam.icd, s.lastExam.diagnosis].filter(Boolean).join(' ')))
+      : h('span.dim', null, '—')),
+    h('td.small.nowrap', null, s.nextAppt ? `${formatDate(s.nextAppt.date)}, ${s.nextAppt.time}` : h('span.dim', null, '—')),
+    h('td.nowrap', null, f ? h('div', null, badge(...FOLLOW_BADGE[f.status] || ['future', '']), h('div.tiny.dim', null, formatDate(f.due))) : h('span.dim.small', null, '—')),
+    h('td.actions.no-print', null, s.exams ? h('span.tiny.dim', null, `${s.exams} ${s.exams === 1 ? 'преглед' : 'прегледа'}`) : null));
 }
 
 function patientRow(p, host) {
@@ -204,8 +251,9 @@ function coverageBar(pct) {
 
 /* -------------------------- формуляр за пациент ----------------------------- */
 
-export function openPatientForm(patient = null, onSaved = null) {
+export function openPatientForm(patient = null, onSaved = null, prefill = {}) {
   const isNew = !patient;
+  const simp = state.kind === 'simp';
   let form;
 
   const doctorOptions = [
@@ -266,6 +314,10 @@ export function openPatientForm(patient = null, onSaved = null) {
     const pedsMode = data.pediatricMode;
     delete data.pediatricMode;
     if (!pedsToggle.hidden) data.pediatric = pedsMode === 'on';
+    if (simp) {
+      data.gp = { name: data.gpName, uin: data.gpUin, phone: data.gpPhone, practice: data.gpPractice };
+    }
+    for (const k of ['gpName', 'gpUin', 'gpPhone', 'gpPractice']) delete data[k];
 
     try {
       const res = isNew ? await api.createPatient(data) : await api.updatePatient(patient.id, data);
@@ -325,14 +377,22 @@ export function openPatientForm(patient = null, onSaved = null) {
       form = h('form', { onsubmit: (e) => { e.preventDefault(); submit(close); } },
         h('div.form-grid', null,
           h('div.full', null, field('Име и фамилия',
-            input({ name: 'name', required: true, value: patient ? patient.name : '', placeholder: 'Иван Петров Георгиев' }))),
+            input({ name: 'name', required: true, value: patient ? patient.name : prefill.name || '', placeholder: 'Иван Петров Георгиев' }))),
           h('div', null, h('label.field', null, h('span.lbl', null, 'ЕГН'), egnField, egnHint)),
           h('div', null, field('Дата на раждане', birthField)),
           h('div', null, field('Пол', sexField)),
           h('div', null, field('Телефон', input({
-            name: 'phone', type: 'tel', value: patient ? patient.phone || '' : '', placeholder: '08…',
+            name: 'phone', type: 'tel', value: patient ? patient.phone || '' : prefill.phone || '', placeholder: '08…',
           }))),
-          h('div', null, field('Личен лекар', select(doctorOptions, { name: 'doctorId' }))),
+          h('div', null, field(simp ? 'Лекуващ специалист' : 'Личен лекар', select(doctorOptions, { name: 'doctorId' }))),
+          simp ? [
+            h('div.full', null, h('h3', { style: { marginTop: '6px' } }, 'Личен лекар (ОПЛ)',
+              h('span.small.muted', { style: { fontWeight: '400' } }, ' — за направленията и амбулаторния лист'))),
+            h('div', null, field('Име', input({ name: 'gpName', value: patient?.gp?.name || '', maxlength: 120, placeholder: 'д-р …' }))),
+            h('div', null, field('УИН', input({ name: 'gpUin', value: patient?.gp?.uin || '', inputmode: 'numeric', maxlength: 10 }))),
+            h('div', null, field('Телефон', input({ name: 'gpPhone', value: patient?.gp?.phone || '', type: 'tel', maxlength: 60 }))),
+            h('div.full', null, field('Практика', input({ name: 'gpPractice', value: patient?.gp?.practice || '', maxlength: 160 }))),
+          ] : null,
           h('div.full', null, field('Адрес', input({ name: 'address', value: patient ? patient.address || '' : '' }))),
 
           h('div.full', null, contactsTitle),

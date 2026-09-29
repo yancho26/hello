@@ -31,7 +31,7 @@ export function cardioTab(ctx) {
     addButtons(ctx, KINDS, [
       h('button.btn.sm', { onclick: () => resultsDialog(ctx, ['ldl', 'tchol', 'hdl', 'tg', 'lpa', 'ntprobnp', 'creat', 'k']) }, '＋ Резултати'),
       h('div.grow'),
-      h('button.btn.sm.primary', { onclick: () => consultDialog(ctx, 'cardio', () => consultDraft(ctx, s)) }, '🖨 Заключение за ОПЛ'),
+      h('button.btn.sm.primary', { onclick: () => consultDialog(ctx, 'cardio', () => consultDraft(ctx, s)) }, '＋ Преглед от раздела'),
     ]),
     h('div.overview-grid', null,
       h('div.col', null, alertsCard(s.alerts, 'Няма кардиологични сигнали.'), s.hf ? hfCard(ctx, s.hf) : null, lipidCard(ctx, s.lipids)),

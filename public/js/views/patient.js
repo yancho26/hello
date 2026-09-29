@@ -37,7 +37,13 @@ const TABS = [
   { id: 'reminders', label: 'Напомняния' },
 ];
 
-export async function renderPatient(host, id) {
+export async function renderPatient(host, id, params = new URLSearchParams()) {
+  // В практиката за СИМП досието е друго — прегледи, направления, протоколи, график.
+  if (state.kind === 'simp') {
+    const { renderSimpPatient } = await import('./simp-patient.js');
+    await renderSimpPatient(host, id, params);
+    return;
+  }
   const data = await api.patient(id);
   const p = data.patient;
   const reload = () => renderPatient(host, id);
@@ -395,7 +401,7 @@ function checkupsTab(ctx) {
 
 /* ---------------------------------- растеж ----------------------------------- */
 
-function growthTab(ctx) {
+export function growthTab(ctx) {
   const { p, data, reload } = ctx;
   const growth = data.growth || [];
   const concerns = data.concerns || [];

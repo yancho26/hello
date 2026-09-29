@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store } from './lib/store.js';
+import { Workspaces } from './lib/workspaces.js';
 import { banner, createAppServer, localAddresses } from './lib/http.js';
 import { diskStatic } from './lib/static.js';
 
@@ -23,11 +23,13 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf
 // Демонстрацията с измислени данни (Codespaces) работи без продуктов ключ.
 const DEMO = process.env.DOCUP_DEMO === '1';
 
-const store = new Store(DATA_DIR);
-store.noteAppVersion(VERSION);
+// Двете практики: на ОПЛ (data/) и за СИМП (data/simp/).
+const workspaces = Workspaces.open(DATA_DIR);
+const store = workspaces.gp;
+workspaces.noteAppVersion(VERSION);
 
 const server = createAppServer({
-  store,
+  workspaces,
   requireActivation: !DEMO,
   serveStatic: diskStatic(path.join(ROOT, 'public')),
   info: () => ({
@@ -52,14 +54,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
     if (stopping) return;
     stopping = true;
     console.log('\nЗаписване на данните и спиране…');
-    try { store.persistSync(); } catch (err) { console.error(err.message); }
+    try { workspaces.persistSync(); } catch (err) { console.error(err.message); }
     server.close();
     server.closeAllConnections?.();
-    if (store.settings.extraBackupDir) {
-      await Promise.race([store.copyToExtra('shutdown'), new Promise(r => setTimeout(r, 8000))]);
-    }
+    await Promise.race([workspaces.copyToExtra('shutdown'), new Promise(r => setTimeout(r, 8000))]);
     process.exit(0);
   });
 }
 
-export { server, store };
+export { server, store, workspaces };

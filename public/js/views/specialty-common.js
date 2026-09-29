@@ -1,16 +1,14 @@
 /* Общо за разделите на специалистите: въвеждане на структурирани
- * изследвания, списък със сигнали, история и консултативно заключение за
- * общопрактикуващия лекар (запис като преглед, напомняне и печат). */
+ * изследвания, списък със сигнали, история и преглед, попълнен от раздела
+ * (амбулаторен лист за пациента и личния лекар). */
 
 import { api } from '../api.js';
-import { state } from '../app.js';
 import { badge, card, empty, field, h, input, modal, numberInput, select, table, toast } from '../ui/components.js';
-import { addMonths, formatDate, today } from '../shared/dates.js';
+import { formatDate, today } from '../shared/dates.js';
 import { STUDY_KINDS, STUDY_TEXT_MAX, studyLine, validateStudy } from '../shared/studies.js';
-import { MODULES } from '../shared/specialty.js';
 import { SCHEDULE_SLOTS, activeMeds, medLabel } from '../shared/meds.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
-import { header, printWindow } from './adult-print.js';
+import { examDialog } from './simp-dialogs.js';
 
 export const dec = (v, d = null) => (v === null || v === undefined ? '' : String(d === null ? v : Math.round(v * 10 ** d) / 10 ** d).replace('.', ','));
 const actionsFor = (label, submit) => (close) => [
@@ -109,66 +107,25 @@ export function pctBar(pct, colour) {
   return h('div.pct-bar', null, h('div', { style: { width: w + '%', background: colour } }));
 }
 
-/* ------------------------- консултативно заключение ------------------------- */
+/* ------------------------- преглед от раздела ------------------------- */
 
 /**
- * Заключение на специалиста за ОПЛ: попълва се автоматично от раздела,
- * лекарят го допълва. Записва се като преглед (с напомняне за контрол) и
- * се отпечатва.
+ * Преглед при специалиста, попълнен автоматично от раздела на
+ * специалността (изследвания, диагнози, терапия, препоръки). Лекарят го
+ * допълва; записва се като преглед (амбулаторен лист) и може да се отпечата.
  */
 export function consultDialog(ctx, module, build) {
-  const { p, reload } = ctx;
-  const def = MODULES[module];
   const draft = build();
-  let form;
-  const nextDefault = addMonths(today(), draft.nextMonths || 6);
-
-  const collect = () => {
-    const d = Object.fromEntries(new FormData(form));
-    return {
-      date: d.date, diagnosis: d.diagnosis.trim(), icd: d.icd.trim(), findings: d.findings.trim(),
-      treatment: d.treatment.trim(), recommendations: d.recommendations.trim(),
-      next: d.next, remind: d.remind === 'on',
-    };
-  };
-  const save = async (close, andPrint) => {
-    const c = collect();
-    try {
-      await api.addVisit(p.id, {
-        date: c.date, type: `Консултация — ${def.specialist}`, diagnosis: c.diagnosis, icd: c.icd,
-        findings: c.findings, treatment: [c.treatment, c.recommendations && 'Препоръки: ' + c.recommendations].filter(Boolean).join('\n'),
-        note: c.next ? `Следващ контрол: ${formatDate(c.next)}` : '',
-      });
-      if (c.next && c.remind) await api.addReminder(p.id, { date: c.next, text: `Контролен преглед при ${def.specialist}` });
-      toast('Консултацията е записана в „Прегледи“.', 'ok');
-      if (andPrint) printConsult(p, module, c);
-      close();
-      await reload();
-    } catch (err) { toast(err.message, 'error'); }
-  };
-
-  modal({
-    title: `Консултативно заключение — ${def.specialist}`,
-    wide: true,
-    body: () => {
-      form = h('form.form-grid', { onsubmit: (e) => e.preventDefault() },
-        h('div', null, field('Дата', input({ name: 'date', type: 'date', value: today(), max: today(), required: true }))),
-        h('div', null, field('Код по МКБ-10', input({ name: 'icd', value: draft.icd || '', maxlength: 20 }))),
-        h('div.full', null, field('Диагноза', input({ name: 'diagnosis', value: draft.diagnosis || '', maxlength: 500 }))),
-        h('div.full', null, field('Данни от изследванията', h('textarea', { name: 'findings', rows: 7, maxlength: 4000 }, draft.findings || ''),
-          'Попълнено от раздела — редактирайте свободно.')),
-        h('div.full', null, field('Терапия', h('textarea', { name: 'treatment', rows: 4, maxlength: 1200 }, draft.treatment || ''))),
-        h('div.full', null, field('Препоръки към личния лекар', h('textarea', { name: 'recommendations', rows: 5, maxlength: 800 }, draft.recommendations || ''))),
-        h('div', null, field('Следващ контролен преглед', input({ name: 'next', type: 'date', value: nextDefault, min: today() }))),
-        h('div', null, h('label.check', { style: { marginTop: '26px' } },
-          h('input', { type: 'checkbox', name: 'remind', checked: true }), h('span', null, 'Напомняне в програмата'))));
-      return form;
+  // Първата диагноза е основна, останалите — придружаващи.
+  const codes = String(draft.icd || '').split(/,\s*/).filter(Boolean);
+  const names = String(draft.diagnosis || '').split(/;\s*/).filter(Boolean);
+  examDialog(ctx, {
+    specialty: module,
+    draft: {
+      ...draft,
+      icd: codes[0] || '', diagnosis: names[0] || '',
+      extraDx: names.slice(1).map((text, i) => ({ icd: codes[i + 1] || '', text })),
     },
-    actions: (close) => [
-      h('button.btn', { type: 'button', onclick: () => close() }, 'Отказ'),
-      h('button.btn', { type: 'button', onclick: () => printConsult(p, module, collect()) }, '🖨 Само печат'),
-      h('button.btn.primary', { type: 'button', onclick: () => save(close, true) }, 'Запиши и печатай'),
-    ],
   });
 }
 
@@ -187,30 +144,3 @@ const scheduleText = (m) => SCHEDULE_SLOTS.map(([k]) => m.schedule?.[k] || '0').
 export function therapyText(p, filter = () => true) {
   return activeMeds(p).filter(filter).map(m => `${medLabel(m)}${m.dose ? ' ' + m.dose : ''} ${m.prn ? 'при нужда' : scheduleText(m)}`.trim()).join('\n');
 }
-
-export function printConsult(p, module, c) {
-  const def = MODULES[module];
-  printWindow(`Заключение — ${p.name}`, `
-    .box { border: 1px solid #bbb; border-radius: 2mm; padding: 3mm 4mm; margin-top: 2mm; white-space: pre-wrap; }
-    .lbl { font-size: 9pt; text-transform: uppercase; letter-spacing: .03em; color: #555; margin-top: 4mm; }
-  `, (w) => {
-    const { el, add } = w;
-    header(w, `Консултативно заключение — ${def.specialist}`, p);
-    const section = (label, text) => {
-      if (!text) return;
-      add(el('div', label, 'lbl'));
-      add(el('div', text, 'box'));
-    };
-    add(el('div', `Дата на прегледа: ${formatDate(c.date || today())}`, 'muted'));
-    section('Диагноза', [c.diagnosis, c.icd && `МКБ-10: ${c.icd}`].filter(Boolean).join('\n'));
-    section('Данни от изследванията', c.findings);
-    section('Терапия', c.treatment);
-    section('Препоръки към личния лекар', c.recommendations);
-    if (c.next) section('Следващ контролен преглед', formatDate(c.next));
-    const doctor = state.doctor?.name || '';
-    const sign = add(el('div', null, 'sign'));
-    sign.appendChild(el('div', `Специалист: ${doctor}`));
-    sign.appendChild(el('div', 'Подпис и печат'));
-  });
-}
-

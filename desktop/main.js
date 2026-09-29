@@ -32,7 +32,7 @@ import http from 'node:http';
 import util from 'node:util';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { Store } from '../lib/store.js';
+import { Workspaces } from '../lib/workspaces.js';
 import { APP_ID, LEGACY_APP_IDS, banner, createAppServer, localAddresses } from '../lib/http.js';
 import { diskStatic, memoryStatic } from '../lib/static.js';
 
@@ -342,16 +342,19 @@ async function main() {
   }
   const url = urlFor(port);
 
+  // Двете практики в инсталацията: на ОПЛ (data) и за СИМП (data\simp).
+  let workspaces;
   let store;
   try {
-    store = new Store(dataDir);
+    workspaces = Workspaces.open(dataDir);
+    store = workspaces.gp;
   } catch (err) {
     console.error('[данни]', err);
     await fatal(`Данните не могат да бъдат заредени.\n\n${err.message}`);
   }
 
   const version = appVersion();
-  try { store.noteAppVersion(version); } catch (err) { console.error('[версия]', err.message); }
+  try { workspaces.noteAppVersion(version); } catch (err) { console.error('[версия]', err.message); }
   const token = crypto.randomBytes(24).toString('hex');
   let stopping = false;
 
@@ -359,22 +362,22 @@ async function main() {
     if (stopping) return;
     stopping = true;
     console.log(`Спиране (${reason}). Записване на данните…`);
-    try { store.persistSync(); } catch (err) { console.error('[данни]', err.message); }
+    try { workspaces.persistSync(); } catch (err) { console.error('[данни]', err.message); }
     try {
       if (readJson(CONTROL_FILE)?.token === token) fs.unlinkSync(CONTROL_FILE);
     } catch { /* няма значение */ }
     server.close();
     server.closeAllConnections?.();
-    // Последно копие във външната папка — но не повече от 8 секунди.
-    if (store.settings.extraBackupDir) {
-      const status = await Promise.race([store.copyToExtra('shutdown'), sleep(8000)]);
+    // Последно копие във външната папка на всяка практика — но не повече от 8 секунди.
+    const copies = await Promise.race([workspaces.copyToExtra('shutdown'), sleep(8000)]);
+    for (const status of Array.isArray(copies) ? copies : []) {
       console.log(status?.ok ? `Външно копие: ${status.file}` : 'Външното копие не е направено при спиране.');
     }
     process.exit(exitCode);
   };
 
   const server = createAppServer({
-    store,
+    workspaces,
     serveStatic: staticSource(),
     info: () => ({
       version,
@@ -429,7 +432,7 @@ async function main() {
     console.error('[неочаквана грешка]', err);
     if (stopping) return;
     // Данните се записват веднага; после съобщаваме, за да не спре програмата незабелязано.
-    try { store.persistSync(); } catch { /* вече е записано при последната промяна */ }
+    try { workspaces.persistSync(); } catch { /* вече е записано при последната промяна */ }
     await messageBox(`Програмата спря поради неочаквана грешка и трябва да бъде стартирана отново.\n\n`
       + `${err?.message || err}\n\nПодробности: ${path.join(LOG_DIR, 'server.log')}`, { error: true });
     shutdown('неочаквана грешка', 1);

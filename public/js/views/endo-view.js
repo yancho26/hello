@@ -31,7 +31,7 @@ export function endoTab(ctx) {
       h('button.btn.sm', { onclick: () => noduleDialog(ctx) }, '＋ Възел'),
       h('button.btn.sm', { onclick: () => resultsDialog(ctx, ['hba1c', 'glucose', 'tsh', 'ft4', 'ft3', 'atpo', 'trab', 'cpep']) }, '＋ Резултати'),
       h('div.grow'),
-      h('button.btn.sm.primary', { onclick: () => consultDialog(ctx, 'endo', () => consultDraft(ctx, s)) }, '🖨 Заключение за ОПЛ'),
+      h('button.btn.sm.primary', { onclick: () => consultDialog(ctx, 'endo', () => consultDraft(ctx, s)) }, '＋ Преглед от раздела'),
     ]),
     h('div.overview-grid', null,
       h('div.col', null, alertsCard(s.alerts, 'Няма ендокринологични сигнали.'), s.diabetes ? diabetesCard(ctx, s.diabetes) : null,
