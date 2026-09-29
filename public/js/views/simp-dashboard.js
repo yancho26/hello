@@ -3,6 +3,7 @@
  * направленията със срок и сигналите по специалности. */
 
 import { api } from '../api.js';
+import { assistantDashboardCard } from './assistant-panel.js';
 import { state } from '../app.js';
 import { badge, card, empty, h, mount, stat, table, toast } from '../ui/components.js';
 import { formatAge, formatDate, formatDateShort, relativeDays, today, weekdayName } from '../shared/dates.js';
@@ -22,8 +23,9 @@ export async function renderSimpDashboard(host) {
   const params = { horizon };
   if (filters.onlyMine && state.doctor?.id) params.doctor = state.doctor.id;
   const mods = enabledModules(state.settings);
-  const [ov, ...lists] = await Promise.all([
+  const [ov, assistant, ...lists] = await Promise.all([
     api.simpOverview(params),
+    api.assistant({ severity: 2, doctor: params.doctor }).catch(() => null),
     ...mods.map(m => api.specialty(m, filters.onlyMine && state.doctor?.id ? { doctor: state.doctor.id } : {}).catch(() => null)),
   ]);
   const reload = () => renderSimpDashboard(host);
@@ -152,6 +154,7 @@ export async function renderSimpDashboard(host) {
         card(`Диспансерно наблюдение (${ov.followups.length})`, { icon: '🗓', tight: true },
           followRows.length ? table(['Пациент', 'Заболяване', 'Срок', 'Телефон', ''], followRows) : empty('Няма дължими диспансерни прегледи.', '✓'))),
       h('div.col', null,
+        assistantDashboardCard(assistant),
         card(`Протоколи за подновяване (${ov.protocols.length})`, { icon: '📄', tight: true },
           protoRows.length ? table(['Пациент', 'Лекарства', 'Валиден до', ''], protoRows) : empty('Няма изтичащи протоколи.', '✓')),
         card(`Направления (${ov.referrals.length})`, { icon: '📨', tight: true },

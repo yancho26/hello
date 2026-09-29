@@ -5,6 +5,7 @@
  * едно обаждане, а не десет реда в списъка. */
 
 import { api } from '../api.js';
+import { assistantDashboardCard } from './assistant-panel.js';
 import { scheduleItem, state } from '../app.js';
 import { badge, card, empty, h, mount, stat, table, toast } from '../ui/components.js';
 import { durationText, formatAge, formatDate, formatDateShort, relativeDays, today, weekdayName } from '../shared/dates.js';
@@ -22,7 +23,10 @@ export async function renderDashboard(host) {
   const params = { horizon };
   if (filters.onlyMine && state.doctor && state.doctor.id) params.doctor = state.doctor.id;
 
-  const [tasks, reports] = await Promise.all([api.tasks(params), api.reports()]);
+  const [tasks, reports, assistant] = await Promise.all([
+    api.tasks(params), api.reports(),
+    api.assistant({ severity: 2, doctor: params.doctor }).catch(() => null),
+  ]);
   const reload = () => renderDashboard(host);
   const { buckets } = tasks;
   const todayISO = today();
@@ -94,6 +98,7 @@ export async function renderDashboard(host) {
     stats,
     chronicStats,
     h('div', { style: { height: '16px' } }),
+    assistant && assistant.patients.length ? [assistantDashboardCard(assistant), h('div', { style: { height: '16px' } })] : null,
     section('Просрочени', overdue, reload, {
       icon: '⚠️', emptyText: 'Няма просрочени дейности. Отлична работа!', collapsedAfter: 12,
     }),

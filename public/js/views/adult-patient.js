@@ -24,6 +24,7 @@ import {
 } from './adult-dialogs.js';
 import { printMedList } from './adult-print.js';
 import { cardioTab } from './cardio-view.js';
+import { assistantOverviewCard, assistantTab } from './assistant-panel.js';
 import { endoTab } from './endo-view.js';
 import { MODULES, enabledModules } from '../shared/specialty.js';
 
@@ -35,6 +36,7 @@ const STATUS_CLS = { good: 'done', ok: 'done', partial: 'due', bad: 'overdue', u
 
 export const ADULT_TABS = [
   { id: 'overview', label: 'Обзор' },
+  { id: 'assistant', label: 'Асистент' },
   { id: 'chronic', label: 'Хронични заболявания' },
   { id: 'meds', label: 'Лекарства' },
   { id: 'labs', label: 'Изследвания' },
@@ -56,6 +58,7 @@ export function adultTabs() {
 export function adultTabCount(id, ctx) {
   const { a, p, data } = ctx;
   if (MODULES[id]) return (data.specialty?.[id]?.alerts || []).filter(x => x.severity >= 2).length;
+  if (id === 'assistant') return data.assistant?.active || 0;
   if (id === 'chronic') return a.monitoring.filter(t => t.status === 'overdue' || t.status === 'due').length;
   if (id === 'meds') return a.medAlerts.filter(x => x.severity === 'contra' || x.severity === 'major').length
     + a.renewals.filter(r => r.status === 'overdue').length;
@@ -84,6 +87,7 @@ export function adultHeaderAlerts(ctx) {
 
 export const ADULT_VIEWS = {
   overview: overviewTab,
+  assistant: assistantTab,
   cardio: cardioTab,
   endo: endoTab,
   chronic: chronicTab,
@@ -99,7 +103,7 @@ export const ADULT_VIEWS = {
 function overviewTab(ctx) {
   const { a } = ctx;
   return h('div.overview-grid', null,
-    h('div.col', null, signalsCard(ctx), todoCard(ctx), controlCard(ctx)),
+    h('div.col', null, assistantOverviewCard(ctx), signalsCard(ctx), todoCard(ctx), controlCard(ctx)),
     h('div.col', null, vitalsCard(ctx), cvCard(ctx), medsSummaryCard(ctx),
       a.calculators.cha2ds2va || a.calculators.fib4 ? calculatorsCard(ctx) : null));
 }
@@ -111,7 +115,7 @@ function signalsCard(ctx) {
       h('div', null, h('strong', null, x.text), h('div.small', { style: { fontWeight: 400 } }, `${TOOLS[x.tool]?.short || ''} · ${formatDate(x.date)}`)))),
     ...a.medAlerts.filter(x => x.severity === 'contra' || x.severity === 'major').slice(0, 5).map(alertStrip),
     ...a.renewals.filter(r => r.status === 'overdue').map(r => h('div.alert-strip.warn', null,
-      `${r.kind === 'rx' ? 'Рецептата' : 'Протоколът'} за ${r.name} изтече ${formatDate(r.date)}.`)),
+      `${r.kind === 'rx' ? 'Рецептата' : 'Протоколът'} за ${r.name} изтече на ${formatDate(r.date)}`)),
   ];
   for (const hint of a.hints) {
     items.push(h('div.alert-strip.info', null, h('div.grow', null, h('strong', null, 'Подсказка: '), hint.text),

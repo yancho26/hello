@@ -12,6 +12,8 @@ import { CALENDAR_VERIFIED, GROUPS } from '../shared/calendar.js';
 import { CV_REGIONS } from '../shared/clinical.js';
 import { downloadTemplate, openImportDialog } from './import-dialog.js';
 import { MODULES } from '../shared/specialty.js';
+import { aiSettings } from './assistant-panel.js';
+import { FEEDBACK } from '../shared/assistant.js';
 
 let scheduleTrack = 'child';
 
@@ -21,6 +23,7 @@ const TABS = [
   { id: 'practice', label: 'Практика' },
   { id: 'doctors', label: 'Потребители' },
   { id: 'schedule', label: 'Календар' },
+  { id: 'assistant', label: 'Асистент' },
   { id: 'data', label: 'Данни и копия' },
   { id: 'security', label: 'Сигурност' },
   { id: 'audit', label: 'Журнал' },
@@ -45,7 +48,7 @@ export async function renderSettings(host) {
 
   const body = document.getElementById('settingsBody');
   const views = {
-    practice: practiceTab, doctors: doctorsTab, schedule: scheduleTab,
+    practice: practiceTab, doctors: doctorsTab, schedule: scheduleTab, assistant: assistantTab,
     data: dataTab, security: securityTab, audit: auditTab,
   };
   mount(body, await views[tab](rerender));
@@ -752,6 +755,88 @@ function networkCard(check, rerender) {
       : h('p.small.muted', { style: { margin: '12px 0 0' } }, 'Достъпът се променя от компютъра, на който работи програмата.'));
 }
 
+/* --------------------------------- асистент ---------------------------------- */
+
+async function assistantTab(rerender) {
+  const ai = await aiSettings(true);
+  const can = ai.canChange;
+  const enabled = h('input', { type: 'checkbox', checked: ai.enabled, disabled: !can || !ai.library });
+  const key = input({
+    type: 'password', autocomplete: 'off', spellcheck: false, disabled: !can || !ai.library,
+    placeholder: ai.hasKey ? `зададен (${ai.keyHint}); въведете нов, за да го смените` : 'sk-ant-…',
+  });
+  const busy = (btn, fn) => async () => {
+    btn.disabled = true;
+    try { await fn(); } finally { btn.disabled = false; }
+  };
+  const saveBtn = h('button.btn.primary', null, 'Запази');
+  saveBtn.onclick = busy(saveBtn, async () => {
+    const body = { enabled: enabled.checked };
+    if (key.value.trim()) body.apiKey = key.value.trim();
+    try {
+      await api.updateAiSettings(body);
+      toast(body.enabled ? 'Езиковият модел е включен.' : 'Езиковият модел е изключен.', 'ok');
+      rerender();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+  const testBtn = h('button.btn', null, 'Провери връзката');
+  testBtn.onclick = busy(testBtn, async () => {
+    try {
+      const res = await api.testAi();
+      toast(`Връзката работи (${res.model}).`, 'ok');
+    } catch (err) { toast(err.message, 'error'); }
+  });
+  const removeBtn = h('button.btn.danger', null, 'Премахни ключа');
+  removeBtn.onclick = busy(removeBtn, async () => {
+    const ok = await confirmDialog({
+      title: 'Премахване на ключа', message: 'Ключът ще бъде изтрит от този компютър и вторият поглед ще се изключи.',
+      confirmLabel: 'Премахни', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.updateAiSettings({ enabled: false, apiKey: '' });
+      toast('Ключът е премахнат.', 'ok');
+      rerender();
+    } catch (err) { toast(err.message, 'error'); }
+  });
+
+  return h('div.stack', null,
+    card('Асистент на практиката', { icon: '🧭' },
+      h('p.small', { style: { marginTop: 0 } },
+        'Асистентът е винаги включен и работи изцяло на този компютър. Преглежда всяко досие и подсказва, когато състоянието на пациента '
+        + 'изисква допълнителна проверка или изследване:'),
+      h('ul.small', null,
+        h('li', null, 'отклонени резултати и промени във времето: калий, натрий, хемоглобин, бъбречна функция, чернодробни ензими, TSH, PSA, NT-proBNP, HbA1c, CRP и други;'),
+        h('li', null, 'кръвно налягане, пулс и загуба на тегло;'),
+        h('li', null, 'скрининг според възрастта и рисковите фактори: предсърдно мъждене, аневризма на коремната аорта, диабет;'),
+        h('li', null, 'лечение, което изисква контрол: инхибитори на РААС, статини, антикоагуланти, литий, кортикостероиди;'),
+        h('li', null, 'тревожни оплаквания в текста на прегледите (кръв в изпражненията, задух, болка в гърдите, отпадна неврологична симптоматика и други), като разпознава отрицанието „без“, „не“, „отрича“;'),
+        h('li', null, 'сигналите, които програмата вече изчислява: проследяване по заболявания, лекарства, психично здраве, растеж, специалности.')),
+      h('p.small.muted', { style: { marginBottom: 0 } },
+        'Всяка подсказка казва какво, защо и по коя насока. Решенията на лекаря се помнят в досието.')),
+
+    card('Втори поглед от езиков модел (по избор)', { icon: '✨' },
+      h('p.small', { style: { marginTop: 0 } },
+        'Лекарят може да поиска от езиков модел на Anthropic (Claude) втори поглед върху едно досие. Изпраща се само обезличено обобщение: '
+        + 'пол, възраст, заболявания, лекарства, изследвания, текст на прегледите. Имената, ЕГН, телефоните, имейлите и датите се премахват. '
+        + 'Преди всяко изпращане лекарят вижда точния текст и го потвърждава.'),
+      h('p.small', null,
+        'Нужен е API ключ от console.anthropic.com на името на практиката; заявките се плащат по сметката на практиката при Anthropic. '
+        + 'Ключът се пази само на този компютър, не се показва в браузъра и не влиза в копията и експорта. '
+        + 'Преди да включите тази възможност, преценете съответствието с GDPR и вътрешните правила на практиката.'),
+      !ai.library ? h('div.alert-strip.warn', null,
+        'Библиотеката за връзка с езиковия модел липсва. При версията за Node.js изпълнете „npm install“ в папката на програмата.') : null,
+      h('div.stack', { style: { marginTop: '10px' } },
+        h('label.check', null, enabled, h('span', null, h('strong', null, 'Включи втория поглед'),
+          h('div.tiny.dim', null, `Модел ${ai.model}. При отказ заявката автоматично се поема от резервен модел.`))),
+        field('API ключ', key, ai.hasKey ? `Зададен ключ, завършващ на ${ai.keyHint}.` : 'Ключът започва със „sk-ant-“.')),
+      can
+        ? h('div.row', { style: { marginTop: '12px', flexWrap: 'wrap' } }, saveBtn,
+          ai.hasKey ? testBtn : null, ai.hasKey ? removeBtn : null)
+        : h('p.small.muted', { style: { margin: '12px 0 0' } }, 'Езиковият модел се настройва от компютъра, на който работи програмата.'),
+      ai.updatedAt ? h('p.tiny.dim', { style: { marginBottom: 0 } }, 'Последна промяна: ' + new Date(ai.updatedAt).toLocaleString('bg-BG')) : null));
+}
+
 /* ---------------------------------- журнал ----------------------------------- */
 
 const NETWORK_LABELS = { local: 'само този компютър', lan: 'вътрешната мрежа', any: 'всякакви адреси' };
@@ -783,12 +868,17 @@ async function auditTab() {
     results_add: 'резултати от изследвания', result_delete: 'изтрит резултат',
     assessment_add: 'попълнена скала', assessment_delete: 'изтрита скала',
     lifestyle_update: 'начин на живот', nutrition_save: 'хранителен режим', nutrition_delete: 'изтрит хранителен режим',
+    assistant_feedback: 'решение по подсказка на асистента', ai_review: 'втори поглед от езиков модел',
+    ai_settings: 'настройка на езиковия модел',
   };
 
   const rows = entries.map(e => {
     const when = new Date(e.ts);
     const details = e.action === 'patients_import'
       ? `${e.source || ''} · нови ${e.created}, допълнени ${e.updated}, пропуснати ${e.skipped}`
+      : e.action === 'assistant_feedback' ? [e.name, e.status === 'reset' ? 'върната' : FEEDBACK[e.status] || e.status].filter(Boolean).join(' · ')
+      : e.action === 'ai_settings' ? `${e.enabled ? 'включен' : 'изключен'} · ключ ${e.key}`
+      : e.action === 'ai_review' ? [e.name, e.model, `${e.suggestions} предложения`].filter(Boolean).join(' · ')
       : [e.name, e.item, e.condition, e.med, e.tool, e.status, e.key, e.date && formatDate(e.date),
         e.ip && `от ${e.ip}`, e.network && `достъп: ${NETWORK_LABELS[e.network] || e.network}`].filter(Boolean).join(' · ');
     return h('tr', null,

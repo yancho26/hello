@@ -218,6 +218,12 @@ export function severity(indicatorKey, z, ageMonths = 0) {
     if (z > overweightAt - 1 || z < -1.5) return 1;
     return 0;
   }
+  // Висок ръст до +3 SD е в нормата на СЗО — само за наблюдение; над +3 SD изисква оценка.
+  if (indicatorKey === 'height' && z > 0) {
+    if (z > 3) return 2;
+    if (z > 2) return 1;
+    return 0;
+  }
   if (a > 2) return 2;
   if (a > 1.5) return 1;
   return 0;

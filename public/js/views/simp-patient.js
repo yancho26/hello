@@ -15,6 +15,7 @@ import { examDialog, followupDialog, printExam, protocolDialog, referralDialog }
 import { bookDialog } from './agenda.js';
 import { openPatientForm } from './patients.js';
 import { growthTab } from './patient.js';
+import { assistantOverviewCard, assistantTab } from './assistant-panel.js';
 
 let activeTab = 'overview';
 let activeFor = null;
@@ -25,7 +26,7 @@ const FOLLOW_CLS = { ok: 'future', soon: 'soon', due: 'due', overdue: 'overdue',
 const APPT_CLS = { booked: 'soon', arrived: 'due', done: 'done', noshow: 'overdue', cancelled: 'skipped' };
 
 function tabsFor(data) {
-  const tabs = [{ id: 'overview', label: 'Обзор' }];
+  const tabs = [{ id: 'overview', label: 'Обзор' }, { id: 'assistant', label: 'Асистент' }];
   if (data.isAdult) for (const id of enabledModules(state.settings)) tabs.push({ id, label: MODULES[id].name });
   tabs.push(
     { id: 'exams', label: 'Прегледи' },
@@ -49,6 +50,7 @@ function tabsFor(data) {
 function tabCount(id, data) {
   const s = data.simp;
   if (MODULES[id]) return (data.specialty?.[id]?.alerts || []).filter(x => x.severity >= 2).length;
+  if (id === 'assistant') return data.assistant?.active || 0;
   if (id === 'referrals') return s.referrals.filter(r => r.state.status === 'new' || r.state.status === 'secondary').length;
   if (id === 'protocols') return s.protocols.filter(x => x.state.status === 'expiring' || x.state.status === 'expired').length;
   if (id === 'followups') return s.followups.filter(f => f.state.status === 'overdue' || f.state.status === 'due').length;
@@ -61,6 +63,10 @@ export async function renderSimpPatient(host, id, params = new URLSearchParams()
   const p = data.patient;
   const reload = () => renderSimpPatient(host, id);
   if (activeFor !== id) { activeTab = 'overview'; activeFor = id; }
+  if (params.get('tab')) {
+    activeTab = params.get('tab');
+    history.replaceState(null, '', '#/patient/' + id);
+  }
 
   const ctx = {
     p, data, reload, isAdult: !!data.isAdult, a: data.adult,
@@ -79,7 +85,7 @@ export async function renderSimpPatient(host, id, params = new URLSearchParams()
   const content = h('div#tabContent');
   const views = {
     ...ADULT_VIEWS,
-    overview: overviewTab, exams: examsTab, referrals: referralsTab, protocols: protocolsTab, followups: followupsTab,
+    overview: overviewTab, assistant: assistantTab, exams: examsTab, referrals: referralsTab, protocols: protocolsTab, followups: followupsTab,
     growth: growthTab,
   };
   const renderTab = () => {
@@ -154,7 +160,7 @@ const fact = (k, v) => h('div.fact', null, h('div.k', null, k), h('div.v', null,
 function overviewTab(ctx) {
   const { data } = ctx;
   return h('div.overview-grid', null,
-    h('div.col', null, signalsCard(ctx), referralsCard(ctx), recentExamsCard(ctx)),
+    h('div.col', null, assistantOverviewCard(ctx), signalsCard(ctx), referralsCard(ctx), recentExamsCard(ctx)),
     h('div.col', null, apptCard(ctx), followupsCard(ctx), protocolsCard(ctx), data.isAdult ? vitalsMini(ctx) : null));
 }
 

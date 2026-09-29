@@ -134,6 +134,17 @@ export const api = {
   simpOverview: (params) => request('GET', '/api/simp/overview' + qs(params)),
   simpReports: (params) => request('GET', '/api/simp/reports' + qs(params)),
 
+  // Асистентът: подсказки за практиката и за всяко досие, решенията на лекаря.
+  assistant: (params) => request('GET', '/api/assistant' + qs(params)),
+  patientAssistant: (id) => request('GET', `/api/patients/${id}/assistant`),
+  assistantFeedback: (id, data) => request('POST', `/api/patients/${id}/assistant/feedback`, data),
+  // Вторият поглед от езиков модел (по избор, настройва се само на компютъра с програмата).
+  aiSettings: () => request('GET', '/api/ai'),
+  updateAiSettings: (data) => request('PUT', '/api/ai', data),
+  testAi: () => request('POST', '/api/ai/test', {}),
+  aiPreview: (id) => request('POST', `/api/patients/${id}/assistant/ai/preview`, {}),
+  aiReview: (id) => request('POST', `/api/patients/${id}/assistant/ai`, {}),
+
   tasks: (params) => request('GET', '/api/tasks' + qs(params)),
   reports: (params) => request('GET', '/api/reports' + qs(params)),
   audit: (limit) => request('GET', '/api/audit' + qs({ limit })),

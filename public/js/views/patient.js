@@ -22,12 +22,14 @@ import { ADULT_VIEWS, adultHeaderAlerts, adultTabCount, adultTabs } from './adul
 import { nutritionTab } from './nutrition-view.js';
 import { dosingTab } from './dosing.js';
 import { printAdultSummary, printMedList } from './adult-print.js';
+import { assistantOverviewCard, assistantTab } from './assistant-panel.js';
 
 let activeTab = 'overview';
 let activeFor = null;
 
 const TABS = [
   { id: 'overview', label: 'Обзор' },
+  { id: 'assistant', label: 'Асистент' },
   { id: 'vaccines', label: 'Имунизации' },
   { id: 'checkups', label: 'Профилактични прегледи' },
   { id: 'growth', label: 'Растеж' },
@@ -49,6 +51,11 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
   const reload = () => renderPatient(host, id);
   // Всяко досие се отваря на обзора; презареждането на същото запазва раздела.
   if (activeFor !== id) { activeTab = 'overview'; activeFor = id; }
+  // Отваряне направо на раздел — например от списъка на асистента.
+  if (params.get('tab')) {
+    activeTab = params.get('tab');
+    history.replaceState(null, '', '#/patient/' + id);
+  }
 
   const isAdult = !!data.isAdult;
   const actionable = data.plan.filter(e => ACTIONABLE.has(e.status));
@@ -65,6 +72,7 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
 
   const tabBar = h('div.tabs.no-print', null, tabs.map(t => {
     const n = isAdult ? adultTabCount(t.id, ctx)
+      : t.id === 'assistant' ? data.assistant?.active || 0
       : t.id === 'vaccines' ? vaccines.filter(e => ACTIONABLE.has(e.status)).length
       : t.id === 'checkups' ? checkups.filter(e => ACTIONABLE.has(e.status)).length
         : t.id === 'reminders' ? (p.reminders || []).filter(r => !r.done).length
@@ -85,7 +93,7 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
     const views = isAdult
       ? { ...ADULT_VIEWS, nutrition: nutritionTab, visits: visitsTab, reminders: remindersTab }
       : {
-        overview: overviewTab, vaccines: vaccinesTab, checkups: checkupsTab,
+        overview: overviewTab, assistant: assistantTab, vaccines: vaccinesTab, checkups: checkupsTab,
         growth: growthTab, development: developmentTab, visits: visitsTab, dosing: dosingTab, reminders: remindersTab,
       };
     mount(content, (views[activeTab] || views.overview)(ctx));
@@ -204,6 +212,7 @@ function overviewTab(ctx) {
     : null;
 
   return h('div.overview-grid', null, h('div.col', null,
+    assistantOverviewCard(ctx),
     card(actionable.length ? `За извършване (${actionable.length})` : 'За извършване',
       { icon: '📌', tight: true },
       historyHint,
