@@ -336,6 +336,9 @@ jobs:
           Write-Host '== Асистент: подсказки, решение на лекаря, езиковият модел е вграден'
           $gpAsst = Invoke-RestMethod "$base/api/assistant" -WebSession $s
           Write-Host "ОПЛ: $($gpAsst.totals.patients) пациенти с подсказки, $($gpAsst.totals.findings) подсказки"
+          $adultAsst = Invoke-RestMethod "$base/api/patients/$aid/assistant" -WebSession $s
+          $lpa = $adultAsst.active | Where-Object { $_.rule -eq 'lpa_once' }
+          if (-not $lpa -or $lpa.source -notmatch 'ESC/EAS 2025') { throw 'Няма подсказка за Lp(a) по ESC/EAS 2025 при диабет.' }
           $lab = & $sPost "/api/patients/$sid/results" @{ date = (Get-Date).ToString('yyyy-MM-dd'); items = @(@{ code = 'k'; value = 6.2 }) }
           $mine = Invoke-RestMethod "$base/api/patients/$sid/assistant" -WebSession $sp
           $kHigh = $mine.active | Where-Object { $_.rule -eq 'k_high' }

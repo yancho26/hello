@@ -444,17 +444,17 @@ export const ADULT_ITEMS = [
     id: 'ad-glucose', track: 'adult', group: 'screening', name: 'Кръвна захар / HbA1c', short: 'Глюкоза',
     recur: { fromMonths: 480, toMonths: 1200, everyMonths: 36 }, graceMonths: 6, mandatory: true,
     closesWith: ['glucose', 'hba1c'],
-    note: 'От 40 г. на всеки 3 години; ежегодно при FINDRISC ≥12, предиабет или затлъстяване.',
+    note: 'От 40 г. на всеки 3 години; ежегодно при FINDRISC ≥12, предиабет или затлъстяване. ADA 2026: от 35 г., а при наднормено тегло с рисков фактор — на всяка възраст.',
   },
   {
     id: 'ad-cvrisk-m', track: 'adult', sex: 'm', group: 'screening', name: 'Липиден профил и сърдечно-съдов риск (SCORE2)', short: 'Липиди, SCORE2',
     recur: { fromMonths: 480, toMonths: 1068, everyMonths: 60 }, graceMonths: 6, mandatory: true, closesWith: ['ldl', 'tchol'],
-    note: 'ESC 2021: оценка на риска на всеки 5 години при мъже над 40 г.',
+    note: 'Оценка на риска на всеки 5 години при мъже над 40 г.: SCORE2 до 69 г., SCORE2-OP от 70 г. (ESC/EAS 2025). Lp(a) — поне веднъж в живота.',
   },
   {
     id: 'ad-cvrisk-f', track: 'adult', sex: 'f', group: 'screening', name: 'Липиден профил и сърдечно-съдов риск (SCORE2)', short: 'Липиди, SCORE2',
     recur: { fromMonths: 600, toMonths: 1068, everyMonths: 60 }, graceMonths: 6, mandatory: true, closesWith: ['ldl', 'tchol'],
-    note: 'ESC 2021: оценка на риска на всеки 5 години при жени над 50 г. или след менопауза.',
+    note: 'Оценка на риска на всеки 5 години при жени над 50 г. или след менопауза: SCORE2 до 69 г., SCORE2-OP от 70 г. (ESC/EAS 2025). Lp(a) — поне веднъж в живота.',
   },
   {
     id: 'ad-fit', track: 'adult', group: 'screening', name: 'Скрининг за рак на дебелото черво (FIT)', short: 'FIT',
@@ -464,7 +464,7 @@ export const ADULT_ITEMS = [
   {
     id: 'ad-mammo', track: 'adult', sex: 'f', group: 'screening', name: 'Мамография', short: 'Мамография',
     recur: { fromMonths: 600, toMonths: 828, everyMonths: 24 }, graceMonths: 6, mandatory: true, closesWith: ['mammo'],
-    note: '50–69 г. на 2 години (Съвет на ЕС, 2022; по преценка и 45–74 г.).',
+    note: '50–69 г. на 2 години (Съвет на ЕС, 2022; по преценка и 45–74 г.). USPSTF 2024: 40–74 г. на 2 години.',
   },
   {
     id: 'ad-cervical-cyto', track: 'adult', sex: 'f', group: 'screening', name: 'Цитонамазка', short: 'Цитонамазка',
@@ -499,7 +499,7 @@ export const ADULT_ITEMS = [
   {
     id: 'ad-dxa', track: 'adult', sex: 'f', group: 'screening', name: 'Остеопороза — DXA / FRAX', short: 'DXA',
     dueMonths: 780, graceMonths: 12, expireMonths: 120, mandatory: false, closesWith: ['dxa'],
-    note: 'Жени от 65 г.; по-рано при рискови фактори (кортикостероиди, фрактура, ниско тегло).',
+    note: 'Жени от 65 г.; по-рано след менопауза при рискови фактори: кортикостероиди, фрактура, ниско тегло, тютюнопушене (USPSTF 2025).',
   },
   {
     id: 'ad-td', track: 'adult', group: 'vaccine', name: 'Td — реимунизация (тетанус, дифтерия)', short: 'Td',
@@ -522,12 +522,12 @@ export const ADULT_ITEMS = [
   {
     id: 'ad-pcv', track: 'adult', group: 'vaccine', name: 'Пневмококова ваксина (PCV20/PCV21)', short: 'Пневмококи',
     protects: 'пневмококови инфекции', dueMonths: 780, riskFromMonths: 216, graceMonths: 6, mandatory: false,
-    note: 'Еднократно от 65 г.; по-рано при хронично сърдечно, белодробно, бъбречно заболяване или диабет.',
+    note: 'Еднократно от 65 г.; по-рано при хронично сърдечно, белодробно, бъбречно заболяване или диабет. ACIP (САЩ): за всички от 50 г.',
   },
   {
     id: 'ad-rsv', track: 'adult', group: 'vaccine', name: 'РСВ ваксина', short: 'РСВ',
-    protects: 'респираторно-синцитиален вирус', dueMonths: 900, riskFromMonths: 720, graceMonths: 6, mandatory: false,
-    note: 'Еднократно от 75 г.; 60–74 г. при повишен риск (ХОББ, СН, диабет, ХБЗ).',
+    protects: 'респираторно-синцитиален вирус', dueMonths: 900, riskFromMonths: 600, graceMonths: 6, mandatory: false,
+    note: 'Еднократно от 75 г.; от 50 до 74 г. при повишен риск: ХОББ, астма, СН, диабет, ХБЗ, крехкост (ACIP 2025).',
   },
   {
     id: 'ad-zoster-1', track: 'adult', group: 'vaccine', name: 'Херпес зостер — I доза', short: 'Зостер I',
@@ -558,6 +558,35 @@ export function defaultSchedule() {
 }
 
 /** Календарът за възрастни — за добавяне към вече съществуващ календар при обновяване. */
+/**
+ * Промени в календара по подразбиране при нови насоки. Прилагат се върху
+ * съществуващите практики само ако дейността е непроменена от лекаря —
+ * всички полета от `from` съвпадат. Редактираното в „Настройки → Календар“
+ * се запазва.
+ */
+export const CALENDAR_UPDATES = [
+  { id: 'ad-glucose', from: { note: 'От 40 г. на всеки 3 години; ежегодно при FINDRISC ≥12, предиабет или затлъстяване.' }, to: { note: 'От 40 г. на всеки 3 години; ежегодно при FINDRISC ≥12, предиабет или затлъстяване. ADA 2026: от 35 г., а при наднормено тегло с рисков фактор — на всяка възраст.' } },
+  { id: 'ad-cvrisk-m', from: { note: 'ESC 2021: оценка на риска на всеки 5 години при мъже над 40 г.' }, to: { note: 'Оценка на риска на всеки 5 години при мъже над 40 г.: SCORE2 до 69 г., SCORE2-OP от 70 г. (ESC/EAS 2025). Lp(a) — поне веднъж в живота.' } },
+  { id: 'ad-cvrisk-f', from: { note: 'ESC 2021: оценка на риска на всеки 5 години при жени над 50 г. или след менопауза.' }, to: { note: 'Оценка на риска на всеки 5 години при жени над 50 г. или след менопауза: SCORE2 до 69 г., SCORE2-OP от 70 г. (ESC/EAS 2025). Lp(a) — поне веднъж в живота.' } },
+  { id: 'ad-mammo', from: { note: '50–69 г. на 2 години (Съвет на ЕС, 2022; по преценка и 45–74 г.).' }, to: { note: '50–69 г. на 2 години (Съвет на ЕС, 2022; по преценка и 45–74 г.). USPSTF 2024: 40–74 г. на 2 години.' } },
+  { id: 'ad-dxa', from: { note: 'Жени от 65 г.; по-рано при рискови фактори (кортикостероиди, фрактура, ниско тегло).' }, to: { note: 'Жени от 65 г.; по-рано след менопауза при рискови фактори: кортикостероиди, фрактура, ниско тегло, тютюнопушене (USPSTF 2025).' } },
+  { id: 'ad-pcv', from: { note: 'Еднократно от 65 г.; по-рано при хронично сърдечно, белодробно, бъбречно заболяване или диабет.' }, to: { note: 'Еднократно от 65 г.; по-рано при хронично сърдечно, белодробно, бъбречно заболяване или диабет. ACIP (САЩ): за всички от 50 г.' } },
+  { id: 'ad-rsv', from: { note: 'Еднократно от 75 г.; 60–74 г. при повишен риск (ХОББ, СН, диабет, ХБЗ).', riskFromMonths: 720 }, to: { note: 'Еднократно от 75 г.; от 50 до 74 г. при повишен риск: ХОББ, астма, СН, диабет, ХБЗ, крехкост (ACIP 2025).', riskFromMonths: 600 } },
+];
+
+/** Прилага промените върху календара на практиката; връща обновените дейности. */
+export function applyCalendarUpdates(schedule) {
+  const changed = [];
+  for (const u of CALENDAR_UPDATES) {
+    const item = schedule.find(i => i.id === u.id);
+    if (!item) continue;
+    if (!Object.entries(u.from).every(([k, v]) => item[k] === v)) continue;
+    Object.assign(item, u.to);
+    changed.push(item.id);
+  }
+  return changed;
+}
+
 export function defaultAdultSchedule() {
   return ADULT_ITEMS.map(item => JSON.parse(JSON.stringify(item)));
 }

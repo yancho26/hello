@@ -38,7 +38,7 @@ export function cardioTab(ctx) {
       h('div.col', null, s.af ? afCard(ctx, s.af) : null, pressureCard(ctx, s.pressure), ecgCard(ctx, s.ecg), echoCard(ctx, s.echo))),
     historyCard(ctx, KINDS, 'Кардиологични изследвания'),
     h('p.tiny.muted', null,
-      `Източници: ESC 2021 и 2023 за сърдечна недостатъчност (целеви дози — Таблица 8), ESC 2024 за предсърдно мъждене и за хипертония, `
+      `Източници: ESC 2026 за сърдечна недостатъчност (два вида с граница 50%, основно лечение), ESC 2021 за целевите дози (Таблица 8) и устройствата, ESC 2024 за предсърдно мъждене и за хипертония, `
       + `EHRA 2021 за НОАК, ESC/EAS 2019 и 2025 за дислипидемии, AHA/ACCF/HRS 2009 за QTc, ASE/EACVI за ехокардиографията. Сверено ${CARDIO_VERIFIED}. `
       + 'Изчисленията подпомагат, но не заменят преценката на лекаря.'));
 }
@@ -63,18 +63,18 @@ function hfCard(ctx, hf) {
   });
   const bnp = hf.ntprobnp.at(-1);
   const chart = hf.efSeries.length > 1 ? trendChart({
-    series: [{ label: 'ФИ', points: hf.efSeries }], unit: '%', lines: [{ value: 40, label: '40%' }, { value: 50, label: '50%' }],
+    series: [{ label: 'ФИ', points: hf.efSeries }], unit: '%', lines: [{ value: 50, label: '50%' }],
   }) : null;
   return card('Сърдечна недостатъчност', { icon: '🫀', tight: true },
     h('div.body', null,
       h('div.row', { style: { flexWrap: 'wrap' } },
-        phenotype ? badge(phenotype.id === 'hfref' ? 'overdue' : phenotype.id === 'hfmref' ? 'due' : 'done', phenotype.label) : badge('future', 'няма въведена ФИ'),
+        phenotype ? badge(phenotype.id === 'hfref' ? 'overdue' : phenotype.id === 'hfimpef' ? 'due' : 'done', phenotype.label) : badge('future', 'няма въведена ФИ'),
         phenotype ? h('span.small', null, `ФИ ${phenotype.ef}% (${formatDate(phenotype.date)})`) : null,
         hf.nyha ? h('span.small', null, `NYHA ${NYHA_ROMAN[hf.nyha]} (${formatDate(hf.nyhaDate)})`) : null,
         bnp ? h('span.small', null, `NT-proBNP ${formatLab('ntprobnp', bnp.value)} (${formatDate(bnp.date)})`) : null)),
-    phenotype?.id === 'hfref' || !phenotype
+    therapy.rows.length
       ? h('div', null, table(['Група', 'Лекарство', 'Доза', 'Следваща стъпка'], rows),
-        h('div.body.tiny.muted', null, `На целева доза: ${therapy.onTarget} от 4 групи. Калий и креатинин 1–2 седмици след започване и след всяко повишаване.`))
+        h('div.body.tiny.muted', null, `Основно лечение по ESC 2026 — на целева доза: ${therapy.onTarget} от ${therapy.rows.length} групи. Калий и креатинин 1–2 седмици след започване и след всяко повишаване.`))
       : null,
     hf.advice.length ? h('div.body', null, h('ul.list-plain.compact', null, hf.advice.map(t => h('li.small', null, '• ' + t)))) : null,
     chart ? h('div.body', null, h('div.chart-inline', null, chart)) : null);

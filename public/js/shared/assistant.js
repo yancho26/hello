@@ -21,6 +21,9 @@ import { activeConditions } from './chronic.js';
 import { activeMeds, medLabel } from './meds.js';
 import { classesOf } from './drugs.js';
 import { TOOLS } from './mental.js';
+import { fib4 } from './clinical.js';
+import { efPhenotype, pillarsFor } from './cardio.js';
+import { cite } from './guidelines.js';
 
 /* ------------------------------ речник ------------------------------ */
 
@@ -122,7 +125,7 @@ function labRules(p, ctx) {
         ? `Повторен калий и ЕКГ днес${culprits.length ? `; временно спиране или намаляване на ${names(culprits)}` : ''}.`
         : `Повторен калий до 72 часа${culprits.length ? `; преглед на дозата на ${names(culprits)}` : ''}.`,
       [`K⁺ ${lab('k', k.value)} на ${when(k.date)} (норма 3,5–5,1)`, culprits.length ? `Приема: ${names(culprits)}` : ''],
-      'KDIGO 2024; ESC HF 2021'));
+      cite('kdigo_ckd_2024', 'esc_hf_2026')));
   } else if (k && k.value < 3.5) {
     const culprits = medsWith(meds, HYPOK_CLASSES);
     const severe = k.value < 3.0;
@@ -173,7 +176,7 @@ function labRules(p, ctx) {
       [`Hb ${lab('hb', hb.value)} на ${when(hb.date)} (норма ${hbRange[0]}–${hbRange[1]})`,
         fe ? `Феритин ${lab('ferritin', fe.value)} на ${when(fe.date)}` : 'Няма феритин около тази дата',
         bleeders.length ? `Приема лекарства, повишаващи риска от кървене: ${names(bleeders)}` : ''],
-      giWorkup ? 'BSG 2021 желязодефицитна анемия; NICE NG12' : 'WHO 2024 (прагове за анемия)'));
+      giWorkup ? 'BSG 2021 желязодефицитна анемия; NICE NG12' : cite('who_anemia_2024')));
   }
 
   // Спад на хемоглобина, дори в границите на нормата.
@@ -318,7 +321,7 @@ function labRules(p, ctx) {
     out.push(finding('psa_high', psa.date, aged(2, psa.date, asOf), 'lab',
       `PSA ${lab('psa', psa.value)}`,
       'Повторен PSA след няколко седмици (без инфекция, без скорошен преглед на простатата); при потвърждение — уролог и мултипараметричен ЯМР.',
-      `PSA ${lab('psa', psa.value)} на ${when(psa.date)}`, 'EAU 2024'));
+      `PSA ${lab('psa', psa.value)} на ${when(psa.date)}`, cite('eau_prostate_2026')));
   }
 
   // NT-proBNP без поставена сърдечна недостатъчност.
@@ -330,7 +333,7 @@ function labRules(p, ctx) {
       out.push(finding('bnp_nohf', bnp.date, aged(sev, bnp.date, asOf), 'lab',
         `NT-proBNP ${lab('ntprobnp', bnp.value)} без диагноза сърдечна недостатъчност`,
         `Ехокардиография${sev === 3 ? ' и кардиолог до 2 седмици' : sev === 2 ? ' и кардиолог до 6 седмици' : ' при съответни оплаквания'}; ЕКГ.`,
-        `NT-proBNP ${lab('ntprobnp', bnp.value)} на ${when(bnp.date)}`, 'NICE NG106; ESC HF 2021'));
+        `NT-proBNP ${lab('ntprobnp', bnp.value)} на ${when(bnp.date)}`, 'NICE NG106; ESC 2026 СН'));
     }
   }
 
@@ -474,7 +477,7 @@ function vitalRules(p, ctx) {
 /* ------------------------------- скрининг ------------------------------- */
 
 function screeningRules(p, ctx) {
-  const { asOf, conds, age, sex } = ctx;
+  const { asOf, conds, age } = ctx;
   const out = [];
   const lastEcg = [
     ...(p.results || []).filter(r => r.code === 'ecg').map(r => r.date),
@@ -487,26 +490,6 @@ function screeningRules(p, ctx) {
       'Палпиране на пулса или ЕКГ при следващото посещение.',
       [`${Math.floor(age)} г.${afRisk ? ' с рискови фактори' : ''}`, lastEcg ? `Последна ЕКГ: ${when(lastEcg)}` : 'Няма записана ЕКГ'],
       'ESC 2024 ПМ (опортюнистичен скрининг)'));
-  }
-  const smoked = ['current', 'former'].includes(p.lifestyle?.smoking);
-  if (sex === 'm' && age >= 65 && age < 76 && smoked) {
-    out.push(finding('aaa_screen', 'once', 1, 'screening',
-      'Скрининг за аневризма на коремната аорта',
-      'Еднократна ехография на коремната аорта. След изследването отбележете „Направено“.',
-      [`Мъж на ${Math.floor(age)} г., ${p.lifestyle.smoking === 'current' ? 'пушач' : 'бивш пушач'}`],
-      'USPSTF 2019; ESC 2024 болести на аортата'));
-  }
-  const bmiW = (p.measurements || []).filter(m => Number.isFinite(m.weight)).sort((a, b) => (a.date < b.date ? -1 : 1)).pop();
-  const bmiH = (p.measurements || []).filter(m => Number.isFinite(m.height)).sort((a, b) => (a.date < b.date ? -1 : 1)).pop();
-  if (bmiW && bmiH && age >= 18 && !conds.has('dm2') && !conds.has('dm1')) {
-    const bmi = bmiW.weight / ((bmiH.height / 100) ** 2);
-    const tested = (p.results || []).some(r => (r.code === 'hba1c' || r.code === 'glucose') && r.date >= addMonths(asOf, -36));
-    if (bmi >= 30 && !tested) {
-      out.push(finding('dm_screen', 'bmi', 1, 'screening',
-        'Скрининг за диабет при затлъстяване',
-        'HbA1c или глюкоза на гладно; липиден профил.',
-        [`ИТМ ${dec(Math.round(bmi * 10) / 10)}`, 'Няма глюкоза или HbA1c в последните 3 години'], 'ADA 2025'));
-    }
   }
   return out;
 }
@@ -526,7 +509,7 @@ function therapyRules(p, ctx) {
       out.push(finding('raas_start', `${m.id}:${m.start}`, 2, 'therapy',
         `Креатинин и калий след започване на ${medLabel(m)}`,
         'Креатинин (eGFR) и калий 1–2 седмици след започване или повишаване на дозата.',
-        `${medLabel(m)} от ${when(m.start)}; няма креатинин и калий след това`, 'ESC 2024 хипертония; ESC HF 2021'));
+        `${medLabel(m)} от ${when(m.start)}; няма креатинин и калий след това`, 'ESC 2024 хипертония; ESC 2026 СН'));
     }
   }
   // Нов статин без контрол на LDL.
@@ -538,7 +521,7 @@ function therapyRules(p, ctx) {
       out.push(finding('lipid_start', `${m.id}:${m.start}`, 1, 'therapy',
         `LDL след започване на ${medLabel(m)}`,
         'Липиден профил 4–12 седмици след започване — за да се види дали целта е достигната.',
-        `${medLabel(m)} от ${when(m.start)}; няма LDL след това`, 'ESC/EAS 2019'));
+        `${medLabel(m)} от ${when(m.start)}; няма LDL след това`, cite('esc_lipid_2025')));
       break;
     }
   }
@@ -560,6 +543,281 @@ function therapyRules(p, ctx) {
       `Защита на костите: калций и витамин D${dxa ? '' : ', DXA'}, преценка за бифосфонат; глюкоза и налягане.`,
       `${medLabel(m)} от ${when(m.start)}`, 'ACR 2022 (глюкокортикоидна остеопороза)'));
     break;
+  }
+  return out;
+}
+
+/* ------------------- по най-новите насоки (ESC, ADA, USPSTF…) ------------------- */
+
+const LIPID_LOWERING = ['STATIN', 'EZETIMIBE', 'PCSK9', 'PCSK9_SIRNA', 'BEMPEDOIC'];
+const ANTIHTN = ['ACEI', 'ARB', 'ARNI', 'CCB_DHP', 'CCB_NDHP', 'THIAZIDE', 'LOOP', 'BB', 'BB_NONSEL', 'MRA', 'ALPHA', 'CENTRAL'];
+const ICS_NAME = /будезонид|беклометазон|флутиказон|мометазон|циклезонид|budes|beclo|flutic|momet|cicles|пулмикорт|pulmicort|фликсотид|flixotide|симбикорт|symbicort|фостер|foster|серетид|seretide|релвар|relvar/i;
+
+/** Последната дата на изследване или преглед от дадените кодове. */
+function lastDone(p, codes, asOf) {
+  return (p.results || []).filter(r => codes.includes(r.code) && r.date <= asOf).map(r => r.date).sort().pop() || null;
+}
+
+/** ХБЗ: вписана или eGFR под 60 два пъти поне 3 месеца един след друг (KDIGO). */
+function ckdOf(p, conds, asOf) {
+  if (conds.has('ckd')) return { why: 'Хронично бъбречно заболяване' };
+  const low = egfrSeries(p).filter(r => r.date <= asOf && r.value < 60);
+  if (low.length >= 2 && daysBetween(low[0].date, low[low.length - 1].date) >= 90) {
+    return { why: `eGFR под 60 от ${when(low[0].date)} (${low[low.length - 1].value} на ${when(low[low.length - 1].date)})` };
+  }
+  return null;
+}
+
+function guidelineRules(p, ctx) {
+  const { asOf, meds, conds, age, sex, modules, practice } = ctx;
+  const a = ctx.a;
+  const out = [];
+  const onClass = (classes) => medsWith(meds, classes).length > 0;
+  const dm = conds.has('dm1') || conds.has('dm2');
+  const ascvd = ['chd', 'pad', 'stroke'].filter(c => conds.has(c));
+  const eg = egfrSeries(p).filter(r => r.date <= asOf).pop() || null;
+  const uacr = latest(p, 'uacr', asOf, 24);
+  const k = latest(p, 'k', asOf, 12);
+  const ckd = ckdOf(p, conds, asOf);
+  const bmi = a?.vitals?.bmi ?? null;
+
+  // Първичен алдостеронизъм — веднъж при всеки с хипертония.
+  if (conds.has('htn') && !lastDone(p, ['arr'], asOf)) {
+    const k24 = latest(p, 'k', asOf, 24);
+    const hypoK = k24 && k24.value < 3.5;
+    const classes = new Set(ANTIHTN.filter(c => onClass([c])));
+    const resistant = classes.size >= 3 && (classes.has('THIAZIDE') || classes.has('LOOP'));
+    out.push(finding('pa_screen', 'once', hypoK || resistant ? 2 : 1, 'screening',
+      'Скрининг за първичен алдостеронизъм',
+      'Веднъж: алдостерон и ренин (съотношение) с калий в същия ден. Антихипертензивните лекарства без MRA не се спират; ниският калий се коригира преди това. Положителен резултат — ендокринолог.',
+      ['Артериална хипертония без изследван алдостерон/ренин',
+        hypoK ? `Калий ${lab('k', k24.value)} на ${when(k24.date)}` : '',
+        resistant ? `${classes.size} антихипертензивни групи, включително диуретик — резистентна хипертония` : ''],
+      cite('esc_htn_2024', 'es_pa_2025', 'aha_htn_2025')));
+  }
+
+  // Lp(a) — поне веднъж в живота; търси се там, където променя решенията.
+  const lpaR = latest(p, 'lpa', asOf, 1200);
+  const lpanR = latest(p, 'lpan', asOf, 1200);
+  if (!lpaR && !lpanR && age >= 18 && age < 80) {
+    const ldl = latest(p, 'ldl', asOf, 60);
+    const why = [
+      ascvd.length ? 'атеросклеротично ССЗ' : '',
+      dm ? 'диабет' : '', conds.has('htn') ? 'хипертония' : '', ckd ? 'ХБЗ' : '', conds.has('dyslip') ? 'дислипидемия' : '',
+      ldl && ldl.value >= 3.0 ? `LDL ${lab('ldl', ldl.value)} на ${when(ldl.date)}` : '',
+    ].filter(Boolean);
+    if (why.length) {
+      out.push(finding('lpa_once', 'once', 1, 'screening',
+        'Lp(a) — веднъж в живота',
+        'Добавете Lp(a) към следващия липиден профил. Над 50 mg/dL (105 nmol/L) повишава сърдечно-съдовия риск и налага по-строг контрол на LDL.',
+        [`Няма изследван Lp(a); ${why.join(', ')}`], cite('esc_lipid_2025', 'acc_lipid_2026')));
+    }
+  }
+  const lpaHigh = (lpaR && lpaR.value > 50) ? lpaR : (lpanR && lpanR.value > 105) ? lpanR : null;
+  if (lpaHigh) {
+    const code = lpaHigh === lpaR ? 'lpa' : 'lpan';
+    out.push(finding('lpa_high', lpaHigh.date, 1, 'lab',
+      `Повишен Lp(a) — ${lab(code, lpaHigh.value)}`,
+      'По-интензивно понижаване на LDL и контрол на останалите рискови фактори; Lp(a) и при родителите, братята, сестрите и децата.',
+      `Lp(a) ${lab(code, lpaHigh.value)} на ${when(lpaHigh.date)}`, cite('esc_lipid_2025', 'acc_lipid_2026')));
+  }
+
+  // Фиброза на черния дроб при метаболитен риск (FIB-4 → еластография).
+  const metabolic = conds.has('dm2') || conds.has('prediabetes') || conds.has('masld') || conds.has('obesity') || (bmi !== null && bmi >= 30);
+  if (metabolic && age >= 18) {
+    const ast = latest(p, 'ast', asOf, 12), alt = latest(p, 'alt', asOf, 12), plt = latest(p, 'plt', asOf, 12);
+    const f = ast && alt && plt ? fib4(age, ast.value, alt.value, plt.value) : null;
+    const date = f ? [ast.date, alt.date, plt.date].sort().pop() : null;
+    if (f && f.category !== 'low') {
+      const elasto = lastDone(p, ['elasto'], asOf);
+      if (!elasto || elasto < date) {
+        const high = f.category === 'high';
+        out.push(finding('fib4', date, high ? 2 : 1, 'lab',
+          `FIB-4 ${dec(f.value)} — ${high ? 'висок' : 'неопределен'} риск от напреднала фиброза`,
+          high ? 'Насочване към гастроентеролог или хепатолог; еластография.' : 'Еластография (FibroScan): под 8 kPa — нисък риск; 8 kPa и повече — хепатолог.',
+          [`АСАТ ${lab('ast', ast.value)}, АЛАТ ${lab('alt', alt.value)}, тромбоцити ${lab('plt', plt.value)}; ${Math.floor(age)} г.`],
+          cite('easl_masld_2024', 'ada_2026')));
+      }
+    }
+  }
+
+  // Бъбречна и сърдечно-съдова защита при ХБЗ.
+  if (ckd && eg && eg.value >= 20 && !conds.has('dm1') && !onClass(['SGLT2'])) {
+    // Силна препоръка (KDIGO 1A): диабет тип 2, СН, UACR ≥22,6 mg/mmol; eGFR под 45 — 2B.
+    // ESC 2026: при повечето пациенти с ХБЗ — тогава планово, с UACR преди решението.
+    const strong = conds.has('dm2') || conds.has('hf') || (uacr && uacr.value >= 22.6) || eg.value < 45;
+    out.push(finding('sglt2_ckd', 'ckd', strong ? 2 : 1, 'therapy',
+      'ХБЗ без SGLT2-инхибитор',
+      strong
+        ? 'Дапаглифлозин или емпаглифлозин 10 мг веднъж дневно; започва се при eGFR 20 и повече и продължава до диализа. Преходен спад на eGFR в началото е очакван.'
+        : `Обмислете дапаглифлозин или емпаглифлозин — ESC 2026 ги препоръчва при повечето пациенти с ХБЗ.${uacr ? '' : ' Първо UACR: при албуминурия ползата е най-ясна.'}`,
+      [ckd.why, conds.has('ckd') ? `eGFR ${eg.value} на ${when(eg.date)}` : '', uacr ? `UACR ${lab('uacr', uacr.value)} на ${when(uacr.date)}` : ''],
+      cite('esc_ckd_2026', 'kdigo_ckd_2024')));
+  }
+  if (uacr && (uacr.value >= 30 || (uacr.value >= 3 && (dm || conds.has('htn') || ckd))) && !onClass(['ACEI', 'ARB', 'ARNI'])) {
+    out.push(finding('raas_alb', uacr.date, 2, 'therapy',
+      'Албуминурия без ACE-инхибитор или сартан',
+      'ACE-инхибитор или сартан до максималната поносима доза; креатинин и калий след 2–4 седмици.',
+      `UACR ${lab('uacr', uacr.value)} на ${when(uacr.date)}`, cite('kdigo_ckd_2024', 'esc_ckd_2026')));
+  }
+  if (conds.has('dm2') && ckd && uacr && uacr.value >= 3 && eg && eg.value >= 25) {
+    const extra = [
+      !onClass(['FINERENONE']) && (!k || k.value <= 5.0) ? 'финеренон 10–20 мг на фона на ACE-инхибитор или сартан (при калий до 5,0)' : '',
+      !onClass(['GLP1']) ? 'семаглутид' : '',
+    ].filter(Boolean);
+    if (extra.length) {
+      out.push(finding('t2d_ckd', 'albuminuria', 1, 'therapy',
+        'Диабет тип 2, ХБЗ и албуминурия: допълнителна защита',
+        `Обмислете ${extra.join(' и ')} — ${extra.length > 1 ? 'намаляват' : 'намалява'} прогресията на ХБЗ и сърдечно-съдовите събития.`,
+        [`UACR ${lab('uacr', uacr.value)} на ${when(uacr.date)}`, `eGFR ${eg.value}`], cite('esc_ckd_2026', 'ada_2026')));
+    }
+  }
+
+  // Статин: ССЗ, диабет 40–75 г., ХБЗ от 40 г.
+  if (!onClass(LIPID_LOWERING) && age < 85) {
+    const why = [
+      ascvd.length ? 'атеросклеротично ССЗ' : '',
+      dm && age >= 40 && age <= 75 ? `диабет, ${Math.floor(age)} г.` : '',
+      ckd && age >= 40 ? 'ХБЗ' : '',
+    ].filter(Boolean);
+    if (why.length) {
+      out.push(finding('statin', why.join(','), ascvd.length ? 2 : 1, 'therapy',
+        'Без липидопонижаващо лечение',
+        'Статин, ако няма противопоказания; при непоносимост — езетимиб или бемпедоева киселина. Липиден профил 4–12 седмици след започване.',
+        [`Показание: ${why.join(', ')}`],
+        cite(...[ascvd.length || dm ? 'esc_dm_2023' : null, 'esc_lipid_2025', dm ? 'ada_2026' : null, ckd ? 'esc_ckd_2026' : null, 'acc_lipid_2026'].filter(Boolean))));
+    }
+  }
+
+  // Сърдечна недостатъчност — основното лечение (в СИМП с кардиологичния модул е в раздела му).
+  if (conds.has('hf') && !modules.cardio) {
+    const phenotype = efPhenotype((p.studies || []).filter(st => st.kind === 'echo').sort((x, y) => (x.date < y.date ? -1 : 1)));
+    const pillars = pillarsFor(phenotype);
+    const labels = { raas: 'ARNI/ACEi/ARB', bb: 'бета-блокер', mra: 'MRA', sglt2: 'SGLT2-инхибитор' };
+    const present = {
+      raas: onClass(['ACEI', 'ARB', 'ARNI']), bb: onClass(['BB', 'BB_NONSEL']),
+      mra: onClass(['MRA', 'FINERENONE']), sglt2: onClass(['SGLT2']),
+    };
+    const blocked = {
+      mra: (k && k.value > 5.0) || (eg && eg.value < 30),
+      sglt2: eg && eg.value < 20,
+      raas: k && k.value > 5.0,
+    };
+    const missing = pillars.filter(x => !present[x] && !blocked[x]);
+    if (missing.length) {
+      out.push(finding('hf_foundation', `${phenotype?.id || 'unknown'}:${missing.join(',')}`, 2, 'therapy',
+        `Сърдечна недостатъчност без ${missing.map(x => labels[x]).join(', ')}`,
+        phenotype?.id === 'hfpef'
+          ? 'Основно лечение при запазена ФИ: MRA и SGLT2-инхибитор. При ИТМ 30 и повече — и семаглутид или тирзепатид.'
+          : 'Основно лечение при ФИ под 50%: ARNI/ACEi/ARB, бета-блокер, MRA и SGLT2-инхибитор, започнати бързо, после до целевите дози.',
+        [phenotype ? `ФИ ${phenotype.ef}% на ${when(phenotype.date)}` : 'Няма въведена фракция на изтласкване'],
+        cite('esc_hf_2026')));
+    }
+    const echoDone = lastDone(p, ['echo'], asOf) || (p.studies || []).some(st => st.kind === 'echo');
+    if (!echoDone) {
+      out.push(finding('hf_echo', 'never', 1, 'therapy',
+        'Сърдечна недостатъчност без ехокардиография',
+        'Ехокардиография — фракцията на изтласкване определя лечението (граница 50%).',
+        ['Няма записана ехокардиография'], cite('esc_hf_2026')));
+    }
+  }
+
+  // Астма, лекувана само с бързодействащ бета-агонист.
+  if (conds.has('asthma') && onClass(['SABA']) && !onClass(['ICS'])
+    && !meds.some(m => !m.drug && ICS_NAME.test(m.name || ''))) {
+    out.push(finding('asthma_saba', 'saba_only', 2, 'therapy',
+      'Астма само с бързодействащ бета-агонист',
+      'Противовъзпалителен облекчаващ инхалатор (ИКС-формотерол при нужда) или поддържащ инхалаторен кортикостероид; проверка на техниката.',
+      [`Приема ${names(medsWith(meds, ['SABA']))} без инхалаторен кортикостероид`], cite('gina_2026')));
+  }
+
+  // Скрининг за диабет (ADA 2026): от 35 г. и при наднормено тегло с рисков фактор.
+  // В практиката на ОПЛ календарът покрива всички от 40 г.
+  if (!dm && !conds.has('prediabetes') && age >= 18 && (practice !== 'gp' || age < 40)) {
+    const last = lastDone(p, ['glucose', 'hba1c'], asOf);
+    if (!last || last < addMonths(asOf, -36)) {
+      const hdl = latest(p, 'hdl', asOf, 36), tg = latest(p, 'tg', asOf, 36);
+      const risk = [
+        conds.has('htn') ? 'хипертония' : '', ascvd.length ? 'ССЗ' : '',
+        conds.has('dyslip') || (hdl && hdl.value < 0.9) || (tg && tg.value > 2.82) ? 'дислипидемия' : '',
+        p.lifestyle?.activity === 'sedentary' ? 'заседнал начин на живот' : '',
+      ].filter(Boolean);
+      const overweight = bmi !== null && bmi >= 25;
+      if (age >= 35 || (overweight && risk.length)) {
+        out.push(finding('dm_screen', last || 'never', 1, 'screening',
+          'Скрининг за диабет',
+          'Глюкоза на гладно или HbA1c; при нормален резултат — повторно след 3 години.',
+          [age >= 35 ? `${Math.floor(age)} г.` : `ИТМ ${dec(bmi)} и ${risk.join(', ')}`,
+            last ? `Последна глюкоза или HbA1c: ${when(last)}` : 'Няма глюкоза или HbA1c'],
+          cite('ada_2026')));
+      }
+    }
+  }
+
+  // Аневризма на коремната аорта (ESC 2024; USPSTF 2019).
+  const smoking = p.lifestyle?.smoking;
+  const everSmoked = smoking === 'current' || smoking === 'former';
+  const aaaWhy = sex === 'm' && age >= 65 && everSmoked ? `мъж на ${Math.floor(age)} г., ${smoking === 'current' ? 'пушач' : 'бивш пушач'}`
+    : sex === 'm' && age >= 75 ? `мъж на ${Math.floor(age)} г.`
+      : sex === 'f' && age >= 75 && (smoking === 'current' || conds.has('htn')) ? `жена на ${Math.floor(age)} г., ${smoking === 'current' ? 'пушачка' : 'с хипертония'}` : '';
+  if (aaaWhy && age < 85 && !lastDone(p, ['aaa_us'], asOf)) {
+    out.push(finding('aaa_screen', 'once', 1, 'screening',
+      'Скрининг за аневризма на коремната аорта',
+      'Еднократна ехография на коремната аорта.',
+      [aaaWhy], cite('esc_aorta_2024', 'uspstf_aaa_2019')));
+  }
+
+  // Остеопороза при жени: от 65 г. и след менопауза с рисков фактор (USPSTF 2025).
+  if (sex === 'f' && age >= 50 && age < 90 && !conds.has('osteoporosis') && !onClass(['BISPHOSPHONATE'])) {
+    const lastDxa = lastDone(p, ['dxa'], asOf);
+    if (!lastDxa || lastDxa < addMonths(asOf, -120)) {
+      const risk = [
+        smoking === 'current' ? 'тютюнопушене' : '', p.lifestyle?.alcohol === 'high' ? 'рискова употреба на алкохол' : '',
+        bmi !== null && bmi < 20 ? `ИТМ ${dec(bmi)}` : '', conds.has('dm1') ? 'диабет тип 1' : '',
+      ].filter(Boolean);
+      const steroid = medsWith(meds, ['CORTICOSTEROID']).some(m => m.start && daysBetween(m.start, asOf) >= 90);
+      if (!steroid && (age >= 65 || risk.length)) {
+        out.push(finding('osteo_screen', lastDxa || 'never', 1, 'screening',
+          'Скрининг за остеопороза',
+          'Костна плътност (DXA) с оценка на риска от фрактура (FRAX).',
+          [age >= 65 ? `Жена на ${Math.floor(age)} г.` : `Жена на ${Math.floor(age)} г. с ${risk.join(', ')}`,
+            lastDxa ? `Последна DXA: ${when(lastDxa)}` : 'Няма DXA'],
+          cite('uspstf_osteo_2025')));
+      }
+    }
+  }
+
+  // Рак на белия дроб — нискодозова КТ при дълго пушене (USPSTF 2021; в Европа — пилотно).
+  if (everSmoked && age >= 50 && age <= 80) {
+    const last = lastDone(p, ['ldct'], asOf);
+    if (!last || last < addMonths(asOf, -12)) {
+      out.push(finding('lung_screen', last || 'never', 1, 'screening',
+        'Скрининг за рак на белия дроб — проверете пакетогодините',
+        'При 20 и повече пакетогодини и тютюнопушене сега или през последните 15 години — нискодозова КТ на гърдите ежегодно. В Европа се въвежда поетапно; по преценка.',
+        [`${Math.floor(age)} г., ${smoking === 'current' ? 'пушач' : 'бивш пушач'}`, last ? `Последна КТ: ${when(last)}` : 'Няма нискодозова КТ'],
+        cite('uspstf_lung_2021', 'eu_cancer_2022')));
+    }
+  }
+  return out;
+}
+
+/** Деца: изследвания при затлъстяване от 10 г. (AAP 2023). */
+function childRules(p, ctx) {
+  const { asOf, age, child } = ctx;
+  const out = [];
+  const bmi = child?.bmi;
+  if (!bmi || age < 10 || age >= 18 || !(bmi.z > 2) || bmi.date < addMonths(asOf, -12)) return out;
+  const since = addMonths(asOf, -24);
+  const missing = [
+    !(p.results || []).some(r => ['ldl', 'tchol'].includes(r.code) && r.date >= since) ? 'липиден профил' : '',
+    !(p.results || []).some(r => ['glucose', 'hba1c'].includes(r.code) && r.date >= since) ? 'глюкоза на гладно или HbA1c' : '',
+    !(p.results || []).some(r => r.code === 'alt' && r.date >= since) ? 'АЛАТ' : '',
+  ].filter(Boolean);
+  if (missing.length) {
+    out.push(finding('child_obesity', bmi.date, 1, 'growth',
+      'Затлъстяване при дете над 10 г.: изследвания',
+      `${missing.join(', ')}; измерване на налягането; разговор за храненето, движението и съня.`.replace(/^./, c => c.toUpperCase()),
+      [`ИТМ ${dec(bmi.value)} (z ${dec(bmi.z)}) на ${when(bmi.date)}`], cite('aap_obesity_2023')));
   }
   return out;
 }
@@ -618,7 +876,7 @@ export const RED_FLAGS = [
   {
     id: 'dyspnea', sev: 2, re: new RegExp(`задух${L}|диспне${L}|недостиг на въздух|ортопне${L}|задъхва${L}`),
     title: 'Задух', action: 'ЕКГ и NT-proBNP; при съмнение за белодробна причина — спирометрия и рентгенография.',
-    source: 'ESC HF 2021; GOLD 2025', done: { labs: ['ntprobnp'], checks: ['spiro', 'echo'], studies: ['echo'] },
+    source: cite('esc_hf_2026', 'gold_2026'), done: { labs: ['ntprobnp'], checks: ['spiro', 'echo'], studies: ['echo'] },
   },
   {
     id: 'weight_loss_text', sev: 2, re: new RegExp(`(?:загуба на|спад на|свалил${L}|отслаб${L})\\s+(?:\\S+\\s+){0,2}(?:тегло|килограм${L}|кг)|необясним${L} отслабване|отслабва без`),
@@ -658,7 +916,7 @@ export const RED_FLAGS = [
   {
     id: 'polyuria', sev: 1, re: new RegExp(`полиури${L}|полидипси${L}|пие много вода|силна жажда|често уриниране`),
     title: 'Жажда и често уриниране', action: 'Глюкоза и HbA1c; урина.',
-    source: 'ADA 2025', done: { labs: ['glucose', 'hba1c'] }, skipIf: (c) => c.conds.has('dm1') || c.conds.has('dm2'),
+    source: cite('ada_2026'), done: { labs: ['glucose', 'hba1c'] }, skipIf: (c) => c.conds.has('dm1') || c.conds.has('dm2'),
   },
   {
     id: 'memory', sev: 1, re: new RegExp(`забравя${L}|загуба на паметта|проблеми с паметта|отслабена памет|обърква${L} се`),
@@ -744,7 +1002,7 @@ function signalRules(p, ctx) {
         `Просрочено проследяване: ${overdue.length === 1 ? overdue[0].name : `${overdue.length} изследвания и прегледа`}`,
         `Направете: ${overdue.map(t => t.name).join(', ')}.`,
         overdue.slice(0, 5).map(t => `${t.name} — ${t.reasons.join(', ')}${t.last ? `, последно ${when(t.last)}` : ', няма запис'}`),
-        'Честотите по ESC/ESH 2024, KDIGO 2024, ADA 2025, GOLD и GINA', { reqs: overdue.map(t => t.req) }));
+        'Честотите по ESC 2024, ESC 2026 ССЗ и ХБЗ, KDIGO 2024, ADA 2026, GOLD 2026 и GINA 2026', { reqs: overdue.map(t => t.req) }));
     } else if (due.length) {
       out.push(finding('monitoring', `due:${due.map(t => t.id).sort().join(',')}`, 1, 'monitoring',
         `Дължимо проследяване: ${due.length === 1 ? due[0].name : `${due.length} изследвания и прегледа`}`,
@@ -813,10 +1071,13 @@ export function assistantFindings(p, ctx) {
     specialty: ctx.specialty || null,
     child: ctx.child || null,
     planOverdue: ctx.planOverdue || [],
+    practice: ctx.practice || 'gp',
   };
   const all = [
     ...symptomRules(p, base),
-    ...(age >= 18 ? [...labRules(p, base), ...vitalRules(p, base), ...screeningRules(p, base), ...therapyRules(p, base)] : []),
+    ...(age >= 18
+      ? [...labRules(p, base), ...vitalRules(p, base), ...screeningRules(p, base), ...therapyRules(p, base), ...guidelineRules(p, base)]
+      : childRules(p, base)),
     ...signalRules(p, base),
   ];
   const seen = new Set();

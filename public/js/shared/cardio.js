@@ -1,8 +1,8 @@
 /* Модул „Кардиология“ — изчисления за специалиста.
  *
- *   • сърдечна недостатъчност: фенотип по фракцията на изтласкване и
- *     оптимизиране на четирите групи лекарства до целевите дози (ESC 2021,
- *     Таблица 8; обновяване 2023); показания за ICD, CRT и ивабрадин;
+ *   • сърдечна недостатъчност: два вида по фракцията на изтласкване с
+ *     граница 50% и основното лечение за всеки (ESC 2026); целевите дози
+ *     (ESC 2021, Таблица 8); показания за ICD, CRT и ивабрадин (ESC 2021);
  *   • предсърдно мъждене: правилна доза на НОАК според възраст, тегло и
  *     креатининов клирънс (ESC 2024, EHRA 2021);
  *   • LDL: колко още трябва да се понижи и кой следващ етап на лечението
@@ -40,9 +40,11 @@ export const latestStudy = (p, kind) => studySeries(p, kind).at(-1) || null;
 /* ------------------------- сърдечна недостатъчност ------------------------- */
 
 /**
- * Фенотип по фракцията на изтласкване (ESC 2021): намалена ≤40%, леко
- * намалена 41–49%, запазена ≥50%. Подобрена (HFimpEF) — предишна ≤40%,
- * сега >40% с покачване поне с 10 пункта (универсална дефиниция 2021).
+ * Фенотип по фракцията на изтласкване (ESC 2026): намалена под 50%,
+ * запазена от 50%. „Леко намалената“ ФИ (41–49%) от насоките от 2021 г.
+ * вече се лекува като намалена. Подобрена (HFimpEF) — предишна ≤40%, сега
+ * >40% с покачване поне с 10 пункта (универсална дефиниция 2021); лечението
+ * продължава.
  */
 export function efPhenotype(series) {
   const list = (series || []).filter(s => Number.isFinite(s.values?.ef));
@@ -53,10 +55,17 @@ export function efPhenotype(series) {
   if (ef > 40 && lowest <= 40 && ef - lowest >= 10) {
     return { id: 'hfimpef', label: 'СН с подобрена ФИ (HFimpEF)', ef, date: last.date, previous: lowest };
   }
-  if (ef <= 40) return { id: 'hfref', label: 'СН с намалена ФИ (HFrEF)', ef, date: last.date };
-  if (ef < 50) return { id: 'hfmref', label: 'СН с леко намалена ФИ (HFmrEF)', ef, date: last.date };
+  if (ef < 50) return { id: 'hfref', label: 'СН с намалена ФИ (HFrEF)', ef, date: last.date };
   return { id: 'hfpef', label: 'СН със запазена ФИ (HFpEF)', ef, date: last.date };
 }
+
+/** Основното лечение по вида на СН (ESC 2026): при запазена ФИ — MRA и SGLT2-инхибитор. */
+export const FOUNDATIONAL = table({
+  hfref: ['raas', 'bb', 'mra', 'sglt2'],
+  hfimpef: ['raas', 'bb', 'mra', 'sglt2'],
+  hfpef: ['mra', 'sglt2'],
+});
+export const pillarsFor = (phenotype) => FOUNDATIONAL[phenotype?.id] || FOUNDATIONAL.hfref;
 
 export const HF_PILLARS = table({
   raas: { label: 'ARNI / ACE-инхибитор / сартан', short: 'ARNI/ACEi/ARB' },
@@ -84,6 +93,10 @@ export const HF_DOSES = table({
   },
   nebivolol: { pillar: 'bb', start: '1,25 мг веднъж дневно', target: 10, text: '10 мг веднъж дневно', note: 'Небивололът не е показал намаляване на смъртността при СН.' },
   eplerenone: { pillar: 'mra', start: '25 мг веднъж дневно', target: 50, text: '50 мг веднъж дневно' },
+  finerenone: {
+    pillar: 'mra', start: '10 мг при eGFR 25–60, 20 мг при eGFR >60, веднъж дневно', target: 20, text: '20 мг при eGFR ≤60, 40 мг при eGFR >60',
+    note: 'Доказателствата за финеренон при СН са при ФИ ≥40% (FINEARTS-HF); при ФИ под 40% — спиронолактон или еплеренон.',
+  },
   spironolactone: { pillar: 'mra', start: '25 мг веднъж дневно (12,5 мг при риск от хиперкалиемия)', target: 50, text: '50 мг веднъж дневно' },
   dapagliflozin: { pillar: 'sglt2', start: '10 мг веднъж дневно', target: 10, text: '10 мг веднъж дневно' },
   empagliflozin: { pillar: 'sglt2', start: '10 мг веднъж дневно', target: 10, text: '10 мг веднъж дневно' },
@@ -106,16 +119,17 @@ function pillarOf(m) {
 }
 
 /**
- * Лекарствата за СН с намалена ФИ: за всяка от четирите групи — какво
- * приема пациентът, каква част от целевата доза, какво пречи на
- * повишаването и какъв е следващият етап.
- * ctx: { k, egfr, sbp, hr, weight }
+ * Основното лечение на СН: за всяка група — какво приема пациентът, каква
+ * част от целевата доза, какво пречи на повишаването и какъв е следващият
+ * етап. При намалена ФИ — четирите групи, при запазена — MRA и SGLT2i.
+ * ctx: { k, egfr, sbp, hr, pillars }
  */
 export function hfTherapy(p, ctx = {}, asOf = today()) {
   const meds = activeMeds(p, asOf);
-  const { k = null, egfr = null, sbp = null, hr = null } = ctx;
+  const { k = null, egfr = null, sbp = null, hr = null, pillars = Object.keys(HF_PILLARS) } = ctx;
+  const preserved = pillars.length < 4;
   const rows = [];
-  for (const pid of Object.keys(HF_PILLARS)) {
+  for (const pid of pillars) {
     const found = meds.map(m => ({ m, info: pillarOf(m) })).filter(x => x.info && x.info.pillar === pid);
     // При ARNI сартанът е част от него — показва се ARNI.
     const pick = found.find(x => x.m.drug === 'sacubitril+valsartan') || found[0];
@@ -137,7 +151,7 @@ export function hfTherapy(p, ctx = {}, asOf = today()) {
     if (!pick) {
       rows.push({
         pillar: pid, label: HF_PILLARS[pid].label, status: 'missing', barriers,
-        next: barriers.length ? 'Липсва — вижте ограниченията.' : `Започнете: ${START_TEXT[pid]}`,
+        next: barriers.length ? 'Липсва — вижте ограниченията.' : `Започнете: ${preserved && pid === 'mra' ? START_MRA_PRESERVED : START_TEXT[pid]}`,
       });
       continue;
     }
@@ -170,6 +184,8 @@ export function hfTherapy(p, ctx = {}, asOf = today()) {
 
 export const NYHA_ROMAN = ['', 'I', 'II', 'III', 'IV'];
 
+const START_MRA_PRESERVED = 'финеренон 10–20 мг веднъж дневно (при eGFR ≥25) или спиронолактон 25 мг; калий ≤5,0';
+
 const START_TEXT = table({
   raas: 'сакубитрил/валсартан 49/51 мг 2 пъти дневно или ACE-инхибитор (напр. рамиприл 2,5 мг 2 пъти дневно)',
   bb: 'бизопролол 1,25 мг веднъж дневно или карведилол 3,125 мг 2 пъти дневно',
@@ -177,16 +193,20 @@ const START_TEXT = table({
   sglt2: 'дапаглифлозин или емпаглифлозин 10 мг веднъж дневно',
 });
 
-/** Препоръки по фенотипа, освен четирите групи (ESC 2021 и 2023). */
-export function hfAdvice(phenotype, { ecg = null, hr = null, therapy = null, nyha = null } = {}) {
+/** Препоръки по фенотипа, освен основното лечение (ESC 2026; устройства — ESC 2021). */
+export function hfAdvice(phenotype, { ecg = null, hr = null, therapy = null, nyha = null, bmi = null, glp1 = false } = {}) {
   const out = [];
   if (!phenotype) return out;
   const ef = phenotype.ef;
-  if (phenotype.id === 'hfmref') {
-    out.push('SGLT2-инхибитор — клас I (ESC 2023). ARNI/ACEi/ARB, бета-блокер и MRA могат да се обмислят (клас IIb). Диуретик при задръжка на течности.');
+  if (phenotype.id === 'hfref') {
+    out.push('Основно лечение (ESC 2026): ARNI/ACEi/ARB, бета-блокер, MRA и SGLT2-инхибитор, започнати бързо — в рамките на седмици, после повишаване до целевите дози.');
+    if (ef > 40) out.push(`ФИ ${ef}%: по ESC 2026 това е намалена ФИ — лечението е като при ФИ под 40%.`);
   }
   if (phenotype.id === 'hfpef') {
-    out.push('SGLT2-инхибитор — клас I (ESC 2023). Диуретик при задръжка на течности; лечение на хипертонията, ПМ и другите съпътстващи заболявания.');
+    out.push('Основно лечение (ESC 2026): MRA и SGLT2-инхибитор — клас I. Диуретик при задръжка на течности; систолно налягане под 130 mmHg; лечение на ПМ и другите съпътстващи заболявания.');
+    if (bmi !== null && bmi >= 30 && !glp1) {
+      out.push(`ИТМ ${String(bmi).replace('.', ',')}: семаглутид или тирзепатид — клас IIa при запазена ФИ и затлъстяване (ESC 2026).`);
+    }
   }
   if (phenotype.id === 'hfimpef') {
     out.push(`ФИ се е подобрила от ${phenotype.previous}% на ${ef}%. Лечението продължава — спирането му води до повторно влошаване (TRED-HF).`);
@@ -207,7 +227,7 @@ export function hfAdvice(phenotype, { ecg = null, hr = null, therapy = null, nyh
     }
   }
   if (nyha >= 3 && phenotype.id === 'hfref') {
-    out.push(`NYHA ${NYHA_ROMAN[nyha]} при оптимално лечение — обсъдете насочване към център за напреднала СН.`);
+    out.push(`NYHA ${NYHA_ROMAN[nyha]} при оптимално лечение — ранна консултация с център за напреднала СН, клас I (ESC 2026).`);
   }
   return out;
 }
@@ -588,10 +608,11 @@ export function cardioSummary(p, a, asOf = today()) {
   const nyha = nyhaStudy?.values.nyha ?? null;
 
   const showHf = conds.has('hf') || (phenotype && phenotype.ef < 50);
-  const therapy = showHf ? hfTherapy(p, { k, egfr, sbp: bp?.systolic ?? null, hr }, asOf) : null;
+  const therapy = showHf ? hfTherapy(p, { k, egfr, sbp: bp?.systolic ?? null, hr, pillars: pillarsFor(phenotype) }, asOf) : null;
+  const glp1 = activeMeds(p, asOf).some(m => has(m, 'GLP1'));
   const hf = showHf ? {
     phenotype, nyha, nyhaDate: nyhaStudy?.date || null, therapy,
-    advice: hfAdvice(phenotype, { ecg, hr, therapy, nyha }),
+    advice: hfAdvice(phenotype, { ecg, hr, therapy, nyha, bmi: a.vitals.bmi, glp1 }),
     ntprobnp: resultSeries(res, 'ntprobnp'),
     efSeries: echoes.filter(s => Number.isFinite(s.values.ef)).map(s => ({ date: s.date, value: s.values.ef })),
   } : null;
@@ -630,9 +651,10 @@ export function cardioSummary(p, a, asOf = today()) {
 
   // Сигнали — за обзора на раздела и за справките.
   const alerts = [];
-  if (hf?.phenotype?.id === 'hfref' && therapy) {
+  if (hf?.phenotype && therapy) {
     const missing = therapy.rows.filter(r => r.status === 'missing' && !r.barriers.length);
-    if (missing.length) alerts.push({ id: 'hf_missing', severity: 2, text: `СН с намалена ФИ без ${missing.map(r => HF_PILLARS[r.pillar].short).join(', ')}.` });
+    const kind = hf.phenotype.id === 'hfpef' ? 'СН със запазена ФИ' : 'СН с намалена ФИ';
+    if (missing.length) alerts.push({ id: 'hf_missing', severity: 2, text: `${kind} без ${missing.map(r => HF_PILLARS[r.pillar].short).join(', ')} (основно лечение, ESC 2026).` });
     const low = therapy.rows.filter(r => r.status === 'low' && !r.barriers.length);
     if (low.length) alerts.push({ id: 'hf_low', severity: 1, text: `Под целевата доза: ${low.map(r => `${r.name} (${r.pct}%)`).join(', ')}.` });
   }

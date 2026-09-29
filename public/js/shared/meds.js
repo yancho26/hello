@@ -493,7 +493,7 @@ export function checkMedications(patient, ctx = {}, asOf = today()) {
   }
   const dmCkd = cond.has('dm2') && ((ctx.egfr >= 20 && ctx.egfr < 60) || ctx.uacr >= 3);
   if ((dmCkd || (cond.has('dm2') && (cond.has('hf') || cond.has('chd')))) && !hasAny('SGLT2')) {
-    add({ type: 'missing', severity: 'moderate', title: 'Диабет с ХБЗ/ССЗ без SGLT2-инхибитор', text: 'SGLT2-инхибиторът намалява прогресията на ХБЗ и хоспитализациите за СН (ESC 2023, KDIGO 2024).', advice: 'Обмислете дапаглифлозин или емпаглифлозин.', meds: [] });
+    add({ type: 'missing', severity: 'moderate', title: 'Диабет с ХБЗ/ССЗ без SGLT2-инхибитор', text: 'SGLT2-инхибиторът намалява прогресията на ХБЗ и хоспитализациите за СН (ESC 2023, KDIGO 2024, ESC 2026 ССЗ и ХБЗ).', advice: 'Обмислете дапаглифлозин или емпаглифлозин.', meds: [] });
   }
   if (cond.has('ckd') && ctx.uacr >= 3 && !hasAny('ACEI', 'ARB')) {
     add({ type: 'missing', severity: 'moderate', title: 'Албуминурия без ACEi/сартан', text: 'KDIGO 2024: ACEi или сартан в максимално поносима доза при албуминурия.', advice: 'Обмислете.', meds: [] });

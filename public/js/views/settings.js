@@ -14,6 +14,7 @@ import { downloadTemplate, openImportDialog } from './import-dialog.js';
 import { MODULES } from '../shared/specialty.js';
 import { aiSettings } from './assistant-panel.js';
 import { FEEDBACK } from '../shared/assistant.js';
+import { GUIDELINES_VERIFIED, REGIONS, guidelinesByTopic } from '../shared/guidelines.js';
 
 let scheduleTrack = 'child';
 
@@ -808,12 +809,14 @@ async function assistantTab(rerender) {
       h('ul.small', null,
         h('li', null, 'отклонени резултати и промени във времето: калий, натрий, хемоглобин, бъбречна функция, чернодробни ензими, TSH, PSA, NT-proBNP, HbA1c, CRP и други;'),
         h('li', null, 'кръвно налягане, пулс и загуба на тегло;'),
-        h('li', null, 'скрининг според възрастта и рисковите фактори: предсърдно мъждене, аневризма на коремната аорта, диабет;'),
-        h('li', null, 'лечение, което изисква контрол: инхибитори на РААС, статини, антикоагуланти, литий, кортикостероиди;'),
+        h('li', null, 'скрининг според възрастта и рисковите фактори: предсърдно мъждене, аневризма на коремната аорта, диабет, първичен алдостеронизъм, Lp(a), фиброза на черния дроб, остеопороза, рак на белия дроб;'),
+        h('li', null, 'лечение, което изисква контрол или липсва: инхибитори на РААС, статини, SGLT2-инхибитори при ХБЗ, основното лечение при сърдечна недостатъчност, антикоагуланти, литий, кортикостероиди;'),
         h('li', null, 'тревожни оплаквания в текста на прегледите (кръв в изпражненията, задух, болка в гърдите, отпадна неврологична симптоматика и други), като разпознава отрицанието „без“, „не“, „отрича“;'),
         h('li', null, 'сигналите, които програмата вече изчислява: проследяване по заболявания, лекарства, психично здраве, растеж, специалности.')),
       h('p.small.muted', { style: { marginBottom: 0 } },
         'Всяка подсказка казва какво, защо и по коя насока. Решенията на лекаря се помнят в досието.')),
+
+    guidelinesCard(),
 
     card('Втори поглед от езиков модел (по избор)', { icon: '✨' },
       h('p.small', { style: { marginTop: 0 } },
@@ -835,6 +838,33 @@ async function assistantTab(rerender) {
           ai.hasKey ? testBtn : null, ai.hasKey ? removeBtn : null)
         : h('p.small.muted', { style: { margin: '12px 0 0' } }, 'Езиковият модел се настройва от компютъра, на който работи програмата.'),
       ai.updatedAt ? h('p.tiny.dim', { style: { marginBottom: 0 } }, 'Последна промяна: ' + new Date(ai.updatedAt).toLocaleString('bg-BG')) : null));
+}
+
+/** Клиничните насоки, по които работят проверките — с дружество, година и регион. */
+function guidelinesCard() {
+  const REGION_CLS = { eu: 'soon', us: 'due', int: 'future', bg: 'done' };
+  return card('Клинични насоки', {
+    icon: '📚', tight: true,
+  },
+  h('div.body', { style: { paddingBottom: 0 } },
+    h('p.small', { style: { margin: 0 } },
+      `Списъкът е сверен с най-новите издания към ${monthYear(GUIDELINES_VERIFIED)} Европейските насоки са водещи; американските се посочват, когато добавят нещо или се различават. `
+      + 'Отбелязаните като „ново“ са добавени или обновени в тази версия.')),
+  guidelinesByTopic().map(t => h('details.guides', { open: t.items.some(g => g.since) }, 
+    h('summary', null, h('span.grow', null, t.label), h('span.tiny.dim', null, `${t.items.length}`)),
+    h('div.table-wrap', null, h('table', null, h('tbody', null, t.items.map(g => h('tr', null,
+      h('td.nowrap', { style: { width: '120px' } }, h('span.badge.' + REGION_CLS[g.region], null, REGIONS[g.region])),
+      h('td.small', null,
+        h('strong', null, `${g.org} ${g.year}`), ' · ', g.title,
+        g.since ? h('span.badge.done', { style: { marginLeft: '6px' } }, 'ново') : null,
+        g.replaces ? h('div.tiny.dim', null, 'Заменя ' + g.replaces) : null,
+        h('div.tiny.muted', null, g.uses)),
+      h('td.right.no-print', null, g.url ? h('a.small', { href: g.url, target: '_blank', rel: 'noopener noreferrer' }, 'текст') : null)))))))));
+}
+
+function monthYear(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return `${['януари', 'февруари', 'март', 'април', 'май', 'юни', 'юли', 'август', 'септември', 'октомври', 'ноември', 'декември'][m - 1]} ${y} г.`;
 }
 
 /* ---------------------------------- журнал ----------------------------------- */

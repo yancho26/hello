@@ -14,7 +14,7 @@ import { addMonths, today } from '../public/js/shared/dates.js';
 import { dailyDose, parseCount, parseDose } from '../public/js/shared/meds.js';
 import { adultSummary } from '../public/js/shared/adult.js';
 import {
-  assessAbpm, assessHome, cardioSummary, dipping, efPhenotype, hfTherapy, ldlPath, ldlReduction, lpaAssess, noacDose, qtc, qtcAssess,
+  assessAbpm, assessHome, cardioSummary, dipping, efPhenotype, hfAdvice, hfTherapy, pillarsFor, ldlPath, ldlReduction, lpaAssess, noacDose, qtc, qtcAssess,
 } from '../public/js/shared/cardio.js';
 import {
   assessCgm, basalAdvice, euTirads, gmiFromMean, insulinRegimen, iwgdfCategory, noduleAssessment, noduleGrowth, thyroidPattern,
@@ -53,15 +53,31 @@ test('числова доза: мерни единици, дроби в прие
 
 /* ------------------------- сърдечна недостатъчност ------------------------- */
 
-test('фенотип по ФИ: намалена, леко намалена, запазена и подобрена', () => {
+test('фенотип по ФИ (ESC 2026): намалена под 50%, запазена от 50%, подобрена', () => {
   const s = (ef, date = '2026-01-01') => ({ date, values: { ef } });
   assert.equal(efPhenotype([s(40)]).id, 'hfref');
-  assert.equal(efPhenotype([s(41)]).id, 'hfmref');
-  assert.equal(efPhenotype([s(49)]).id, 'hfmref');
+  assert.equal(efPhenotype([s(41)]).id, 'hfref', 'бившата „леко намалена“ ФИ е намалена');
+  assert.equal(efPhenotype([s(49)]).id, 'hfref');
   assert.equal(efPhenotype([s(50)]).id, 'hfpef');
   assert.equal(efPhenotype([s(30, '2024-01-01'), s(45, '2026-01-01')]).id, 'hfimpef');
-  assert.equal(efPhenotype([s(35, '2024-01-01'), s(42, '2026-01-01')]).id, 'hfmref', 'под 10 пункта подобрение не е HFimpEF');
+  assert.equal(efPhenotype([s(35, '2024-01-01'), s(42, '2026-01-01')]).id, 'hfref', 'под 10 пункта подобрение не е HFimpEF');
   assert.equal(efPhenotype([]), null);
+  assert.deepEqual(pillarsFor({ id: 'hfpef' }), ['mra', 'sglt2']);
+  assert.deepEqual(pillarsFor({ id: 'hfref' }), ['raas', 'bb', 'mra', 'sglt2']);
+  assert.deepEqual(pillarsFor(null), ['raas', 'bb', 'mra', 'sglt2']);
+});
+
+test('СН със запазена ФИ: основното лечение е MRA и SGLT2-инхибитор, GLP-1 при затлъстяване', () => {
+  const p = adult({ meds: [med('dapagliflozin', '10 мг', { m: '1' })] });
+  const t = hfTherapy(p, { pillars: pillarsFor({ id: 'hfpef' }), k: 4.5, egfr: 70 });
+  assert.deepEqual(t.rows.map(r => r.pillar), ['mra', 'sglt2']);
+  assert.equal(t.rows[0].status, 'missing');
+  assert.match(t.rows[0].next, /финеренон/);
+  assert.equal(t.rows[1].status, 'target');
+  const advice = hfAdvice({ id: 'hfpef', ef: 58 }, { bmi: 33.4 });
+  assert.ok(advice.some(x => /семаглутид или тирзепатид/.test(x)));
+  assert.ok(!hfAdvice({ id: 'hfpef', ef: 58 }, { bmi: 33.4, glp1: true }).some(x => /тирзепатид/.test(x)));
+  assert.ok(hfAdvice({ id: 'hfref', ef: 45 }).some(x => /ESC 2026/.test(x)));
 });
 
 test('СН с намалена ФИ: процент от целевата доза по ESC 2021 и ограничения', () => {

@@ -41,7 +41,7 @@ export function endoTab(ctx) {
     nodulesCard(ctx, s.nodules),
     historyCard(ctx, KINDS, 'Ендокринологични прегледи'),
     h('p.tiny.muted', null,
-      'Източници: международен консенсус за времето в диапазон (Battelino 2019), ADA 2025, ESC 2023, KDIGO 2024, IWGDF 2023, '
+      'Източници: международен консенсус за времето в диапазон (Battelino 2019), ADA 2026, ESC 2023, KDIGO 2024, IWGDF 2023, '
       + `ETA 2013/2015/2018 за щитовидната жлеза, EU-TIRADS (ETA 2017) и ETA 2023 за възлите, Bethesda 2023. Сверено ${ENDO_VERIFIED}. `
       + 'Изчисленията подпомагат, но не заменят преценката на лекаря.'));
 }

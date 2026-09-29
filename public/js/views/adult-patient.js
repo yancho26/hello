@@ -323,7 +323,7 @@ function chronicTab(ctx) {
     h('div.row.no-print', null,
       h('button.btn.primary', { onclick: () => conditionDialog(ctx) }, '＋ Заболяване'),
       h('div.grow'),
-      h('span.small.muted', null, 'Честотите на проследяване са по ESC/ESH 2024, ESC 2023, KDIGO 2024, GOLD и GINA.')),
+      h('span.small.muted', null, 'Честотите на проследяване са по ESC 2024, ESC 2023, ESC 2026 за ССЗ и ХБЗ, KDIGO 2024, ADA 2026, GOLD 2026 и GINA 2026.')),
     active.length ? h('div.grid.cols-2', null, active.map(condCard))
       : card(null, {}, empty('Няма вписани хронични заболявания. Добавете ги, за да се изчисляват проследяването, целите и проверките на лекарствата.', '🩺')),
     a.monitoring.length ? card('Диспансерно наблюдение', { icon: '🧪', tight: true },

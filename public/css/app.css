@@ -929,3 +929,7 @@ details.worklist[open] > summary { background: var(--surface-2); }
 @media print {
   .af { break-inside: avoid; background: none; }
 }
+
+details.guides { border-top: 1px solid var(--line); }
+details.guides summary { display: flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer; font-weight: 600; font-size: 14px; }
+details.guides .table-wrap { padding: 0 8px 8px; }
