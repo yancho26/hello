@@ -130,22 +130,50 @@ export function printNutritionPlan(p, plan) {
     .targets { display: flex; flex-wrap: wrap; gap: 3mm 8mm; font-size: 11pt; margin: 2mm 0 3mm; }
     .targets b { font-size: 13pt; }
     .cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6mm; }
+    .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
     .meal { break-inside: avoid; margin-bottom: 3mm; }
     .meal h3 { font-size: 11.5pt; margin: 3mm 0 1mm; }
-    .opt { margin: 0 0 1.5mm 3mm; }
+    .opt { margin: 0 0 2mm 3mm; break-inside: avoid; }
     .opt .items { color: #333; font-size: 10pt; }
+    .opt .how { color: #444; font-size: 9.5pt; margin-top: 0.5mm; }
+    .day { break-inside: avoid; margin-bottom: 3mm; }
+    .day h3 { font-size: 11.5pt; margin: 4mm 0 1mm; border-bottom: 1px solid #bbb; }
+    .shop { columns: 3; column-gap: 8mm; font-size: 10pt; }
+    .shop h4 { margin: 2mm 0 1mm; font-size: 10.5pt; break-after: avoid; }
+    .shop div { break-inside: avoid; }
+    .page { break-before: page; }
   `, (ctx) => {
-    const { el, add, list } = ctx;
+    const { el, add, list, tableOf } = ctx;
     const t = plan.targets;
     header(ctx, 'Личен хранителен режим', p);
     const tg = add(el('div', undefined, 'targets'));
     for (const [k, v] of [
-      ['Енергия', `${t.kcal} kcal`], ['Белтък', `${t.protein} г`], ['Въглехидрати', `${t.carbs} г`],
+      ['Енергия', `${t.kcal} kcal`], ['Белтък', `${t.protein} г${t.proteinMax ? ` (до ${t.proteinMax} г)` : ''}`], ['Въглехидрати', `${t.carbs} г`],
       ['Мазнини', `${t.fat} г`], ['Фибри', `≥${t.fiber} г`], ['Сол', `<${t.salt} г`], ['Течности', `${(t.fluids / 1000).toFixed(1).replace('.', ',')} л`],
     ]) { const d = el('div'); d.appendChild(el('span', k + ': ', 'muted')); d.appendChild(el('b', v)); tg.appendChild(d); }
-    if (plan.input.goal) add(el('div', 'Цел: ' + GOALS[plan.input.goal], 'muted'));
+    const pr = plan.projection;
+    if (plan.input.goal) {
+      let text = 'Цел: ' + GOALS[plan.input.goal];
+      if (pr && plan.input.goal !== 'maintain') {
+        text += `, около ${pr.weeklyKg > 0 ? '+' : '−'}${String(Math.abs(pr.weeklyKg)).replace('.', ',')} кг седмично`;
+        if (pr.targetWeight) text += `; до ${String(pr.targetWeight).replace('.', ',')} кг за около ${pr.weeks} седмици`;
+      }
+      add(el('div', text, 'muted'));
+    }
+    if (plan.pattern) add(el('div', `Модел: ${plan.pattern.label}. ${plan.pattern.about}`, 'muted'));
     for (const w of plan.warnings) add(el('div', w, 'warn'));
 
+    if (plan.portions) {
+      const c2 = add(el('div', undefined, 'cols2'));
+      const a = el('div');
+      a.appendChild(el('h2', 'Порции за деня'));
+      a.appendChild(tableOf(['Брой', 'Група'], plan.portions.map(x => [x.count, `${x.group} (${x.unit})`])));
+      c2.appendChild(a);
+      const b = el('div');
+      b.appendChild(el('h2', 'Седмичен ритъм'));
+      b.appendChild(list(plan.weekly || []));
+      c2.appendChild(b);
+    }
     const cols = add(el('div', undefined, 'cols'));
     for (const [title, items] of [['Предпочитайте', plan.prefer], ['Ограничете', plan.limit], ['Избягвайте', plan.avoid]]) {
       const c = el('div');
@@ -157,20 +185,53 @@ export function printNutritionPlan(p, plan) {
       add(el('h2', 'Лекарства и храна'));
       add(list(plan.medNotes.map(n => `${n.med}: ${n.text}`)));
     }
-    add(el('h2', 'Примерно меню — изберете по един вариант за всяко хранене'));
-    for (const m of plan.meals) {
-      const box = add(el('div', undefined, 'meal'));
-      box.appendChild(el('h3', `${m.label} (≈${m.kcal} kcal)`));
-      m.options.forEach((o, i) => {
-        const d = el('div', undefined, 'opt');
-        d.appendChild(el('b', `${i + 1}. ${o.name}`));
-        d.appendChild(el('div', o.items.map(x => x.text).join(' · '), 'items'));
-        box.appendChild(d);
-      });
+    if (plan.habits) {
+      const c3 = add(el('div', undefined, 'cols'));
+      for (const [title, items] of [['Навици', plan.habits], ['Вкус без много сол', plan.flavor], ['Контрол на теглото', plan.monitoring]]) {
+        const c = el('div');
+        c.appendChild(el('h2', title));
+        c.appendChild(list(items || []));
+        c3.appendChild(c);
+      }
     }
     if (plan.notes.length) {
       add(el('h2', 'Бележки'));
       add(list(plan.notes));
+    }
+
+    const recipe = (box, o, label) => {
+      if (!o) return;
+      const d = el('div', undefined, 'opt');
+      d.appendChild(el('b', `${label}${o.name}${o.time ? ` (${o.time} мин)` : ''}`));
+      d.appendChild(el('div', o.items.map(x => x.text).join(' · '), 'items'));
+      if (o.method) d.appendChild(el('div', o.method + (o.flavor?.length ? ` За вкус: ${o.flavor.join(', ')}.` : ''), 'how'));
+      box.appendChild(d);
+    };
+    if (plan.week) {
+      add(el('h2', 'Меню за седмицата', 'page'));
+      for (const d of plan.week) {
+        const box = add(el('div', undefined, 'day'));
+        box.appendChild(el('h3', `${d.label} · около ${d.totals.kcal} kcal`));
+        for (const m of d.meals) recipe(box, m.option, `${m.label}: `);
+      }
+      if (plan.shopping) {
+        add(el('h2', 'Списък за пазаруване', 'page'));
+        const shop = add(el('div', undefined, 'shop'));
+        for (const g of plan.shopping.groups) {
+          const d = el('div');
+          d.appendChild(el('h4', g.label));
+          d.appendChild(list(g.items.map(it => `☐ ${it.name} — ${it.amount}`)));
+          shop.appendChild(d);
+        }
+        if (plan.shopping.spices.length) add(el('div', 'Подправки и билки: ' + plan.shopping.spices.join(', '), 'muted'));
+      }
+    } else {
+      add(el('h2', 'Примерно меню — изберете по един вариант за всяко хранене'));
+      for (const m of plan.meals) {
+        const box = add(el('div', undefined, 'meal'));
+        box.appendChild(el('h3', `${m.label}${m.time ? ', ' + m.time : ''} (≈${m.kcal} kcal)`));
+        m.options.forEach((o, i) => recipe(box, o, `${i + 1}. `));
+      }
     }
     add(el('div', 'Режимът е съставен от личния лекар въз основа на заболяванията, теглото и лекарствата към датата на отпечатване.', 'note'));
   });

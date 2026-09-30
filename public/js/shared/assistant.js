@@ -448,7 +448,7 @@ function vitalRules(p, ctx) {
     const lost6 = max6 ? (max6.weight - lastW.weight) / max6.weight : 0;
     const lost12 = max12 ? (max12.weight - lastW.weight) / max12.weight : 0;
     const intended = medsWith(meds, ['GLP1']).length > 0
-      || (p.nutritionPlans || []).some(n => n.goal === 'lose' && n.date >= addMonths(lastW.date, -12));
+      || (p.nutritionPlans || []).some(n => (n.plan?.input?.goal || n.goal) === 'lose' && n.date >= addMonths(lastW.date, -12));
     if (!intended && (lost6 >= 0.05 || lost12 >= 0.10)) {
       const from = lost6 >= 0.05 ? max6 : max12;
       const pct = Math.round((from.weight - lastW.weight) / from.weight * 100);

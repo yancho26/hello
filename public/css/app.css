@@ -933,3 +933,24 @@ details.worklist[open] > summary { background: var(--surface-2); }
 details.guides { border-top: 1px solid var(--line); }
 details.guides summary { display: flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer; font-weight: 600; font-size: 14px; }
 details.guides .table-wrap { padding: 0 8px 8px; }
+
+/* ------------------------------ хранене ------------------------------ */
+
+.nut-section { border-top: 1px solid var(--line); padding-top: 12px; }
+.nut-sec-title { font-weight: 650; font-size: 14px; margin-bottom: 8px; }
+.recipe { padding: 6px 0; }
+.recipe + .recipe { border-top: 1px dashed var(--line); }
+.recipe-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.recipe-how summary { cursor: pointer; font-size: 12.5px; color: var(--brand); font-weight: 600; margin-top: 4px; }
+.recipe-how p { margin: 4px 0; color: var(--ink-2); }
+details.week-day { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 12px; }
+details.week-day > summary { display: flex; align-items: baseline; gap: 6px; cursor: pointer; padding: 2px 0; }
+details.week-day[open] > summary { margin-bottom: 10px; }
+.shop-grid { display: grid; gap: 4px 18px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); padding: 12px 16px; }
+.shop-group h3 { font-size: 13.5px; margin: 6px 0 4px; }
+.shop-group ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.shop-group li { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; border-bottom: 1px dotted var(--line); }
+table.portions { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.portions td { padding: 3px 6px 3px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
+table.portions td:first-child { width: 42px; font-variant-numeric: tabular-nums; }
+@media print { details.week-day, .recipe-how { break-inside: avoid; } }
