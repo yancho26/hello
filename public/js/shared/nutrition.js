@@ -25,7 +25,8 @@
 import { bmi as bmiOf } from './clinical.js';
 import { table } from './table.js';
 import { addDays, today } from './dates.js';
-import { FOODS, FOOD_CATS, RECIPES, mainProtein, recipeTags, totals } from './recipes.js';
+import { FOODS, FOOD_CATS, RECIPES, mainProtein, mealsOf, recipeTags, totals } from './recipes.js';
+import { dietProfiles } from './diet-icd.js';
 
 export { FOODS, RECIPES };
 
@@ -187,7 +188,8 @@ const KCAL_PER_KG = 7700;
  * @param {object} input
  *   sex, age, weight, height, waist, activity, goal, pace, targetWeight, pattern,
  *   mealsPerDay (3|4|5), days (1|7), quick, strength, preferences: [], allergies: [],
- *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf
+ *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf,
+ *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly
  */
 export function nutritionPlan(input) {
   const { sex, age, weight, height } = input;
@@ -197,10 +199,12 @@ export function nutritionPlan(input) {
     throw new Error('Нужни са актуални тегло и ръст.');
   }
   const asOf = input.asOf || today();
-  const cond = input.conditions || new Set();
+  // Диагнозите по МКБ-10 добавят заболявания, ограничения и правила (diet-icd.js).
+  const dx = dietProfiles(input.diagnoses, { pregnancyWeek: input.pregnancyWeek });
+  const cond = new Set([...(input.conditions || []), ...dx.cond]);
   const classes = input.classes || new Set();
   const fromAllergies = allergyPreferences(input.allergies);
-  const prefs = new Set([...(input.preferences || []), ...fromAllergies.prefs].filter(x => PREFERENCES[x]));
+  const prefs = new Set([...(input.preferences || []), ...fromAllergies.prefs, ...dx.prefs].filter(x => PREFERENCES[x]));
   if (prefs.has('vegan')) prefs.add('vegetarian');
   const b = bmiOf(weight, height);
   const activity = ACTIVITY[input.activity] || ACTIVITY.sedentary;
@@ -210,7 +214,11 @@ export function nutritionPlan(input) {
   const days = Number(input.days) === 7 ? 7 : 1;
   const strength = !!input.strength;
 
-  let goal = GOALS[input.goal] ? input.goal : (b >= 25 ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
+  let goal = GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
+  if (goal === 'lose' && dx.noLose) {
+    warnings.push(dx.noLose);
+    goal = 'maintain';
+  }
   if (goal === 'lose' && b < 22) {
     warnings.push('При ИТМ под 22 отслабване не се препоръчва — планът е за поддържане на теглото.');
     goal = 'maintain';
@@ -234,13 +242,17 @@ export function nutritionPlan(input) {
   }
 
   const notes0 = [];
-  const ckd = input.egfr > 0 && input.egfr < 60;
-  const ckdAdvanced = input.egfr > 0 && input.egfr < 30;
+  // eGFR: резултатът от изследването; ако го няма — стадият по кода N18.x.
+  const egfr = input.egfr > 0 ? input.egfr : dx.egfr;
+  if (!(input.egfr > 0) && dx.egfr && !dx.dialysis) notes0.push(`Няма резултат за eGFR — режимът приема около ${dx.egfr} mL/min по кода на ХБЗ; въведете резултата за по-точно изчисление.`);
+  const dialysis = dx.dialysis;
+  const ckd = !dialysis && egfr > 0 && egfr < 60;
+  const ckdAdvanced = !dialysis && egfr > 0 && egfr < 30;
   const diabetes = cond.has('dm2') || cond.has('dm1') || cond.has('prediabetes');
   const cardio = ['htn', 'chd', 'pad', 'stroke', 'hf', 'dyslip'].some(c => cond.has(c));
   const onRaas = ['ACEI', 'ARB', 'ARNI', 'MRA', 'FINERENONE'].some(c => classes.has(c));
-  const limitK = (input.egfr > 0 && input.egfr < 45 && onRaas) || input.potassium >= 5.0 || ckdAdvanced;
-  const lowSalt = cond.has('htn') || cond.has('hf') || ckd;
+  const limitK = (egfr > 0 && egfr < 45 && onRaas) || input.potassium >= 5.0 || ckdAdvanced || dx.limitK;
+  const lowSalt = cond.has('htn') || cond.has('hf') || ckd || dialysis;
 
   // Енергия.
   const bmr = mifflinStJeor({ sex, age, weight, height });
@@ -259,6 +271,8 @@ export function nutritionPlan(input) {
     if (goal === 'lose') warnings.push('Енергийният дефицит е ограничен, за да не пада приемът под основния метаболизъм.');
   }
   target = round(target, 50);
+  // Бременност и кърмене: допълнителна енергия (EFSA).
+  if (dx.energyAdd) target = round(target + dx.energyAdd, 50);
 
   // Референтно тегло за белтъка: при ИТМ >25 — теглото при ИТМ 25 плюс 25% от излишъка.
   const w25 = 25 * (height / 100) ** 2;
@@ -272,11 +286,17 @@ export function nutritionPlan(input) {
   if (strength) { proteinPerKg = Math.max(proteinPerKg, goal === 'maintain' ? 1.4 : 1.6); proteinNote = 'ACSM/ISSN: 1,2–2,0 г/кг при силови тренировки; повече при енергиен дефицит.'; }
   if (pattern.proteinBoost) proteinPerKg = Math.min(1.8, proteinPerKg + pattern.proteinBoost);
   if (ckd) { proteinPerKg = 0.8; proteinNote = 'KDIGO 2024: 0,8 г/кг при ХБЗ G3–G5 без диализа; да не се превишава 1,3 г/кг.'; }
+  if (dialysis) { proteinPerKg = 1.1; proteinNote = 'KDOQI 2020: 1,0–1,2 г/кг при хемодиализа.'; }
+  if (dx.proteinMin && !ckd && !dialysis && proteinPerKg < dx.proteinMin) {
+    proteinPerKg = dx.proteinMin;
+    proteinNote = `По диагнозите: поне ${dec(dx.proteinMin)} г/кг (ESPEN).`;
+  }
+  if (dx.proteinMin && ckd) warnings.push('Диагнозите изискват повече белтък, а ХБЗ — по-малко: режимът спазва 0,8 г/кг по KDIGO; обсъдете с нефролог.');
   proteinPerKg = Math.round(proteinPerKg * 10) / 10;
   const protein = round(proteinPerKg * refWeight);
   // Горна граница за менюто: при ХБЗ — 1,0 г/кг (0,9 при G4–G5), далеч под 1,3 г/кг по KDIGO; иначе до 1,5 пъти целта
   // или до 20% от енергията (при много енергия), но не над 2 г/кг (2,2 при силови тренировки).
-  const proteinMax = ckd ? round(refWeight * (ckdAdvanced ? 0.9 : 1.0)) : round(Math.min(refWeight * (strength ? 2.2 : 2.0), Math.max(protein * 1.5, target * 0.2 / 4)));
+  const proteinMax = ckd ? round(refWeight * (ckdAdvanced ? 0.9 : 1.0)) : dialysis ? round(refWeight * 1.3) : round(Math.min(refWeight * (strength ? 2.2 : 2.0), Math.max(protein * 1.5, target * 0.2 / 4)));
 
   // Мазнини и въглехидрати по модела.
   let fatPct;
@@ -292,11 +312,18 @@ export function nutritionPlan(input) {
     fat = round((target * fatPct / 100) / 9);
     carbs = round((target - protein * 4 - fat * 9) / 4);
   }
-  const fiber = Math.max(25, round((target / 1000) * 14));
+  if (dx.pregnancy && carbs < 175) {
+    carbs = 175;
+    fat = round((target - protein * 4 - carbs * 4) / 9);
+    fatPct = Math.round((fat * 9 / target) * 100);
+    warnings.push('Бременност: въглехидратите са поне 175 г дневно (ADA) — разпределението е коригирано.');
+  }
+  const fiber = Math.max(25, round((target / 1000) * 14), dx.fiberMin);
   const satFatPct = (cardio || diabetes) ? 7 : 10;
   const satFat = round((target * satFatPct / 100) / 9);
   const sugarMax = round((target * 0.10) / 4);
-  let fluids = Math.min(3000, Math.max(1500, round(weight * 30, 100)));
+  let fluids = Math.max(Math.min(3000, Math.max(1500, round(weight * 30, 100))), dx.fluidsMin);
+  if (dialysis) fluids = Math.min(fluids, 1500);
 
   const targets = {
     kcal: target, protein, fat, carbs, fiber, satFat, sugarMax,
@@ -407,9 +434,23 @@ export function nutritionPlan(input) {
   if (prefs.has('glutenFree')) avoid.push('Цьолиакия: пшеница, ръж, ечемик и храни с тях; овесът — само сертифициран без глутен.');
   if (prefs.has('lactoseFree')) notes.push('Без лактоза: млечни продукти без лактоза; твърдите отлежали сирена обикновено се понасят.');
   if (fromAllergies.matched.length) notes.push(`Изключено според алергиите в досието: ${fromAllergies.matched.join(', ')}.`);
+  // Правилата от диагнозите по МКБ-10.
+  prefer.push(...dx.prefer);
+  limit.push(...dx.limit);
+  avoid.push(...dx.avoid);
+  notes.push(...dx.notes);
+  warnings.push(...dx.warnings);
+  if (dx.dietitian) {
+    const who = dx.considered.filter(c => c.dietitian).map(c => c.label);
+    warnings.push(`При тези диагнози (${[...new Set(who)].join(', ')}) режимът е ориентировъчен — обсъдете го с диетолог.`);
+  }
 
   // Рецептите, които стават за човека, с оценка за подходящост.
-  const ctx = { prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick, proteinShare: (protein * 4) / target };
+  const ctx = {
+    prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
+    sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
+    exclude: dx.exclude, penalize: dx.penalize,
+  };
   const lowerCarb = diabetes || patternId === 'lowcarb';
   // При модела с малко въглехидрати нишестето не расте; при диабет расте умерено.
   const strictLowCarb = patternId === 'lowcarb';
@@ -417,6 +458,9 @@ export function nutritionPlan(input) {
   const slots = MEAL_PLANS[mealsPerDay];
   const pools = {};
   for (const kind of new Set(slots.map(s => s.meal))) pools[kind] = poolFor(kind, ctx, variant);
+  if (Object.values(pools).some(p => p.unsourced)) {
+    notes.push('За някои хранения няма рецепта с публикуван източник при тези ограничения — там са включени и традиционните рецепти на програмата.');
+  }
   if (Object.values(pools).some(p => p.relaxed)) {
     notes.push('При тези ограничения за някои хранения няма ястие, което да пасва на всичко — там порциите на солените, сладките и богатите на калий храни са малки. Обсъдете менюто с диетолог.');
   }
@@ -499,7 +543,8 @@ export function nutritionPlan(input) {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
       goal, pace, targetWeight: projection.targetWeight, pattern: patternId, mealsPerDay, days,
-      quick: !!input.quick, strength, preferences: [...prefs], egfr: input.egfr || null,
+      quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
+      diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
     },
     bmi: Math.round(b * 10) / 10,
     energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor },
@@ -519,7 +564,8 @@ export function nutritionPlan(input) {
     day,
     week,
     shopping: week ? shoppingList(week) : null,
-    flags: { limitK, ckd, ckdAdvanced, diabetes },
+    diagnoses: dx.considered,
+    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy },
   };
 }
 
@@ -530,7 +576,8 @@ function poolFor(kind, ctx, variant) {
   const collect = (c) => {
     const out = [];
     RECIPES.forEach((r, i) => {
-      if (r.meal !== kind) return;
+      if (!mealsOf(r).includes(kind)) return;
+      if (c.sourcedOnly && !r.source) return;
       const items = substituted(r, c.prefs).items;
       if (excluded(items, c)) return;
       const tags = recipeTags({ ...r, items: items.map(it => [it.food, it.grams]) });
@@ -542,6 +589,12 @@ function poolFor(kind, ctx, variant) {
   // нито едно ястие, тези ограничения се отпускат (калият се ограничава после по порция).
   let scored = collect(ctx);
   let relaxed = false;
+  let unsourced = false;
+  // „Само рецепти с източник“: ако за това хранене няма такава, се връщат всички.
+  if (!scored.length && ctx.sourcedOnly) {
+    scored = collect({ ...ctx, sourcedOnly: false });
+    unsourced = scored.length > 0;
+  }
   for (const soft of [{ limitK: false, lowSalt: false }, { limitK: false, lowSalt: false, diabetes: false }]) {
     if (scored.length) break;
     scored = collect({ ...ctx, ...soft });
@@ -555,6 +608,7 @@ function poolFor(kind, ctx, variant) {
   // Вариантът разбърква равните по оценка, без да сваля по-подходящите надолу.
   pool.sort((a, b) => b.s - a.s || hash(a.r.name, variant) - hash(b.r.name, variant));
   pool.relaxed = relaxed;
+  pool.unsourced = unsourced;
   return pool;
 }
 
@@ -592,6 +646,7 @@ const shortName = (id) => FOODS[id].name.split(', ')[0];
 function excluded(items, ctx) {
   const { prefs, cond } = ctx;
   const has = (flag) => items.some(it => FOODS[it.food].flags.has(flag));
+  if (ctx.exclude?.size && items.some(it => ctx.exclude.has(it.food))) return true;
   if (prefs.has('vegetarian') && (has('meat') || has('fish') || has('seafood'))) return true;
   if (prefs.has('vegan') && (has('egg') || has('dairy') || has('honey'))) return true;
   if (prefs.has('noFish') && (has('fish') || has('seafood'))) return true;
@@ -655,6 +710,10 @@ function score(r, items, tags, ctx) {
     if (tags.has('highprotein')) s += 1;
   }
   if (ctx.quick && tags.has('quick')) s += 3;
+  // Рецептите с публикуван и проверен източник (NHLBI) се предпочитат.
+  if (r.source) s += 2;
+  // По диагнозите някои храни се дават по-рядко (оксалати при камъни, бобови при раздразнено черво).
+  if (ctx.penalize?.size && items.some(it => ctx.penalize.has(it.food))) s -= 2;
   if (ctx.ckd) {
     // Колкото по-близо е делът на белтъка в ястието до дела в целта, толкова по-подходящо.
     const share = t.kcal ? (t.protein * 4) / t.kcal : 0;
@@ -711,7 +770,8 @@ function planWeek(slots, pools, variant) {
 
 function portionText(foodId, grams, maxPieces = 3) {
   const f = FOODS[foodId];
-  if (f.unit && f.unit.name === 'бр.') {
+  // На брой — когато е поне половин плод или яйце; по-малкото се мери в грамове.
+  if (f.unit && f.unit.name === 'бр.' && grams >= f.unit.grams * 0.5) {
     const n = Math.min(maxPieces, Math.max(1, Math.round(grams / f.unit.grams)));
     return { grams: n * f.unit.grams, text: `${f.name} — ${n} ${f.unit.name} (≈${n * f.unit.grams} г)` };
   }
@@ -747,7 +807,8 @@ function resize(it, grams, maxPieces = 3) {
 const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli', 'buckwheat', 'quinoa', 'rice', 'whiterice',
   'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas']);
 
-const isPiece = (it) => FOODS[it.food].unit?.name === 'бр.';
+/* На брой се води съставка от поне половин плод или яйце; по-малкото се мащабира в грамове. */
+const isPiece = (it) => FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
 
 function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   const sub = substituted(r, prefs);
@@ -763,13 +824,23 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   const starchFactor = strict ? 0.7 * Math.min(1, baseFactor) : 0.8 * Math.min(1.5, baseFactor);
   const starchKcal = totals(base.filter(starch).map(it => ({ ...it, grams: it.grams * starchFactor }))).kcal;
   const rest = totals(base.filter(it => !fruit(it) && !starch(it))).kcal || 1;
-  const factor = Math.min(2.2, Math.max(0.5, (kcal - fruitKcal - starchKcal) / rest));
+  const clamp = (v) => Math.min(2.2, Math.max(0.5, v));
+  let factor = clamp((kcal - fruitKcal - starchKcal) / rest);
+  // Месото, рибата, яйцата, млечните и тофуто растат най-много 1,3 пъти: голямото хранене
+  // идва от гарнитурата и зеленчуците, а не от 250 г риба.
+  const rich = (it) => !fruit(it) && !starch(it) && PROTEIN_FOODS.has(it.food) && !LEGUMES.has(it.food);
+  const richKcal = totals(base.filter(rich)).kcal;
+  let richFactor = factor;
+  if (factor > 1.3 && rest - richKcal > 30) {
+    richFactor = 1.3;
+    factor = clamp((kcal - fruitKcal - starchKcal - richKcal * 1.3) / (rest - richKcal));
+  }
   const items = base.map(it => (fruit(it)
     ? resize(it, it.grams, Math.max(1, Math.round(it.grams / FOODS[it.food].unit.grams)))
-    : resize(it, it.grams * (starch(it) ? starchFactor : factor))));
+    : resize(it, it.grams * (starch(it) ? starchFactor : rich(it) ? richFactor : factor))));
   const t = totals(items);
   return {
-    name: sub.name, items, time: r.time, flavor: r.flavor,
+    name: sub.name, items, time: r.time, flavor: r.flavor, source: r.source || null,
     method: r.method + (sub.swaps.length ? ` Замени: ${sub.swaps.join(', ')}.` : ''),
     kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na,
   };
@@ -777,7 +848,10 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
 
 const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince', 'beef', 'beefmince', 'pork', 'hake', 'trout',
   'mackerel', 'salmon', 'sardines', 'tuna', 'shrimp', 'egg', 'cottage', 'whitecheese', 'kashkaval', 'mozzarella', 'tofu',
-  'lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'yogurt', 'lfyogurt', 'greekyogurt', 'kefir', 'milk', 'lfmilk', 'soyyogurt']);
+  'lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'yogurt', 'lfyogurt', 'greekyogurt', 'kefir', 'milk', 'lfmilk', 'soyyogurt',
+  'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk']);
+
+const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus']);
 
 function proteinSplit(o) {
   return o.items.reduce((acc, it) => {
@@ -827,6 +901,13 @@ const EXTRAS = [
 ];
 const BREADS = ['bread', 'ryebread', 'gfbread', 'pita'];
 const NUTTY = new Set(['walnuts', 'almonds', 'pumpkinseeds']);
+/* Когато в деня има малко белтък — първо белтъчна добавка според ограниченията. */
+const PROTEIN_EXTRAS = [
+  ['chickpeas', 100, 'main'],
+  ['tofu', 100, 'main'],
+  ['greekyogurt', 150, 'light'],
+  ['soyyogurt', 150, 'light'],
+];
 const SWEET_DISH = new Set(['honey', 'darkchoc', 'muesli', 'oats', 'driedfruit']);
 
 /**
@@ -855,7 +936,7 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
   // При много белтък в деня ядките и семките са последни, при малко — първи.
   const nutty = EXTRAS.filter(([f]) => NUTTY.has(f));
   const plain = EXTRAS.filter(([f]) => !NUTTY.has(f));
-  const order = bias === 'low' ? [...plain, ...nutty] : bias === 'high' ? [...nutty, ...plain] : EXTRAS;
+  const order = bias === 'low' ? [...plain, ...nutty] : bias === 'high' ? [...PROTEIN_EXTRAS, ...nutty, ...plain] : EXTRAS;
   for (const [extra, max, when] of order) {
     const short = kcal - o.kcal;
     if (short <= kcal * 0.05) break;
@@ -897,6 +978,17 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
   if (short > kcal * 0.05 && bias !== 'low' && !ctx.ckd && richKcal > 30) {
     const f = Math.min(1.3, (richKcal + short) / richKcal);
     o = withTotals(o, o.items.map(it => (rich.includes(it) ? resize(it, it.grams * f, 4) : it)));
+  }
+  // При малко въглехидрати и много ограничения енергията пак може да не стига —
+  // тогава малко хляб е по-добре от 300 kcal по-малко.
+  if (ctx.lowerCarb && kcal - o.kcal > kcal * 0.08) {
+    const food = o.items.find(it => BREADS.includes(it.food))?.food || (ctx.prefs.has('glutenFree') ? 'gfbread' : 'ryebread');
+    const have = o.items.find(it => it.food === food);
+    const want = Math.min(60, ((kcal - o.kcal) / FOODS[food].kcal) * 100);
+    const trial = have ? o.items.map(it => (it === have ? { ...it, grams: it.grams + want } : it)) : [...o.items, { food, grams: want, extra: true }];
+    if (want >= 20 && !excluded(trial, ctx)) {
+      o = withTotals(o, trial.map(it => (it.food !== food ? it : it.extra ? resize(it, it.grams, 1) : { ...resize({ ...it, base: maxGrams(food) }, it.grams), base: it.base })));
+    }
   }
   return o;
 }

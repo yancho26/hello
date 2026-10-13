@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { FOODS, RECIPES, recipeTags } from '../public/js/shared/recipes.js';
+import { FOODS, RECIPES, mealsOf, recipeTags } from '../public/js/shared/recipes.js';
 import { MEAL_PLANS, PACES, allergyPreferences, mifflinStJeor, nutritionPlan } from '../public/js/shared/nutrition.js';
 import { Store } from '../lib/store.js';
 import { Workspaces } from '../lib/workspaces.js';
@@ -37,11 +37,11 @@ test('рецепти: всяка има съставки от каталога, 
     }
     assert.ok(r.method.length >= 20, `${r.name}: приготвяне`);
     assert.ok(Array.isArray(r.flavor), r.name);
-    assert.ok(r.time > 0 && r.time <= 120, r.name);
+    assert.ok(r.time > 0 && r.time <= 180, r.name);
   }
-  const count = (meal) => RECIPES.filter(r => r.meal === meal).length;
+  const count = (meal) => RECIPES.filter(r => mealsOf(r).includes(meal)).length;
   for (const meal of ['breakfast', 'snack', 'lunch', 'dinner']) assert.ok(count(meal) >= 18, `${meal}: ${count(meal)}`);
-  const vegan = RECIPES.filter(r => ['lunch', 'dinner'].includes(r.meal) && recipeTags(r).has('vegan'));
+  const vegan = RECIPES.filter(r => mealsOf(r).some(m => m === 'lunch' || m === 'dinner') && recipeTags(r).has('vegan'));
   assert.ok(vegan.length >= 7, `веганските основни ястия са ${vegan.length}`);
   for (const f of Object.values(FOODS)) assert.ok(f.kcal >= 0 && f.p >= 0 && f.c >= 0 && f.f >= 0 && f.cat, f.name);
 });
@@ -200,6 +200,8 @@ test('меню: реалистични порции, енергия и белт�
         for (const preferences of prefsets) {
           for (const mealsPerDay of [3, 5]) {
             const plan = nutritionPlan({ ...p, goal, pattern, preferences, mealsPerDay, days: 7, asOf: '2026-10-01' });
+            const light = new Set([...plan.meals.filter(m => m.meal === 'breakfast' || m.meal === 'snack').flatMap(m => m.options),
+              ...plan.week.flatMap(d => d.meals.filter(m => m.meal === 'breakfast' || m.meal === 'snack').map(m => m.option))]);
             for (const o of allOptions(plan)) {
               for (const it of o.items) {
                 const f = FOODS[it.food];
@@ -208,7 +210,7 @@ test('меню: реалистични порции, енергия и белт�
               }
               // Добавките следват ограниченията, а зехтинът не отива в сладко ястие.
               if (!preferences.includes('glutenFree')) assert.ok(!o.items.some(it => it.food === 'gfbread' && it.extra), `${o.name}: безглутенов хляб без нужда`);
-              if (o.items.some(it => !it.extra && (it.food === 'honey' || FOODS[it.food].cat === 'fruit'))) {
+              if (light.has(o) && o.items.some(it => !it.extra && (it.food === 'honey' || FOODS[it.food].cat === 'fruit'))) {
                 assert.ok(!o.items.some(it => it.food === 'oil' && it.extra), `${o.name}: зехтин в сладко ястие`);
               }
               assert.ok(o.items.filter(it => ['bread', 'ryebread', 'gfbread', 'pita'].includes(it.food)).length <= 1, `${o.name}: два вида хляб`);

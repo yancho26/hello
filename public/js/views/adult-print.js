@@ -77,8 +77,10 @@ export function header({ el, add }, title, p) {
   const facts = add(el('div', undefined, 'facts'));
   const fact = (k, v) => { const d = el('div'); d.appendChild(el('span', k + ': ', 'muted')); d.appendChild(el('b', v)); facts.appendChild(d); };
   fact('Пациент', p.name);
-  fact('Роден(а)', formatDate(p.birthDate));
-  fact('Възраст', formatAge(p.birthDate));
+  if (p.birthDate) {
+    fact('Роден(а)', formatDate(p.birthDate));
+    fact('Възраст', formatAge(p.birthDate));
+  } else if (p.age) fact('Възраст', `${p.age} г.`);
   if (p.egn) fact('ЕГН', p.egn);
   fact('Дата', formatDate(today()));
 }
@@ -162,6 +164,10 @@ export function printNutritionPlan(p, plan) {
     }
     if (plan.pattern) add(el('div', `Модел: ${plan.pattern.label}. ${plan.pattern.about}`, 'muted'));
     for (const w of plan.warnings) add(el('div', w, 'warn'));
+    if (plan.diagnoses?.length) {
+      add(el('h2', 'Заболявания, взети предвид'));
+      add(list(plan.diagnoses.map(c => `${c.code} ${c.name || ''}${c.label ? ` — ${c.effects.join(', ')}${c.src ? ` (${c.src})` : ''}` : ' — без специфични хранителни правила'}`)));
+    }
 
     if (plan.portions) {
       const c2 = add(el('div', undefined, 'cols2'));
@@ -205,6 +211,7 @@ export function printNutritionPlan(p, plan) {
       d.appendChild(el('b', `${label}${o.name}${o.time ? ` (${o.time} мин)` : ''}`));
       d.appendChild(el('div', o.items.map(x => x.text).join(' · '), 'items'));
       if (o.method) d.appendChild(el('div', o.method + (o.flavor?.length ? ` За вкус: ${o.flavor.join(', ')}.` : ''), 'how'));
+      if (o.source?.length) d.appendChild(el('div', 'Източник: ' + o.source.map(x => `${x.org}, „${x.title}“`).join('; '), 'how'));
       box.appendChild(d);
     };
     if (plan.week) {
@@ -233,7 +240,8 @@ export function printNutritionPlan(p, plan) {
         m.options.forEach((o, i) => recipe(box, o, `${i + 1}. `));
       }
     }
-    add(el('div', 'Режимът е съставен от личния лекар въз основа на заболяванията, теглото и лекарствата към датата на отпечатване.', 'note'));
+    add(el('div', 'Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на отпечатване. '
+      + 'Рецептите с източник са на National Heart, Lung, and Blood Institute (NIH, САЩ) — nhlbi.nih.gov.', 'note'));
   });
 }
 

@@ -15,6 +15,7 @@ import { renderSimpDashboard } from './views/simp-dashboard.js';
 import { renderAgenda } from './views/agenda.js';
 import { renderSimpReports } from './views/simp-reports.js';
 import { renderAssistant } from './views/assistant.js';
+import { renderNutritionPage } from './views/nutrition-page.js';
 import { findScheduleItem } from './shared/schedule.js';
 import { MODULES } from './shared/specialty.js';
 
@@ -43,6 +44,7 @@ const VIEWS_BY_KIND = {
     { path: 'patients', label: 'Пациенти', render: renderPatients },
     { path: 'calendar', label: 'Календар', render: renderCalendar },
     { path: 'assistant', label: 'Асистент', render: renderAssistant },
+    { path: 'nutrition', label: 'Хранене', render: renderNutritionPage },
     { path: 'reports', label: 'Справки', render: renderReports },
     { path: 'settings', label: 'Настройки', render: renderSettings },
   ],
@@ -51,6 +53,7 @@ const VIEWS_BY_KIND = {
     { path: 'agenda', label: 'График', render: renderAgenda },
     { path: 'patients', label: 'Пациенти', render: renderPatients },
     { path: 'assistant', label: 'Асистент', render: renderAssistant },
+    { path: 'nutrition', label: 'Хранене', render: renderNutritionPage },
     { path: 'reports', label: 'Справки', render: renderSimpReports },
     { path: 'settings', label: 'Настройки', render: renderSettings },
   ],

@@ -954,3 +954,18 @@ table.portions { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.portions td { padding: 3px 6px 3px 0; vertical-align: top; border-bottom: 1px solid var(--line); }
 table.portions td:first-child { width: 42px; font-variant-numeric: tabular-nums; }
 @media print { details.week-day, .recipe-how { break-inside: avoid; } }
+
+/* Диагнози по МКБ-10 и лекарства в хранителния режим; източник на рецептата. */
+.dx-list { display: flex; flex-direction: column; gap: 6px; }
+.dx-chip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.dx-chip .btn { margin-left: auto; }
+.dx-code { font-family: var(--mono, ui-monospace, monospace); font-weight: 650; min-width: 52px; }
+.dx-name { font-weight: 550; }
+.dx-eff { font-size: 12.5px; color: var(--brand-dark); }
+.dx-eff.none { color: var(--ink-2); }
+.dx-editor input[list], .med-picker input[list] { min-width: 260px; flex: 1; }
+.dx-week { margin-top: 8px; max-width: 260px; }
+.nut-list.dx { margin-top: 10px; }
+.recipe-src { margin-top: 2px; color: var(--ink-2); }
+.recipe-src a { color: var(--brand); }
+tr.selected td { background: var(--brand-soft); }

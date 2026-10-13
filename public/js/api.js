@@ -104,6 +104,14 @@ export const api = {
   setLifestyle: (id, data) => request('PUT', `/api/patients/${id}/lifestyle`, data),
   nutrition: (id, data) => request('POST', `/api/patients/${id}/nutrition`, data),
   deleteNutrition: (id, nid) => request('DELETE', `/api/patients/${id}/nutrition/${nid}`),
+  // Хранене за хора извън пациентската листа.
+  nutritionClients: () => request('GET', '/api/nutrition/clients'),
+  nutritionClient: (id) => request('GET', `/api/nutrition/clients/${id}`),
+  addNutritionClient: (data) => request('POST', '/api/nutrition/clients', data),
+  saveNutritionClient: (id, data) => request('PUT', `/api/nutrition/clients/${id}`, data),
+  deleteNutritionClient: (id) => request('DELETE', `/api/nutrition/clients/${id}`),
+  nutritionPlanFor: (data) => request('POST', '/api/nutrition/plan', data),
+  deleteNutritionClientPlan: (id, pid) => request('DELETE', `/api/nutrition/clients/${id}/plans/${pid}`),
 
   addStudy: (id, data) => request('POST', `/api/patients/${id}/studies`, data),
   deleteStudy: (id, sid) => request('DELETE', `/api/patients/${id}/studies/${sid}`),
