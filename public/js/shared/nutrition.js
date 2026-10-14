@@ -1021,6 +1021,7 @@ const MAX_BY_FOOD = {
   bread: 150, ryebread: 150, gfbread: 150, pita: 150, oats: 100, muesli: 100, whitecheese: 60, kashkaval: 50, mozzarella: 100,
   cottage: 250, avocado: 100, olives: 50, honey: 20, darkchoc: 30, driedfruit: 60, watermelon: 500, hummus: 120,
   tahini: 30, peanutbutter: 30, tomatosauce: 250, lettuce: 150, arugula: 80, spinach: 250,
+  cheddar: 50, turkeysausage: 100, phyllo: 120, corntortilla: 150, tortilla: 150,
 };
 const maxGrams = (food) => MAX_BY_FOOD[food] ?? MAX_BY_CAT[FOODS[food].cat] ?? 400;
 
@@ -1035,7 +1036,7 @@ function resize(it, grams, maxPieces = 3) {
 
 /* Нишестени храни — при диабет и по-малко въглехидрати порциите им се намаляват. */
 const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli', 'buckwheat', 'quinoa', 'rice', 'whiterice',
-  'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas']);
+  'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas', 'tortilla', 'corntortilla', 'phyllo']);
 
 /* На брой се води съставка от поне половин плод или яйце; по-малкото се мащабира в грамове. */
 const isPiece = (it) => FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
@@ -1079,9 +1080,9 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
 const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince', 'beef', 'beefmince', 'pork', 'hake', 'trout',
   'mackerel', 'salmon', 'sardines', 'tuna', 'shrimp', 'egg', 'cottage', 'whitecheese', 'kashkaval', 'mozzarella', 'tofu',
   'lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'yogurt', 'lfyogurt', 'greekyogurt', 'kefir', 'milk', 'lfmilk', 'soyyogurt',
-  'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk']);
+  'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk', 'cheddar', 'turkeysausage', 'edamame']);
 
-const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus']);
+const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'edamame']);
 
 function proteinSplit(o) {
   return o.items.reduce((acc, it) => {
