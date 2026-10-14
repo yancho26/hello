@@ -26,7 +26,7 @@ function niceStep(range, target = 7) {
  * @param {string} key           weight | height | bmi | head
  * @param {object} patient       { sex }
  * @param {Array}  points        [{ ageMonths, value, severity }]
- * @param {object} opts          { fromMonths, toMonths }
+ * @param {object} opts          { fromMonths, toMonths, track: [[месец, стойност]…] — очакваният път, пунктир }
  */
 export function growthChart(key, patient, points, opts = {}) {
   const ind = INDICATORS[key];
@@ -111,6 +111,12 @@ export function growthChart(key, patient, points, opts = {}) {
     x: M.left, y: M.top, width: PLOT_W, height: PLOT_H,
     fill: 'none', stroke: 'var(--line-strong)', 'stroke-width': 1,
   }));
+
+  /* --- очакваният път по кривата на детето --- */
+  if (opts.track?.length > 1) {
+    const tr = opts.track.filter(([m]) => m >= from && m <= to);
+    kids.push(svg('path', { class: 'track', d: path(tr) }));
+  }
 
   /* --- измерванията на детето --- */
   const inRange = points

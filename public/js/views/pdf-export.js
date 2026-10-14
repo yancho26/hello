@@ -4,6 +4,7 @@ import { state } from '../app.js';
 import { toast } from '../ui/components.js';
 import { formatDate, today } from '../shared/dates.js';
 import { nutritionReport } from '../shared/pdf/nutrition-report.js';
+import { infantReport } from '../shared/pdf/infant-report.js';
 
 const FONTS = { regular: 'NotoSans-Regular.ttf', semibold: 'NotoSans-SemiBold.ttf', bold: 'NotoSans-Bold.ttf', symbols: 'DejaVuSans-Symbols.ttf' };
 let fontsPromise = null;
@@ -58,4 +59,36 @@ export function busy(fn) {
     b.textContent = '⏳ Изготвя се…';
     try { await fn(); } finally { b.disabled = false; b.textContent = label; }
   };
+}
+
+/** PDF за храненето на кърмачето — за родителя. */
+export async function downloadInfantPdf(p, plan) {
+  if (typeof CompressionStream === 'undefined') {
+    toast('Браузърът е твърде стар за PDF. Обновете Chrome, Edge или Firefox.', 'error');
+    return;
+  }
+  try {
+    const bytes = await infantReport({
+      plan, fonts: await loadFonts(),
+      person: { name: p.name, birthDate: p.birthDate, sex: p.sex, birth: p.birth || {}, measurements: p.measurements || [] },
+      practice: { name: state.practice?.name || '', phone: state.practice?.phone || '' },
+      doctor: state.doctor ? { name: state.doctor.name } : null,
+      version: state.server?.version || '', date: today(),
+    });
+    save(bytes, `${safeName(`Хранене до 1 година - ${p.name || ''} - ${formatDate(today()).replace(/ г\.$/, '')}`)}.pdf`);
+  } catch (err) {
+    toast('PDF не можа да се изготви: ' + err.message, 'error');
+  }
+}
+
+function save(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  toast(`PDF файлът е изтеглен: ${name}`, 'ok');
 }

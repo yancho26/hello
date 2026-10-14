@@ -8,7 +8,7 @@ import {
   numberInput, select, statusBadge, table, toast,
 } from '../ui/components.js';
 import { growthChart } from '../ui/charts.js';
-import { formatAge, formatDate, formatDateShort, relativeDays, today } from '../shared/dates.js';
+import { ageInMonthsExact, formatAge, formatDate, formatDateShort, relativeDays, today } from '../shared/dates.js';
 import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm } from '../shared/growth.js';
 import { ACTIONABLE } from '../shared/schedule.js';
 import { OPT_IN_GROUPS } from '../shared/calendar.js';
@@ -20,6 +20,7 @@ import { developmentTab } from './development.js';
 import { planRow } from './plan-row.js';
 import { ADULT_VIEWS, adultHeaderAlerts, adultTabCount, adultTabs } from './adult-patient.js';
 import { nutritionTab } from './nutrition-view.js';
+import { infantFeedingTab } from './infant-feeding-view.js';
 import { dosingTab } from './dosing.js';
 import { printAdultSummary, printMedList } from './adult-print.js';
 import { assistantOverviewCard, assistantTab } from './assistant-panel.js';
@@ -67,7 +68,9 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
     openTab: (tab) => { activeTab = tab; renderTab(); },
     addVisit: (type) => addVisitDialog(ctx, type),
   };
-  const tabs = isAdult ? adultTabs(p) : TABS;
+  // Хранене на кърмачето — до 2-годишна възраст (планът е за първата година).
+  const infant = !isAdult && ageInMonthsExact(p.birthDate, today()) < 24;
+  const tabs = isAdult ? adultTabs(p) : infant ? [...TABS.slice(0, 5), { id: 'feeding', label: 'Хранене' }, ...TABS.slice(5)] : TABS;
   if (!tabs.some(t => t.id === activeTab)) activeTab = 'overview';
 
   const tabBar = h('div.tabs.no-print', null, tabs.map(t => {
@@ -94,7 +97,7 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
       ? { ...ADULT_VIEWS, nutrition: nutritionTab, visits: visitsTab, reminders: remindersTab }
       : {
         overview: overviewTab, assistant: assistantTab, vaccines: vaccinesTab, checkups: checkupsTab,
-        growth: growthTab, development: developmentTab, visits: visitsTab, dosing: dosingTab, reminders: remindersTab,
+        growth: growthTab, feeding: infantFeedingTab, development: developmentTab, visits: visitsTab, dosing: dosingTab, reminders: remindersTab,
       };
     mount(content, (views[activeTab] || views.overview)(ctx));
   };

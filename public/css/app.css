@@ -394,6 +394,7 @@ svg.growth .patient-line { fill: none; stroke: var(--brand); stroke-width: 3; st
 svg.growth .point { fill: var(--brand); stroke: #fff; stroke-width: 2; }
 svg.growth .point.warn { fill: var(--warn); }
 svg.growth .point.danger { fill: var(--danger); }
+svg.growth .track { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasharray: 6 4; }
 
 .z-pill { font-variant-numeric: tabular-nums; font-weight: 650; }
 .z-pill.s0 { color: var(--ok); }
@@ -1017,3 +1018,33 @@ details.train-session > summary { cursor: pointer; font-size: 13px; padding: 2px
 details.train-session ul, .train-addons { margin: 4px 0 4px 16px; padding: 0; }
 .train-addons li { color: var(--ink-2); }
 @media (max-width: 600px) { .train-chip { margin: 2px 0 0; } .train-days { grid-template-columns: 1fr; } }
+
+/* ------------------------------ хранене до 1 година ------------------------------ */
+
+.chart-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin: 10px 0 14px; }
+@media (max-width: 560px) { .chart-grid { grid-template-columns: 1fr; } }
+table.infant-growth { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.infant-growth th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 5px 8px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+table.infant-growth td { padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.infant-growth tr.current td { background: var(--warn-soft); font-weight: 600; }
+.infant-month { text-align: left; cursor: default; }
+.infant-month > summary { cursor: pointer; }
+.infant-day { margin-top: 10px; }
+table.infant-day-table { border-collapse: collapse; margin-top: 4px; }
+table.infant-day-table td { padding: 3px 10px 3px 0; vertical-align: top; border-bottom: 1px dotted var(--line); }
+table.infant-day-table td:first-child { width: 48px; font-variant-numeric: tabular-nums; }
+table.food-timeline { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.food-timeline th { text-align: left; font-size: 12px; font-weight: 600; color: var(--ink-3); padding: 5px 6px; border-bottom: 1px solid var(--line-strong); }
+table.food-timeline td { padding: 5px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.food-timeline td:first-child { padding-right: 10px; min-width: 180px; }
+table.food-timeline th.c, table.food-timeline td.c { text-align: center; width: 42px; }
+.food-dot { display: block; height: 10px; border-radius: 5px; margin: 0 1px; background: var(--brand); }
+.food-dot.green { background: #2f8a5b; }
+.food-dot.amber { background: #b7791f; }
+.food-dot.sky { background: #2f80c9; }
+.food-dot.coral { background: #e2622b; }
+.food-dot.rose { background: #c94a5b; }
+.food-dot.teal { background: #0f8f7e; }
+.food-dot.brand { background: var(--brand); }
+ul.rules-list { margin: 0; padding-left: 18px; }
+ul.rules-list li { margin-bottom: 6px; }

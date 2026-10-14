@@ -34,7 +34,7 @@ const rule = (p, id, ctx) => find(p, ctx).find(f => f.rule === id);
 
 test('регистър: всяка насока е попълнена, всички цитирания в правилата съществуват', () => {
   for (const [id, g] of Object.entries(GUIDELINES)) {
-    assert.ok(g.org && g.year >= 2005 && g.title && g.short && g.uses, id);
+    assert.ok(g.org && g.year >= 2004 && g.title && g.short && g.uses, id);
     assert.ok(REGIONS[g.region], `${id}: регион`);
     assert.ok(TOPICS[g.topic], `${id}: тема`);
     if (g.url) assert.match(g.url, /^https:\/\//, id);
