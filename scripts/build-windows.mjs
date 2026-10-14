@@ -335,6 +335,12 @@ const winZip = fs.readFileSync(await nodeDist(`node-v${NODE_VERSION}-win-x64.zip
 const nodeExe = readZipEntry(winZip, `node-v${NODE_VERSION}-win-x64/node.exe`);
 fs.writeFileSync(path.join(winDir, 'Node.js-LICENSE.txt'),
   readZipEntry(winZip, `node-v${NODE_VERSION}-win-x64/LICENSE`));
+// Шрифтовете на PDF отчетите (вградени в програмата) — с лицензите им.
+fs.writeFileSync(path.join(winDir, 'Fonts-LICENSE.txt'), '\ufeff' + [
+  'Шрифтове в PDF отчетите на DocUp\n',
+  '=== Noto Sans — SIL Open Font License 1.1 ===\n', fs.readFileSync(path.join(ROOT, 'public', 'fonts', 'OFL.txt'), 'utf8'),
+  '\n=== DejaVu Sans (символи) ===\n', fs.readFileSync(path.join(ROOT, 'public', 'fonts', 'DejaVu-LICENSE.txt'), 'utf8'),
+].join('\n'));
 console.log(`  node.exe ${(nodeExe.length / 1048576).toFixed(1)} MB`);
 
 // Редът е важен: postject първо (така, както е описано в документацията на

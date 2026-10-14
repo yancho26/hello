@@ -10,7 +10,7 @@ import { ACTIVITY, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, week
 import { dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../shared/diet-icd.js';
 import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
-import { printNutritionPlan, printShopping } from './adult-print.js';
+import { busy, downloadNutritionPdf } from './pdf-export.js';
 import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
 import { trainingCard, trainingChip, trainingFields, trainingTips } from './training-view.js';
 
@@ -46,8 +46,8 @@ export function nutritionTab(ctx) {
     onVariant: () => { variant++; form.generate(); },
     onSave: () => form.generate(true),
     saveLabel: 'Запази в досието',
-    onPrint: () => printNutritionPlan(p, plan),
-    onPrintShopping: () => printShopping(p, plan),
+    onPdf: () => downloadNutritionPdf(p, plan),
+    onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
   }));
 
   const form = planForm({
@@ -94,13 +94,13 @@ export function nutritionTab(ctx) {
     preview,
     savedPlans(saved, {
       show,
-      print: (n) => printNutritionPlan(p, n.plan),
+      pdf: (n) => downloadNutritionPdf(p, n.plan),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
     }));
 }
 
 /** Таблица със запазените режими. */
-export function savedPlans(saved, { show, print, remove }) {
+export function savedPlans(saved, { show, pdf, remove }) {
   if (!saved.length) return null;
   return card('Запазени режими', { icon: '📁', tight: true }, h('div.table-wrap', null, h('table', null,
     h('tbody', null, saved.map(n => h('tr', null,
@@ -110,7 +110,7 @@ export function savedPlans(saved, { show, print, remove }) {
           + (n.plan.input.diagnoses?.length ? ` · ${n.plan.input.diagnoses.map(d => d.code).join(', ')}` : '')) : null),
       h('td.actions', null,
         h('button.btn.xs', { onclick: () => show(n.plan) }, 'Покажи'), ' ',
-        h('button.btn.xs', { onclick: () => print(n) }, '🖨'), ' ',
+        h('button.btn.xs', { onclick: busy(() => pdf(n)), title: 'PDF отчет' }, '📄 PDF'), ' ',
         h('button.btn.xs.danger', { onclick: () => remove(n) }, '✕'))))))));
 }
 
@@ -362,7 +362,7 @@ function shopGrid(shop) {
 }
 
 /** Показване на изготвения режим. */
-export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, saveLabel = 'Запази' } = {}) {
+export function planView(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
@@ -409,8 +409,8 @@ export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, sa
       icon: '📝',
       actions: [
         onVariant ? h('button.btn.sm', { onclick: onVariant }, '↻ Друго меню') : null,
-        onPrint ? h('button.btn.sm', { onclick: onPrint }, '🖨 Печат') : null,
-        onPrintShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: onPrintShopping }, '🛒 Пазаруване') : null,
+        onPdf ? h('button.btn.sm', { onclick: busy(onPdf), title: 'Цветен PDF отчет: цели, насоки, тренировки, меню, пазаруване и източници' }, plan.training ? '📄 PDF с тренировките' : '📄 PDF отчет') : null,
+        onPdfShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: busy(onPdfShopping), title: 'Само списъците за пазаруване като PDF' }, '🛒 PDF пазаруване') : null,
         onSave ? h('button.btn.sm.primary', { onclick: onSave }, saveLabel) : null,
       ],
     },

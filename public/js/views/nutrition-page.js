@@ -10,7 +10,7 @@ import { GOALS } from '../shared/nutrition.js';
 import { searchDrugs, drugName } from '../shared/drugs.js';
 import { planForm, planView, savedPlans } from './nutrition-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
-import { printNutritionPlan, printShopping } from './adult-print.js';
+import { downloadNutritionPdf } from './pdf-export.js';
 
 const dec = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
 let selected = null;   // id на отворения човек или 'new'
@@ -117,8 +117,8 @@ function clientEditor(client, { onSaved, onClose }) {
     onVariant: () => { variant++; form.generate(); },
     onSave: () => form.generate(true),
     saveLabel: clientId ? 'Запази режима' : 'Запази човека и режима',
-    onPrint: () => printNutritionPlan(person(who), plan),
-    onPrintShopping: () => printShopping(person(who), plan),
+    onPdf: () => downloadNutritionPdf(person(who), plan),
+    onPdfShopping: () => downloadNutritionPdf(person(who), plan, { only: 'shopping' }),
   }));
 
   const last = c.plans?.length ? c.plans[c.plans.length - 1].plan.input : {};
@@ -177,7 +177,7 @@ function clientEditor(client, { onSaved, onClose }) {
     preview,
     savedPlans(saved, {
       show: (plan) => show(plan, c),
-      print: (n) => printNutritionPlan(person(c), n.plan),
+      pdf: (n) => downloadNutritionPdf(person(c), n.plan),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutritionClientPlan(client.id, n.id), () => onSaved(client)),
     }));
 }

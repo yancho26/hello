@@ -243,6 +243,7 @@ VIAddVersionKey /LANG=${LANG_BULGARIAN} "LegalCopyright" "Включва Node.js
   SetOutPath "$INSTDIR"
   File "${SOURCE_DIR}\${APP_EXE}"
   File "${SOURCE_DIR}\Node.js-LICENSE.txt"
+  File "${SOURCE_DIR}\Fonts-LICENSE.txt"
   File "/oname=Прочети ме.txt" "${README}"
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
@@ -492,6 +493,7 @@ Section "Uninstall"
 
   Delete "$INSTDIR\${APP_EXE}"
   Delete "$INSTDIR\Node.js-LICENSE.txt"
+  Delete "$INSTDIR\Fonts-LICENSE.txt"
   Delete "$INSTDIR\Прочети ме.txt"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
