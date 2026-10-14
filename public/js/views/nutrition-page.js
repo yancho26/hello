@@ -126,6 +126,7 @@ function clientEditor(client, { onSaved, onClose }) {
     top,
     diagnoses: c.diagnoses,
     diagnosesHint: 'Въведете всички заболявания на човека — всеки код се взема предвид при изготвянето.',
+    cycle: { stored: c.cycle, age: c.age || null, hidden: c.sex !== 'f', hint: 'Новата дата се записва, когато запазите режима.' },
     footer: 'Съобразява се с диагнозите, бъбречната функция, калия, лекарствата и алергиите.',
     onSubmit: () => { variant = 0; },
     onGenerate: async (body, save) => {
@@ -143,6 +144,9 @@ function clientEditor(client, { onSaved, onClose }) {
       } catch (err) { toast(err.message, 'error'); }
     },
   });
+
+  // Полетата за цикъла — само за жени.
+  sex.addEventListener('change', () => { if (form.cycleEl) form.cycleEl.style.display = sex.value === 'f' ? '' : 'none'; });
 
   const saveData = async () => {
     const p = readPerson(form.read());

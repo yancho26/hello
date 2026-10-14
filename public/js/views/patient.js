@@ -67,7 +67,7 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
     openTab: (tab) => { activeTab = tab; renderTab(); },
     addVisit: (type) => addVisitDialog(ctx, type),
   };
-  const tabs = isAdult ? adultTabs() : TABS;
+  const tabs = isAdult ? adultTabs(p) : TABS;
   if (!tabs.some(t => t.id === activeTab)) activeTab = 'overview';
 
   const tabBar = h('div.tabs.no-print', null, tabs.map(t => {

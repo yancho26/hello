@@ -102,6 +102,7 @@ export const api = {
   deleteAssessment: (id, aid) => request('DELETE', `/api/patients/${id}/assessments/${aid}`),
 
   setLifestyle: (id, data) => request('PUT', `/api/patients/${id}/lifestyle`, data),
+  saveCycle: (id, data) => request('PUT', `/api/patients/${id}/cycle`, data),
   nutrition: (id, data) => request('POST', `/api/patients/${id}/nutrition`, data),
   deleteNutrition: (id, nid) => request('DELETE', `/api/patients/${id}/nutrition/${nid}`),
   // Хранене за хора извън пациентската листа.

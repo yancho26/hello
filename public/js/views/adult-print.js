@@ -152,6 +152,7 @@ export function printNutritionPlan(p, plan) {
     for (const [k, v] of [
       ['Енергия', `${t.kcal} kcal`], ['Белтък', `${t.protein} г${t.proteinMax ? ` (до ${t.proteinMax} г)` : ''}`], ['Въглехидрати', `${t.carbs} г`],
       ['Мазнини', `${t.fat} г`], ['Фибри', `≥${t.fiber} г`], ['Сол', `<${t.salt} г`], ['Течности', `${(t.fluids / 1000).toFixed(1).replace('.', ',')} л`],
+      ...(t.iron ? [['Желязо', `${t.iron} мг`], ['Калций', `${t.calcium} мг`]] : []),
     ]) { const d = el('div'); d.appendChild(el('span', k + ': ', 'muted')); d.appendChild(el('b', v)); tg.appendChild(d); }
     const pr = plan.projection;
     if (plan.input.goal) {
@@ -167,6 +168,18 @@ export function printNutritionPlan(p, plan) {
     if (plan.diagnoses?.length) {
       add(el('h2', 'Заболявания, взети предвид'));
       add(list(plan.diagnoses.map(c => `${c.code} ${c.name || ''}${c.label ? ` — ${c.effects.join(', ')}${c.src ? ` (${c.src})` : ''}` : ' — без специфични хранителни правила'}`)));
+    }
+    if (plan.cycle) {
+      const c = plan.cycle;
+      add(el('h2', 'Цикъл и хранене'));
+      if (!c.applied) add(el('div', c.reason, 'muted'));
+      else {
+        const s = c.stats;
+        add(el('div', `Последна менструация ${formatDate(s.lastStart)}, цикъл ${s.length} дни, менструация ${s.bleed} дни`
+          + `${s.nextStart ? `, следваща около ${formatDate(s.nextStart)}` : ''}; в лутеалната фаза +${c.kcalUp} kcal, в останалите дни −${c.kcalDown} kcal.`
+          + (plan.week ? '' : ` Менюто е за ден ${c.days[0].day} от цикъла (${c.days[0].label}).`), 'muted'));
+        add(list([...c.evidence, ...c.notes]));
+      }
     }
 
     if (plan.portions) {
@@ -218,7 +231,7 @@ export function printNutritionPlan(p, plan) {
       add(el('h2', 'Меню за седмицата', 'page'));
       for (const d of plan.week) {
         const box = add(el('div', undefined, 'day'));
-        box.appendChild(el('h3', `${d.label} · около ${d.totals.kcal} kcal`));
+        box.appendChild(el('h3', `${d.label} · около ${d.totals.kcal} kcal${d.cycle ? ` · ден ${d.cycle.day} от цикъла, ${d.cycle.label}` : ''}`));
         for (const m of d.meals) recipe(box, m.option, `${m.label}: `);
       }
       if (plan.shopping) {

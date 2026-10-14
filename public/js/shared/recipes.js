@@ -171,6 +171,41 @@ export const FOODS = table({
   hoisin: F('сос хойсин', 'other', 220, 3.3, 44, 3.4, 2.8, 1600, 120, 'soy gluten sweet salt'),
 });
 
+/* Желязо и калций, мг на 100 г (версия 4.5) — закръглени средни по USDA FoodData Central.
+ * Там, където съставът зависи от производителя, стойността е по-ниската типична:
+ * тофуто е между нигари и калциев сулфат, растителните млечни са с добавен калций,
+ * хлябът и оризът са без обогатяване (както в България). */
+const MINERALS = {
+  oats: [4.5, 54], muesli: [3.5, 50], buckwheat: [0.8, 7], quinoa: [1.5, 17], bread: [2.4, 60], ryebread: [2.8, 73],
+  gfbread: [1, 40], pita: [3.1, 15], rice: [0.5, 10], whiterice: [0.2, 10], bulgur: [1, 10], couscous: [0.4, 8],
+  pasta: [1.1, 15], potato: [0.3, 8], sweetpotato: [0.7, 38],
+  lentils: [3.3, 19], beans: [3, 60], chickpeas: [2.9, 49], peas: [1.5, 27], hummus: [2.4, 38], tofu: [3, 200],
+  chicken: [1, 15], chickenthigh: [1.3, 12], turkey: [1, 10], turkeymince: [1.3, 25], beef: [2.9, 15], beefmince: [2.6, 18],
+  pork: [1, 6], hake: [0.4, 30], trout: [0.4, 80], mackerel: [1.6, 15], salmon: [0.3, 15], sardines: [2.9, 380],
+  tuna: [1.3, 15], shrimp: [0.5, 70], egg: [1.8, 56],
+  milk: [0, 120], lfmilk: [0, 120], oatmilk: [0.3, 120], yogurt: [0.1, 120], lfyogurt: [0.1, 120], soyyogurt: [0.5, 120],
+  oatyogurt: [0.3, 100], greekyogurt: [0.1, 110], kefir: [0, 120], cottage: [0.1, 85], whitecheese: [0.6, 490],
+  kashkaval: [0.4, 700], mozzarella: [0.4, 500],
+  walnuts: [2.9, 98], almonds: [3.7, 269], hazelnuts: [4.7, 114], peanutbutter: [1.8, 45], pumpkinseeds: [8.8, 46],
+  sunflower: [5.2, 78], tahini: [6, 150], flax: [5.7, 255], oil: [0.6, 1], avocado: [0.6, 12], olives: [1, 60],
+  tomato: [0.3, 10], tomatosauce: [1, 15], cucumber: [0.3, 16], pepper: [0.4, 8], lettuce: [0.9, 36], arugula: [1.5, 160],
+  spinach: [2.7, 99], broccoli: [0.7, 47], zucchini: [0.4, 16], eggplant: [0.2, 9], carrot: [0.3, 33], cabbage: [0.5, 40],
+  greenbeans: [1, 37], cauliflower: [0.4, 22], mushrooms: [0.5, 3], onion: [0.2, 23], leek: [2.1, 59], beetroot: [0.8, 16],
+  pumpkin: [0.6, 15], radish: [0.3, 25],
+  apple: [0.1, 6], pear: [0.2, 9], orange: [0.1, 40], banana: [0.3, 5], peach: [0.3, 6], kiwi: [0.3, 34], berries: [0.5, 16],
+  plum: [0.2, 6], grapes: [0.4, 10], watermelon: [0.2, 7], driedfruit: [1.8, 50],
+  honey: [0.4, 6], darkchoc: [11.9, 73],
+  celery: [0.2, 40], asparagus: [2.1, 24], kale: [1.5, 150], corn: [0.5, 3], tomatopaste: [3, 36], mango: [0.2, 11],
+  pineapple: [0.3, 13], tortilla: [2.5, 100], breadcrumbs: [3.5, 100], flour: [3.6, 34], graham: [3, 60],
+  tunasteak: [1, 5], whitefish: [0.5, 15], eggwhite: [0.1, 7], parmesan: [0.8, 1180], sourcream: [0, 125],
+  evapmilk: [0.3, 290], butter: [0, 24], mayo: [0.2, 8], coconutmilk: [0.8, 10], mustard: [1.6, 63], soysauce: [2, 30],
+  ketchup: [0.4, 15], sugar: [0, 1], cornstarch: [0.5, 2], hoisin: [1, 32],
+};
+for (const [id, food] of Object.entries(FOODS)) {
+  const [fe, ca] = MINERALS[id] || [0, 0];
+  Object.assign(food, { fe, ca });
+}
+
 /* ------------------------------------ рецепти ------------------------------------ */
 
 /* R(хранене, име, [[храна, грамове]…], минути, приготвяне, подправки, източници). Порциите са за
@@ -684,13 +719,14 @@ export const mealsOf = (r) => [].concat(r.meal);
 
 /** Хранителни стойности на списък с храни ({food, grams}). */
 export function totals(items) {
-  const t = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, na: 0, k: 0 };
+  const t = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, na: 0, k: 0, fe: 0, ca: 0 };
   for (const it of items) {
     const f = FOODS[it.food];
     const k = it.grams / 100;
     t.kcal += f.kcal * k; t.protein += f.p * k; t.carbs += f.c * k; t.fat += f.f * k; t.fiber += f.fib * k; t.na += f.na * k; t.k += f.k * k;
+    t.fe += f.fe * k; t.ca += f.ca * k;
   }
-  for (const k of Object.keys(t)) t[k] = Math.round(t[k]);
+  for (const k of Object.keys(t)) t[k] = k === 'fe' ? Math.round(t[k] * 10) / 10 : Math.round(t[k]);
   return t;
 }
 

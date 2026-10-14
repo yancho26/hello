@@ -155,7 +155,9 @@ test('ограничения и алергии се спазват в целия
 test('седмично меню: без повторения, ритъм на рибата, бобовите и месото, пазаруване', () => {
   const plan = nutritionPlan({ ...base, goal: 'lose', days: 7 });
   assert.equal(plan.week.length, 7);
-  assert.equal(plan.week[0].label, 'Понеделник');
+  // Денят от седмицата следва датата: 1.10.2026 е четвъртък.
+  assert.equal(plan.week[0].label, 'Четвъртък');
+  assert.equal(plan.week[4].label, 'Понеделник');
   const mains = plan.week.flatMap(d => d.meals.filter(m => ['lunch', 'dinner'].includes(m.meal)).map(m => m.option.name));
   assert.equal(new Set(mains).size, mains.length, 'обядите и вечерите не се повтарят');
   const byName = new Map(RECIPES.map(r => [r.name, recipeTags(r)]));

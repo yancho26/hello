@@ -969,3 +969,23 @@ table.portions td:first-child { width: 42px; font-variant-numeric: tabular-nums;
 .recipe-src { margin-top: 2px; color: var(--ink-2); }
 .recipe-src a { color: var(--brand); }
 tr.selected td { background: var(--brand-soft); }
+
+/* Менструален цикъл (версия 4.5): фази, лента с дните, етикети в менюто. */
+.ph-menstrual { --ph: #c94a5b; --ph-soft: #fbe6e9; }
+.ph-follicular { --ph: #2f8a5b; --ph-soft: #e3f3ea; }
+.ph-ovulation { --ph: #b7791f; --ph-soft: #fdf0d9; }
+.ph-luteal { --ph: #6159c4; --ph-soft: #efeefb; }
+.ph-premenstrual { --ph: #5d6b85; --ph-soft: #e9edf3; }
+.cycle-now { display: flex; gap: 12px; align-items: flex-start; }
+.cycle-dot { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--ph-soft); border: 2px solid var(--ph); font-size: 18px; flex: none; }
+.cycle-strip { display: grid; grid-template-columns: repeat(auto-fill, minmax(30px, 1fr)); gap: 3px; }
+.cycle-cell { display: flex; flex-direction: column; align-items: center; padding: 3px 0; border-radius: 6px; background: var(--ph-soft); border: 1px solid transparent; line-height: 1.2; }
+.cycle-cell.today { border-color: var(--ph); box-shadow: inset 0 0 0 1px var(--ph); font-weight: 700; }
+.cycle-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; }
+.cycle-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.cycle-swatch { width: 12px; height: 12px; border-radius: 3px; background: var(--ph-soft); border: 1px solid var(--ph); }
+.cycle-chip { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ph-soft); color: var(--ph); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cycle-add { flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 12px 14px 10px; }
+.cycle-add .field { margin: 0; }
+.nut-list.cycle { border-left: 3px solid #c94a5b; padding-left: 12px; }
+@media (max-width: 600px) { .cycle-chip { margin: 4px 0 0; } }

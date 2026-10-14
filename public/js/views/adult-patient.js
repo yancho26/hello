@@ -27,6 +27,7 @@ import { cardioTab } from './cardio-view.js';
 import { assistantOverviewCard, assistantTab } from './assistant-panel.js';
 import { endoTab } from './endo-view.js';
 import { MODULES, enabledModules } from '../shared/specialty.js';
+import { cycleTab, cycleTabCount } from './cycle-view.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 const lastText = (t) => (t.last ? ` · последно ${formatDate(t.last)}`
@@ -48,10 +49,12 @@ export const ADULT_TABS = [
   { id: 'reminders', label: 'Напомняния' },
 ];
 
-/** Разделите на досието — включените модули на специалистите идват веднага след обзора. */
-export function adultTabs() {
+/** Разделите на досието — включените модули на специалистите идват веднага след обзора;
+ * при жените „Цикъл“ е след „Хранене“. */
+export function adultTabs(p = {}) {
   const mods = enabledModules(state.settings).map(id => ({ id, label: MODULES[id].name }));
-  return [ADULT_TABS[0], ...mods, ...ADULT_TABS.slice(1)];
+  const rest = ADULT_TABS.slice(1).flatMap(t => (t.id === 'nutrition' && p.sex === 'f' ? [t, { id: 'cycle', label: 'Цикъл' }] : [t]));
+  return [ADULT_TABS[0], ...mods, ...rest];
 }
 
 /** Броячи до имената на разделите. */
@@ -65,6 +68,7 @@ export function adultTabCount(id, ctx) {
   if (id === 'prevention') return data.plan.filter(e => ACTIONABLE.has(e.status)).length;
   if (id === 'mental') return a.mental.alerts.filter(x => x.severity >= 3).length;
   if (id === 'reminders') return (p.reminders || []).filter(r => !r.done).length;
+  if (id === 'cycle') return cycleTabCount(p);
   return 0;
 }
 
@@ -96,6 +100,7 @@ export const ADULT_VIEWS = {
   vitals: vitalsTab,
   prevention: preventionTab,
   mental: mentalTab,
+  cycle: cycleTab,
 };
 
 /* ---------------------------------- обзор ---------------------------------- */

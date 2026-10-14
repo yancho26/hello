@@ -254,6 +254,18 @@ function makeAdults(store, t) {
         diet: [], bleedingHistory: false, notes: '', updatedOn: addMonths(t, -Math.floor(between(1, 18))),
       };
 
+      // Менструален цикъл (от версия 4.5): дневник за жените до 48 г.
+      if (sex === 'f' && age <= 48) {
+        const len = Math.round(between(26, 32));
+        const periods = [];
+        let start = addDays(t, -Math.floor(between(1, len)));
+        for (let i = 0; i < 6; i++) {
+          periods.unshift({ start, days: Math.round(between(4, 6)), heavy: rnd() < 0.08 });
+          start = addDays(start, -(len + Math.round(between(-2, 2))));
+        }
+        p.cycle = { periods, length: null, bleed: null, contraception: rnd() < 0.2 ? 'combined' : 'none', menopause: false, note: '' };
+      }
+
       /* --- измервания: на 4–8 месеца в последните 3 години --- */
       const height = sex === 'm' ? Math.round(between(166, 188)) : Math.round(between(154, 172));
       const weight0 = r1(weightBmi * (height / 100) ** 2, 1);

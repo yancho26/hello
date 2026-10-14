@@ -20,6 +20,12 @@
  * Менюто е за 1 ден с по два варианта или за 7 дни, с рецепти от
  * recipes.js и списък за пазаруване. Не е предназначено за бременност,
  * кърмене, деца, хранителни разстройства и диализа.
+ *
+ * Менструален цикъл (cycle sync, версия 4.5): по избор менюто следва фазите —
+ * в лутеалната фаза малко повече енергия, в останалите дни малко по-малко (средно
+ * за цикъла същата); в дните на менструацията ястия с повече желязо, в
+ * предменструалните — с повече калций и по-малко сол. Само това, за което има
+ * основание; силата на доказателствата е посочена в режима.
  */
 
 import { bmi as bmiOf } from './clinical.js';
@@ -27,6 +33,7 @@ import { table } from './table.js';
 import { addDays, today } from './dates.js';
 import { FOODS, FOOD_CATS, RECIPES, mainProtein, mealsOf, recipeTags, totals } from './recipes.js';
 import { dietProfiles } from './diet-icd.js';
+import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
 
 export { FOODS, RECIPES };
 
@@ -189,7 +196,9 @@ const KCAL_PER_KG = 7700;
  *   sex, age, weight, height, waist, activity, goal, pace, targetWeight, pattern,
  *   mealsPerDay (3|4|5), days (1|7), quick, strength, preferences: [], allergies: [],
  *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf,
- *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly
+ *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly,
+ *   cycle: { periods, lastPeriod, length, bleed, contraception, menopause } — менструалният цикъл,
+ *   cycleSync — менюто да следва фазите му, startDate — от коя дата е менюто
  */
 export function nutritionPlan(input) {
   const { sex, age, weight, height } = input;
@@ -199,6 +208,9 @@ export function nutritionPlan(input) {
     throw new Error('Нужни са актуални тегло и ръст.');
   }
   const asOf = input.asOf || today();
+  // Менюто може да започва от друга дата (до 2 месеца напред) — заради фазите на цикъла.
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(input.startDate || '') && input.startDate >= asOf && input.startDate <= addDays(asOf, 62)
+    ? input.startDate : asOf;
   // Диагнозите по МКБ-10 добавят заболявания, ограничения и правила (diet-icd.js).
   const dx = dietProfiles(input.diagnoses, { pregnancyWeek: input.pregnancyWeek });
   const cond = new Set([...(input.conditions || []), ...dx.cond]);
@@ -217,6 +229,13 @@ export function nutritionPlan(input) {
   let goal = GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
   if (goal === 'lose' && dx.noLose) {
     warnings.push(dx.noLose);
+    goal = 'maintain';
+  }
+  // Менструален цикъл: липсата на менструация при нормално тегло може да е от недостиг на енергия.
+  const cycleIn = sex === 'f' ? cycleStats(input.cycle || {}, { age, asOf }) : null;
+  const amenorrhea = dx.amenorrhea || !!cycleIn?.flags.some(f => f.code === 'amenorrhea');
+  if (goal === 'lose' && amenorrhea && b < 25) {
+    warnings.push('Липса на менструация при ИТМ под 25: възможен недостиг на енергия (функционална хипоталамична аменорея) — режимът е за поддържане, без дефицит. Endocrine Society 2017 препоръчва енергийният недостиг да се коригира. Изключете бременност.');
     goal = 'maintain';
   }
   if (goal === 'lose' && b < 22) {
@@ -325,9 +344,15 @@ export function nutritionPlan(input) {
   let fluids = Math.max(Math.min(3000, Math.max(1500, round(weight * 30, 100))), dx.fluidsMin);
   if (dialysis) fluids = Math.min(fluids, 1500);
 
+  // Желязо и калций (EFSA 2015): желязо 16 мг за жени преди менопаузата, 11 мг за мъже и след
+  // менопаузата; калций 1000 мг до 24 г., 950 мг след това.
+  const menopause = sex === 'f' && (!!input.cycle?.menopause || dx.menopause || age >= 55
+    || (age >= 50 && !cycleIn?.lastStart));
+  const iron = sex === 'f' && !menopause ? 16 : 11;
+  const calcium = age < 25 ? 1000 : 950;
   const targets = {
     kcal: target, protein, fat, carbs, fiber, satFat, sugarMax,
-    salt: 5, fluids,
+    salt: 5, fluids, iron, calcium,
     proteinPerKg, proteinMax, proteinNote, fatPct, satFatPct,
     carbPct: Math.round((carbs * 4 / target) * 100),
   };
@@ -465,18 +490,29 @@ export function nutritionPlan(input) {
     notes.push('При тези ограничения за някои хранения няма ястие, което да пасва на всичко — там порциите на солените, сладките и богатите на калий храни са малки. Обсъдете менюто с диетолог.');
   }
 
-  const meal = (slot, pick) => {
-    const kcal = round(target * slot.share, 10);
+  // Менструален цикъл: фазите за дните на менюто — енергия и акцент (желязо, калций) за всеки ден.
+  const sync = sex === 'f' ? cycleSyncFor(input, { start, days, stats: cycleIn, dx, target, floor, strength }) : null;
+  const dayKcal = (d) => target + (sync?.applied ? sync.days[d]?.kcalAdd || 0 : 0);
+  const dayFocus = (d) => [...dx.focus, ...(sync?.applied ? sync.days[d]?.focus || [] : [])];
+  if (sync?.applied) {
+    prefer.push(...sync.prefer);
+    if (sync.irregular) warnings.push('Цикълът е нередовен — фазите в менюто са ориентировъчни.');
+  }
+
+  const meal = (slot, pick, kcalDay) => {
+    const kcal = round(kcalDay * slot.share, 10);
     return { kcal, option: pick ? buildMeal(pick.r, kcal, prefs, { lowerCarb, strict: strictLowCarb }) : null };
   };
 
-  // Ден с по два варианта за всяко хранене.
+  // Ден с по два варианта за всяко хранене (при цикъла — по фазата на първия ден).
   const usedToday = new Set();
+  const focus0 = dayFocus(0);
   const meals = slots.map((slot) => {
     const pool = pools[slot.meal];
-    const kcal = round(target * slot.share, 10);
+    const kcal = round(dayKcal(0) * slot.share, 10);
     if (!pool.length) return { ...slot, kcal, options: [] };
-    const fresh = pool.filter(x => !usedToday.has(x.r.name));
+    let fresh = pool.filter(x => !usedToday.has(x.r.name));
+    if (focus0.length) fresh = [...fresh].sort((a, b2) => (b2.s + focusBonus(b2, focus0)) - (a.s + focusBonus(a, focus0)));
     const picks = (fresh.length >= 2 ? fresh : pool).slice(0, 2);
     for (const p of picks) usedToday.add(p.r.name);
     return { ...slot, kcal, options: picks.map(p => buildMeal(p.r, kcal, prefs, { lowerCarb, strict: strictLowCarb })) };
@@ -485,10 +521,14 @@ export function nutritionPlan(input) {
   // Седмично меню — по едно ястие за всяко хранене, с ритъм за седмицата.
   let week = null;
   if (days === 7) {
-    week = planWeek(slots, pools, variant).map((picks, d) => ({
-      day: d + 1, label: WEEKDAYS[d], date: addDays(asOf, d),
-      meals: slots.map((slot, i) => ({ ...slot, ...meal(slot, picks[i]) })),
-    }));
+    week = planWeek(slots, pools, variant, dayFocus).map((picks, d) => {
+      const date = addDays(start, d);
+      return {
+        day: d + 1, label: weekdayOf(date), date, kcal: dayKcal(d),
+        cycle: sync?.applied ? sync.days[d] : null,
+        meals: slots.map((slot, i) => ({ ...slot, ...meal(slot, picks[i], dayKcal(d)) })),
+      };
+    });
   }
 
   // Всеки ден (и всеки от двата варианта на деня) се нагласява на няколко кръга:
@@ -539,12 +579,23 @@ export function nutritionPlan(input) {
 
   const day = dayTotals(meals.map(m => m.options[0]));
 
+  // Желязо и калций в менюто спрямо препоръката.
+  const avgOf = (k) => (week ? week.reduce((acc, d) => acc + d.totals[k], 0) / week.length : day[k]);
+  if (avgOf('fe') < iron * 0.75) {
+    notes.push(`Желязо в менюто: около ${Math.round(avgOf('fe'))} мг дневно при препоръка ${iron} мг (EFSA). Добавяйте бобови, тиквени семки, постно червено месо, яйца и спанак — с витамин C; добавка с желязо — само при доказан недостиг.`);
+  }
+  if (avgOf('ca') < calcium * 0.75) {
+    notes.push(`Калций в менюто: около ${round(avgOf('ca'), 10)} мг дневно при препоръка ${calcium} мг (EFSA). Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`);
+  }
+
   return {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
       goal, pace, targetWeight: projection.targetWeight, pattern: patternId, mealsPerDay, days,
       quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
+      startDate: start, cycleSync: !!input.cycleSync,
+      cycle: sync?.stats ? { lastPeriod: sync.stats.lastStart, length: sync.stats.length, bleed: sync.stats.bleed, contraception: sync.stats.contraception } : null,
     },
     bmi: Math.round(b * 10) / 10,
     energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor },
@@ -565,7 +616,114 @@ export function nutritionPlan(input) {
     week,
     shopping: week ? shoppingList(week) : null,
     diagnoses: dx.considered,
-    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy },
+    cycle: sync,
+    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied },
+  };
+}
+
+/* ------------------------------ цикъл и хранене ------------------------------ */
+
+/** Добавка в лутеалната и предменструалната фаза (kcal дневно). */
+export const CYCLE_KCAL = 100;
+
+/** Ден от седмицата за дата — „Сряда“. */
+function weekdayOf(date) {
+  const [y, m, d] = date.split('-').map(Number);
+  return WEEKDAYS[(new Date(y, m - 1, d).getDay() + 6) % 7];
+}
+
+const clampTo = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/* Колко повече се предпочита ястието за акцента на деня: желязо и калций — по
+ * плътността им (мг на 1000 kcal; средното за рецептите е около 9 мг желязо и 340 мг калций),
+ * по-малко сол — ястията без солени храни. */
+function focusBonus(x, focus) {
+  let w = 0;
+  if (focus.includes('iron')) w += clampTo((x.fe - 8) / 2, -1, 3);
+  if (focus.includes('calcium')) w += clampTo((x.ca - 350) / 150, -1, 3);
+  if (focus.includes('lessSalt') && !x.tags.has('dash')) w -= 1;
+  return w;
+}
+
+/* Какво се променя във всяка фаза — и колко силни са доказателствата. */
+const PHASE_SYNC = {
+  menstrual: {
+    focus: ['iron'],
+    prefer: 'Менструация: ястия с повече желязо — постно червено месо, бобови, тиквени семки, яйца, спанак — заедно с витамин C (чушки, цитруси, киви); чай и кафе — поне 1 час след хранене.',
+    evidence: 'Желязото се губи с менструацията, но нуждата се покрива за целия цикъл: 16 мг дневно (EFSA 2015). Акцентът в тези дни е практичен — важно е общото количество.',
+  },
+  follicular: {
+    focus: [],
+    prefer: null,
+    evidence: 'Фоликуларна фаза и овулация: обичайното меню. Няма доказателства, че определени храни в тези дни имат ефект.',
+  },
+  luteal: {
+    focus: [],
+    prefer: null,
+    evidence: `Лутеална фаза: +${CYCLE_KCAL} kcal дневно, а в останалите дни по-малко — средно за цикъла енергията е същата. Основният метаболизъм в тази фаза е малко по-висок (малък ефект, Benton 2020), а апетитът и приемът на храна са по-големи — средно с около 168 kcal дневно (Tucker 2024). Доказателствата са от наблюдения, а разликите между жените са големи.`,
+  },
+  premenstrual: {
+    focus: ['calcium', 'lessSalt'],
+    prefer: 'Предменструални дни: ястия с повече калций (кисело мляко, сирене, сардини, тофу) и по-малко сол; редовни хранения, по-малко кофеин и алкохол.',
+    evidence: 'Калцият намалява оплакванията при ПМС — ACOG 2023 препоръчва 1000–1200 мг дневно (условна препоръка при доказателства с ниско качество). За солта, кофеина и захарта доказателствата са слаби.',
+  },
+};
+
+/**
+ * Менюто по фазите на цикъла: за всеки ден — фаза, промяна на енергията и акцент.
+ * Връща null, ако не е поискано; { applied: false, reason } — ако не може да се приложи.
+ */
+function cycleSyncFor(input, { start, days, stats, dx, target, floor, strength }) {
+  if (!input.cycleSync || !stats) return null;
+  const summary = {
+    lastStart: stats.lastStart, length: stats.length, lengthSource: stats.lengthSource, bleed: stats.bleed,
+    contraception: stats.contraception, regular: stats.regular, variation: stats.variation,
+    nextStart: stats.nextStart, ovulation: stats.ovulation, pending: stats.pending, today: stats.today,
+    flags: stats.flags,
+  };
+  const no = (reason) => ({ applied: false, reason, stats: summary });
+  if (dx.pregnancy) return no('Бременност — менюто не следва фазите на цикъла.');
+  if (dx.lactation) return no('Кърмене — цикълът често липсва или е нередовен; менюто не следва фазите.');
+  if (dx.menopause || stats.menopause) return no('Менопауза — менюто не следва фази на цикъла.');
+  if (!stats.lastStart) return no('Няма дата на последната менструация — въведете я, за да се изчислят фазите.');
+  if (!stats.natural) {
+    const what = CONTRACEPTION[stats.contraception].label;
+    return no(`${what[0].toUpperCase()}${what.slice(1)}: овулацията е потисната и няма лутеална фаза — менюто е еднакво за всички дни.`);
+  }
+  if (stats.late) return no(stats.flags.find(f => f.code === 'late' || f.code === 'amenorrhea')?.text || 'Менструацията закъснява.');
+  const phases = phasesFrom(stats, start, days);
+  if (!phases.length) return no('Фазите не могат да се изчислят от тези дати.');
+
+  // Енергия: в лутеалната и предменструалната фаза +100 kcal; в останалите дни толкова
+  // по-малко, че средно за цикъла енергията да е същата — без да пада под долната граница.
+  const one = Array.from({ length: stats.length }, (_, i) => phaseOn(addDays(stats.lastStart, i), stats).phase);
+  const upDays = one.filter(ph => ph === 'luteal' || ph === 'premenstrual').length;
+  let down = round(CYCLE_KCAL * upDays / Math.max(1, stats.length - upDays), 10);
+  if (target - down < floor) down = Math.max(0, round(target - floor, 10));
+
+  const dayList = phases.map(ph => {
+    const up = ph.phase === 'luteal' || ph.phase === 'premenstrual';
+    const rule = PHASE_SYNC[ph.phase === 'ovulation' ? 'follicular' : ph.phase];
+    return { ...ph, kcalAdd: up ? CYCLE_KCAL : -down, focus: rule.focus };
+  });
+  const seen = new Set(dayList.map(d => (d.phase === 'ovulation' ? 'follicular' : d.phase)));
+  const order = ['menstrual', 'follicular', 'luteal', 'premenstrual'];
+  const evidence = order.map(k => PHASE_SYNC[k].evidence);
+  if (strength) evidence.push('Силови тренировки: в лутеалната фаза белтъкът да е в горната част на препоръката (ISSN 2023).');
+  const notes = [];
+  if (stats.lengthSource === 'default') notes.push('Дължината на цикъла не е известна — приета е 28 дни. Въведете поне две менструации за точност.');
+  if (stats.pending) notes.push(`Менструацията се очакваше на ${stats.nextStart.split('-').reverse().join('.')} — ако е започнала, въведете датата.`);
+  return {
+    applied: true,
+    stats: summary,
+    kcalUp: CYCLE_KCAL,
+    kcalDown: down,
+    irregular: stats.regular === false,
+    days: dayList,
+    prefer: order.filter(k => seen.has(k) && PHASE_SYNC[k].prefer).map(k => PHASE_SYNC[k].prefer),
+    evidence,
+    notes,
+    notIncluded: 'Не са включени „храни за хормоните“ по фази и семенният цикъл (seed cycling): изследванията са малки и с противоречиви резултати. Няма надеждни проучвания, че менюто по фази помага за теглото — затова енергията средно за цикъла е същата.',
   };
 }
 
@@ -581,7 +739,11 @@ function poolFor(kind, ctx, variant) {
       const items = substituted(r, c.prefs).items;
       if (excluded(items, c)) return;
       const tags = recipeTags({ ...r, items: items.map(it => [it.food, it.grams]) });
-      out.push({ r, tags, s: score(r, items, tags, ctx), i, protein: mainProtein(r) });
+      const t = totals(items);
+      out.push({
+        r, tags, s: score(r, items, tags, ctx), i, protein: mainProtein(r),
+        fe: t.kcal ? (t.fe / t.kcal) * 1000 : 0, ca: t.kcal ? (t.ca / t.kcal) * 1000 : 0,
+      });
     });
     return out;
   };
@@ -728,13 +890,14 @@ function score(r, items, tags, ctx) {
  * повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти
  * седмично; основният белтък на обяда и вечерята е различен.
  */
-function planWeek(slots, pools, variant) {
+function planWeek(slots, pools, variant, focusOf = () => []) {
   const lastUsed = new Map();
   const counts = { fish: 0, legume: 0, redmeat: 0 };
   const out = [];
   for (let d = 0; d < 7; d++) {
     const picks = [];
     const proteinsToday = new Set();
+    const focus = focusOf(d);
     for (const slot of slots) {
       const pool = pools[slot.meal];
       if (!pool.length) { picks.push(null); continue; }
@@ -751,6 +914,7 @@ function planWeek(slots, pools, variant) {
           if (x.tags.has('redmeat') && counts.redmeat >= 2) w -= 20;
           if (proteinsToday.has(x.protein)) w -= 3;
         }
+        if (focus.length) w += focusBonus(x, focus);
         w += hash(`${x.r.name}|${d}`, variant) * 0.9;
         if (w > bestW) { bestW = w; best = x; }
       }
@@ -842,7 +1006,7 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   return {
     name: sub.name, items, time: r.time, flavor: r.flavor, source: r.source || null,
     method: r.method + (sub.swaps.length ? ` Замени: ${sub.swaps.join(', ')}.` : ''),
-    kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na,
+    kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na, fe: t.fe, ca: t.ca,
   };
 }
 
@@ -995,16 +1159,16 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
 
 function withTotals(option, items) {
   const t = totals(items);
-  return { ...option, items, kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na };
+  return { ...option, items, kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na, fe: t.fe, ca: t.ca };
 }
 
 function dayTotals(options) {
-  const s = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, na: 0 };
+  const s = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, na: 0, fe: 0, ca: 0 };
   for (const o of options) {
     if (!o) continue;
-    for (const k of Object.keys(s)) s[k] += o[k];
+    for (const k of Object.keys(s)) s[k] += o[k] || 0;
   }
-  for (const k of Object.keys(s)) s[k] = Math.round(s[k]);
+  for (const k of Object.keys(s)) s[k] = k === 'fe' ? Math.round(s[k] * 10) / 10 : Math.round(s[k]);
   return s;
 }
 

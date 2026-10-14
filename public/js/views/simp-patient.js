@@ -10,6 +10,7 @@ import { formatAge, formatDate, formatDateShort, relativeDays, today, weekdayNam
 import { APPT_STATUS, EXAM_TYPES, REFERRAL_PURPOSES } from '../shared/simp.js';
 import { MODULES, enabledModules } from '../shared/specialty.js';
 import { ADULT_VIEWS, adultHeaderAlerts } from './adult-patient.js';
+import { cycleTabCount } from './cycle-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
 import { examDialog, followupDialog, printExam, protocolDialog, referralDialog } from './simp-dialogs.js';
 import { bookDialog } from './agenda.js';
@@ -41,6 +42,7 @@ function tabsFor(data) {
       { id: 'labs', label: 'Изследвания' },
       { id: 'vitals', label: 'Измервания' },
     );
+    if (data.patient.sex === 'f') tabs.push({ id: 'cycle', label: 'Цикъл' });
   } else {
     tabs.push({ id: 'growth', label: 'Растеж' });
   }
@@ -55,6 +57,7 @@ function tabCount(id, data) {
   if (id === 'protocols') return s.protocols.filter(x => x.state.status === 'expiring' || x.state.status === 'expired').length;
   if (id === 'followups') return s.followups.filter(f => f.state.status === 'overdue' || f.state.status === 'due').length;
   if (id === 'meds' && data.adult) return data.adult.medAlerts.filter(x => x.severity === 'contra' || x.severity === 'major').length;
+  if (id === 'cycle') return cycleTabCount(data.patient);
   return 0;
 }
 

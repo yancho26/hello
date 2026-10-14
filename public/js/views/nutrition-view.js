@@ -11,6 +11,7 @@ import { dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../s
 import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
 import { printNutritionPlan } from './adult-print.js';
+import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 
@@ -57,6 +58,10 @@ export function nutritionTab(ctx) {
     prefs: [...(ls.diet || []), ...allergy.prefs],
     prefsHint: allergy.matched.length ? `Отбелязани са според алергиите в досието: ${allergy.matched.join(', ')}.` : '',
     diagnoses: dossierDiagnoses(p),
+    cycle: p.sex === 'f' ? {
+      stored: p.cycle, age: a.age ?? null,
+      hint: 'Новата дата се добавя в дневника (раздел „Цикъл“), когато запазите режима.',
+    } : null,
     diagnosesHint: 'Попълнени са от хроничните заболявания, „Други заболявания“ и прегледите при специалист. Добавете или махнете — режимът се изготвя по този списък.',
     footer: 'Съобразява се с диагнозите, бъбречната функция, калия, лекарствата и алергиите от досието.',
     onGenerate: async (body, save) => {
@@ -112,8 +117,8 @@ export function savedPlans(saved, { show, print, remove }) {
 /**
  * Изборът за режима. cfg: last (предишният избор), weight/height ({ value, hint }), activity,
  * defaultGoal, defaultPattern, prefs, prefsHint, diagnoses, diagnosesHint, top (полета отгоре),
- * footer, onGenerate(body, save), onSubmit.
- * Връща { el, read, generate }.
+ * cycle ({ stored, age, hint, hidden } — менструалният цикъл за жени), footer, onGenerate(body, save), onSubmit.
+ * Връща { el, read, generate, cycleEl }.
  */
 export function planForm(cfg) {
   const last = cfg.last || {};
@@ -141,6 +146,8 @@ export function planForm(cfg) {
   const strength = h('input', { type: 'checkbox', name: 'strength', checked: !!last.strength });
   const sourced = h('input', { type: 'checkbox', name: 'sourcedOnly', checked: !!last.sourcedOnly });
   const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || [], { week: last.pregnancyWeek });
+  const cyc = cfg.cycle ? cycleFields({ cycle: cfg.cycle.stored, last, age: cfg.cycle.age, hint: cfg.cycle.hint }) : null;
+  if (cyc && cfg.cycle.hidden) cyc.el.style.display = 'none';
 
   const goalValue = () => goalRadios.map(l => l.querySelector('input')).find(i => i.checked)?.value || 'maintain';
   const refresh = () => {
@@ -178,6 +185,7 @@ export function planForm(cfg) {
       pattern: d.pattern, mealsPerDay: Number(d.mealsPerDay), days: Number(d.days),
       quick: quick.checked, strength: strength.checked, sourcedOnly: sourced.checked,
       preferences: fd.getAll('pref'), diagnoses: dx.value(), pregnancyWeek: dx.week(),
+      ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
     };
   };
   const generate = (save = false) => cfg.onGenerate(read(), save);
@@ -192,6 +200,7 @@ export function planForm(cfg) {
       h('div.nut-sec-title', null, 'Заболявания по МКБ-10'),
       dx.el,
       cfg.diagnosesHint ? h('div.field-hint', null, cfg.diagnosesHint) : null),
+    cyc ? cyc.el : null,
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Цел'),
       h('div.q-opts', null, goalRadios),
@@ -215,7 +224,7 @@ export function planForm(cfg) {
     h('div', null, h('button.btn.primary', { type: 'submit' }, '🍽 Изготви режим'),
       cfg.footer ? h('span.small.muted', { style: { marginLeft: '10px' } }, cfg.footer) : null));
   refresh();
-  return { el, read, generate };
+  return { el, read, generate, cycleEl: cyc?.el || null };
 }
 
 /* ------------------------- диагнози по МКБ-10 ------------------------- */
@@ -344,7 +353,9 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
   const menu = plan.week
     ? h('div.stack', null, plan.week.map((d, i) => h('details.week-day', { open: i === 0 },
       h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
-        h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`)),
+        d.cycle ? phaseChip(d.cycle) : null,
+        h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`
+          + (d.totals.fe !== undefined ? ` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг` : ''))),
       h('div.meals', null, d.meals.map(m => h('div.meal', null,
         h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
         recipeCard(m.option)))))))
@@ -359,6 +370,10 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
     plan.shopping.spices.length ? h('div.body.small', null, h('strong', null, 'Подправки и билки: '), plan.shopping.spices.join(', ')) : null) : null;
 
   const options = plan.week ? plan.week.flatMap(d => d.meals.map(m => m.option)) : plan.meals.flatMap(m => m.options);
+  // Желязо и калций в менюто: средно за седмицата или за първия вариант на деня.
+  const minerals = plan.week
+    ? { fe: plan.week.reduce((s, d) => s + (d.totals.fe || 0), 0) / plan.week.length, ca: plan.week.reduce((s, d) => s + (d.totals.ca || 0), 0) / plan.week.length }
+    : { fe: plan.day?.fe || 0, ca: plan.day?.ca || 0 };
   const sourcedCount = options.filter(o => o?.source?.length).length;
 
   return h('div.stack', null,
@@ -380,10 +395,13 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
       tile('Мазнини', t.fat, 'г', `${t.fatPct}% · наситени <${t.satFat} г`),
       tile('Фибри', t.fiber, 'г'),
       tile('Сол', '<' + t.salt, 'г'),
-      tile('Течности', dec(Math.round(t.fluids / 100) / 10), 'л')),
+      tile('Течности', dec(Math.round(t.fluids / 100) / 10), 'л'),
+      t.iron ? tile('Желязо', t.iron, 'мг', `в менюто ≈${Math.round(minerals.fe)} мг`) : null,
+      t.calcium ? tile('Калций', t.calcium, 'мг', `в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,
     plan.pattern ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, `Модел: ${plan.pattern.label}. `), plan.pattern.about) : null,
     diagnosesBlock(plan),
+    cyclePlanBlock(plan),
     plan.portions ? h('div.nut-cols', null,
       h('div.nut-list', null, h('h3', null, 'Порции за деня'),
         h('table.portions', null, h('tbody', null, plan.portions.map(x => h('tr', null,
@@ -412,6 +430,7 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
     shopping,
     h('p.tiny.muted', null,
       'Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. '
+      + (plan.cycle?.applied ? 'Фазите на цикъла — по FIGO 2018 и ASRM 2024; промените по фази — по Tucker 2024, Benton 2020, EFSA 2015, ACOG 2023. ' : '')
       + 'Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата. '
       + 'Режимът е ориентировъчен — при напреднало ХБЗ, диализа, бременност или хранителни разстройства е нужен диетолог.'));
 }
