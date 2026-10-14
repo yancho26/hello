@@ -147,7 +147,9 @@ function clientEditor(client, { onSaved, onClose }) {
   });
 
   // Полетата за цикъла — само за жени.
-  sex.addEventListener('change', () => { if (form.cycleEl) form.cycleEl.style.display = sex.value === 'f' ? '' : 'none'; });
+  sex.addEventListener('change', () => {
+    for (const el of [form.cycleEl, form.trainingCycleEl]) if (el) el.style.display = sex.value === 'f' ? '' : 'none';
+  });
 
   const saveData = async () => {
     const p = readPerson(form.read());

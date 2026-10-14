@@ -34,6 +34,7 @@ import { addDays, today } from './dates.js';
 import { FOODS, FOOD_CATS, RECIPES, mainProtein, mealsOf, recipeTags, totals } from './recipes.js';
 import { dietProfiles } from './diet-icd.js';
 import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
+import { activityFromTraining, trainingNutrition, trainingPlan } from './training.js';
 
 export { FOODS, RECIPES };
 
@@ -46,6 +47,8 @@ export const ACTIVITY = table({
   active: { label: 'висока активност (6–7 пъти седмично)', factor: 1.725 },
   athlete: { label: 'много висока (тежък физически труд или спорт всеки ден)', factor: 1.9 },
 });
+
+const ACTIVITY_ORDER = ['sedentary', 'light', 'moderate', 'active', 'athlete'];
 
 export const GOALS = table({
   lose: 'отслабване',
@@ -222,13 +225,13 @@ export function nutritionPlan(input) {
   const prefs = new Set([...(input.preferences || []), ...fromAllergies.prefs, ...dx.prefs].filter(x => PREFERENCES[x]));
   if (prefs.has('vegan')) prefs.add('vegetarian');
   const b = bmiOf(weight, height);
-  const activity = ACTIVITY[input.activity] || ACTIVITY.sedentary;
+  let activityId = ACTIVITY[input.activity] ? input.activity : 'sedentary';
   const patternId = PATTERNS[input.pattern] ? input.pattern : (cond.has('htn') ? 'dash' : 'mediterranean');
   const pattern = PATTERNS[patternId];
   const mealsPerDay = [3, 4, 5].includes(Number(input.mealsPerDay)) ? Number(input.mealsPerDay) : 5;
   // Меню за 1 ден (с два варианта), за седмица или за месец от 4 седмици.
   const days = MENU_DAYS.includes(Number(input.days)) ? Number(input.days) : 1;
-  const strength = !!input.strength;
+  let strength = !!input.strength;
 
   let goal = GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
   if (goal === 'lose' && dx.noLose) {
@@ -242,6 +245,27 @@ export function nutritionPlan(input) {
     warnings.push('Липса на менструация при ИТМ под 25: възможен недостиг на енергия (функционална хипоталамична аменорея) — режимът е за поддържане, без дефицит. Endocrine Society 2017 препоръчва енергийният недостиг да се коригира. Изключете бременност.');
     goal = 'maintain';
   }
+
+  // Тренировъчен план (версия 4.7) — за 4 седмици, със същите дати като менюто и с фазите на цикъла.
+  const cycleOk = sex === 'f' && !!input.cycleSync && !!cycleIn?.natural && !!cycleIn.lastStart && !cycleIn.late
+    && !cycleIn.menopause && !dx.pregnancy && !dx.lactation && !dx.menopause;
+  const training = input.training ? trainingPlan({
+    ...input.training, start, sex, age, weight, bmi: b, cond, classes,
+    codes: dx.considered.map(c => c.code), pregnancy: dx.pregnancy, pregnancyWeek: Number(input.pregnancyWeek) || null,
+    inactive: activityId === 'sedentary', bp: input.bp || null, amenorrhea,
+    phases: cycleOk ? phasesFrom(cycleIn, start, 28) : [],
+  }) : null;
+  let trainingNote = null;
+  if (training) {
+    // Енергията се смята по активността на плана, ако тя е по-висока от въведената.
+    const planned = activityFromTraining(training);
+    if (ACTIVITY_ORDER.indexOf(planned) > ACTIVITY_ORDER.indexOf(activityId)) {
+      activityId = planned;
+      trainingNote = `Физическата активност в изчислението на енергията е по тренировъчния план: ${ACTIVITY[planned].label}.`;
+    }
+    if (training.strengthFocus && !strength) strength = true;
+  }
+  const activity = ACTIVITY[activityId];
   if (goal === 'lose' && b < 22) {
     warnings.push('При ИТМ под 22 отслабване не се препоръчва — планът е за поддържане на теглото.');
     goal = 'maintain';
@@ -264,7 +288,7 @@ export function nutritionPlan(input) {
     warnings.push('След 70 г. при ИТМ под 30 отслабването носи риск от саркопения — предпочитайте плавно темпо, повече белтък и силови упражнения.');
   }
 
-  const notes0 = [];
+  const notes0 = trainingNote ? [trainingNote] : [];
   // eGFR: резултатът от изследването; ако го няма — стадият по кода N18.x.
   const egfr = input.egfr > 0 ? input.egfr : dx.egfr;
   if (!(input.egfr > 0) && dx.egfr && !dx.dialysis) notes0.push(`Няма резултат за eGFR — режимът приема около ${dx.egfr} mL/min по кода на ХБЗ; въведете резултата за по-точно изчисление.`);
@@ -496,7 +520,24 @@ export function nutritionPlan(input) {
 
   // Менструален цикъл: фазите за дните на менюто — енергия и акцент (желязо, калций) за всеки ден.
   const sync = sex === 'f' ? cycleSyncFor(input, { start, days, stats: cycleIn, dx, target, floor, strength }) : null;
-  const dayKcal = (d) => target + (sync?.applied ? sync.days[d]?.kcalAdd || 0 : 0);
+  // Тренировките: в деня с по-голям разход — повече енергия, в почивния — по-малко; средно
+  // за седмицата същата (разходът вече е в коефициента за активност).
+  const trainAdd = (d) => {
+    const td = training?.days[d];
+    if (!td) return 0;
+    const wk = training.days.slice(Math.floor(d / 7) * 7, Math.floor(d / 7) * 7 + 7);
+    const mean = wk.reduce((acc, x) => acc + x.kcal, 0) / wk.length;
+    return Math.min(350, Math.max(-250, round(td.kcal - mean, 10)));
+  };
+  const dayKcal = (d) => Math.max(round(floor, 10), target + (sync?.applied ? sync.days[d]?.kcalAdd || 0 : 0) + trainAdd(d));
+  const dayTraining = (d) => {
+    const td = training?.days[d];
+    if (!td) return null;
+    return {
+      sessions: td.sessions.map(x => ({ activity: x.activity, icon: x.icon, label: x.label, minutes: x.minutes, intensity: x.intensity, time: x.time, extra: !!x.extra })),
+      addOns: td.addOns.map(a => a.kind), kcal: td.kcal, kcalAdd: trainAdd(d), tips: trainingNutrition(td),
+    };
+  };
   const dayFocus = (d) => [...dx.focus, ...(sync?.applied ? sync.days[d]?.focus || [] : [])];
   if (sync?.applied) {
     prefer.push(...sync.prefer);
@@ -530,6 +571,7 @@ export function nutritionPlan(input) {
       return {
         day: d + 1, label: weekdayOf(date), date, kcal: dayKcal(d),
         cycle: sync?.applied ? sync.days[d] : null,
+        training: dayTraining(d),
         meals: slots.map((slot, i) => ({ ...slot, ...meal(slot, picks[i], dayKcal(d)) })),
       };
     });
@@ -598,11 +640,11 @@ export function nutritionPlan(input) {
       goal, pace, targetWeight: projection.targetWeight, pattern: patternId, mealsPerDay, days,
       quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
-      startDate: start, cycleSync: !!input.cycleSync,
+      startDate: start, cycleSync: !!input.cycleSync, training: training ? training.input : null,
       cycle: sync?.stats ? { lastPeriod: sync.stats.lastStart, length: sync.stats.length, bleed: sync.stats.bleed, contraception: sync.stats.contraception } : null,
     },
     bmi: Math.round(b * 10) / 10,
-    energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor },
+    energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor, activity: activityId },
     refWeight: Math.round(refWeight),
     targets,
     projection,
@@ -625,7 +667,9 @@ export function nutritionPlan(input) {
     })) : null,
     diagnoses: dx.considered,
     cycle: sync,
-    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied },
+    training,
+    trainingToday: days === 1 ? dayTraining(0) : null,
+    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied, training: !!training },
   };
 }
 

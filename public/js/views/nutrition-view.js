@@ -12,6 +12,7 @@ import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
 import { printNutritionPlan, printShopping } from './adult-print.js';
 import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
+import { trainingCard, trainingChip, trainingFields, trainingTips } from './training-view.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 
@@ -152,6 +153,7 @@ export function planForm(cfg) {
   const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || [], { week: last.pregnancyWeek });
   const cyc = cfg.cycle ? cycleFields({ cycle: cfg.cycle.stored, last, age: cfg.cycle.age, hint: cfg.cycle.hint }) : null;
   if (cyc && cfg.cycle.hidden) cyc.el.style.display = 'none';
+  const tr = trainingFields({ last, activity: last.activity || cfg.activity, goal: last.goal || cfg.defaultGoal, female: !!cfg.cycle && !cfg.cycle.hidden });
 
   const goalValue = () => goalRadios.map(l => l.querySelector('input')).find(i => i.checked)?.value || 'maintain';
   const refresh = () => {
@@ -190,6 +192,7 @@ export function planForm(cfg) {
       quick: quick.checked, strength: strength.checked, sourcedOnly: sourced.checked,
       preferences: fd.getAll('pref'), diagnoses: dx.value(), pregnancyWeek: dx.week(),
       ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
+      training: tr.read(),
     };
   };
   const generate = (save = false) => cfg.onGenerate(read(), save);
@@ -221,6 +224,7 @@ export function planForm(cfg) {
         h('label.opt', null, quick, h('span', null, 'бързи рецепти, до 20 минути')),
         h('label.opt', null, strength, h('span', null, 'силови тренировки — повече белтък')),
         h('label.opt', null, sourced, h('span', null, 'само рецепти с публикуван източник (NHLBI)')))),
+    tr.el,
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Ограничения и предпочитания'),
       h('div.q-opts', null, prefBoxes),
@@ -228,7 +232,7 @@ export function planForm(cfg) {
     h('div', null, h('button.btn.primary', { type: 'submit' }, '🍽 Изготви режим'),
       cfg.footer ? h('span.small.muted', { style: { marginLeft: '10px' } }, cfg.footer) : null));
   refresh();
-  return { el, read, generate, cycleEl: cyc?.el || null };
+  return { el, read, generate, cycleEl: cyc?.el || null, trainingCycleEl: tr.cycleEl };
 }
 
 /* ------------------------- диагнози по МКБ-10 ------------------------- */
@@ -366,8 +370,10 @@ export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, sa
   const dayView = (d, open) => h('details.week-day', { open },
     h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
       d.cycle ? phaseChip(d.cycle) : null,
+      trainingChip(d.training),
       h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`
         + (d.totals.fe !== undefined ? ` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг` : ''))),
+    trainingTips(d.training),
     h('div.meals', null, d.meals.map(m => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
       recipeCard(m.option)))));
@@ -442,6 +448,8 @@ export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, sa
       list('Контрол на теглото', plan.monitoring)),
     list('Бележки', plan.notes)),
 
+    trainingCard(plan),
+
     card(month ? 'Меню за месеца' : plan.week ? 'Меню за седмицата' : 'Примерно меню за деня', {
       icon: '🍽',
     },
@@ -451,6 +459,8 @@ export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, sa
       ? 'Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.'
       : `Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`,
     sourcedCount ? ` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.` : ''),
+    plan.trainingToday ? h('div.row.tight', { style: { flexWrap: 'wrap', marginBottom: '8px' } }, h('strong.small', null, 'Тренировка днес: '),
+      trainingChip(plan.trainingToday) || h('span.small.dim', null, 'почивка'), trainingTips(plan.trainingToday)) : null,
     menu),
     shopping,
     h('p.tiny.muted', null,

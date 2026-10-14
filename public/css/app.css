@@ -1003,3 +1003,17 @@ details.month-shop { margin-top: 8px; border: 1px dashed var(--line-strong); bor
 details.month-shop > summary { cursor: pointer; padding: 8px 12px; font-weight: 600; }
 details.month-shop .shop-grid { padding-top: 0; }
 details.month-shop .body { padding: 0 16px 12px; }
+
+/* Тренировки (версия 4.7): план по седмици, етикети в менюто. */
+.train-acts .opt { min-width: 0; }
+.train-chip { display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); font-size: 12px; font-weight: 600; }
+.train-tips { margin: 0 0 8px; padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ok-soft); color: var(--ink); }
+.train-days { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.train-day { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); }
+.train-day.rest { background: var(--surface-2); }
+.train-day-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin-bottom: 4px; }
+.train-day-head .cycle-chip { margin-left: auto; }
+details.train-session > summary { cursor: pointer; font-size: 13px; padding: 2px 0; }
+details.train-session ul, .train-addons { margin: 4px 0 4px 16px; padding: 0; }
+.train-addons li { color: var(--ink-2); }
+@media (max-width: 600px) { .train-chip { margin: 2px 0 0; } .train-days { grid-template-columns: 1fr; } }

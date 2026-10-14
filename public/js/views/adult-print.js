@@ -246,6 +246,38 @@ export function printNutritionPlan(p, plan) {
       add(list(plan.notes));
     }
 
+    // Тренировъчният план за 4 седмици.
+    const tp = plan.training;
+    if (tp) {
+      add(el('h2', 'Тренировъчен план за 4 седмици', 'page'));
+      const wk = tp.weeks[1] || tp.weeks[0];
+      add(el('div', `Аеробни около ${wk.aerobic} мин седмично (цел ${tp.targets.aerobic}–${tp.targets.aerobicMax} по СЗО; интензивните се броят двойно); силови ${wk.strength} дни (цел поне 2)`
+        + `${tp.hr ? `; пулс умерено ${tp.hr.moderate.join('–')}, интензивно ${tp.hr.vigorous.join('–')}` : '; по усещането (RPE)'}.`, 'muted'));
+      add(el('div', 'Леко: RPE 2–3, говорите свободно. Умерено: RPE 4–6, говорите, но не пеете. Интензивно: RPE 7–8, само по няколко думи.', 'muted'));
+      for (const w of tp.warnings) add(el('div', w, 'warn'));
+      const c2 = add(el('div', undefined, 'cols2'));
+      for (const [title, items] of [['Кога да тренирате', tp.timeAdvice], ['Цикъл и тренировки', tp.cycle || []], ['Бележки', tp.notes]]) {
+        if (!items?.length) continue;
+        const c = el('div');
+        c.appendChild(el('h3', title));
+        c.appendChild(list(items));
+        c2.appendChild(c);
+      }
+      for (const w of tp.weeks) {
+        add(el('h3', `Седмица ${w.week}: ${formatDate(w.from)} – ${formatDate(w.to)} · аеробни ${w.aerobic} мин · силови ${w.strength}`));
+        const rows = [];
+        for (const d of tp.days.filter(x => x.week === w.week - 1)) {
+          const what = d.sessions.length
+            ? d.sessions.map(x => `${x.label} ${x.minutes} мин, ${x.intensity === 'vigorous' ? 'интензивно' : x.intensity === 'light' ? 'леко' : 'умерено'}${x.time ? `, ${x.time}` : ''}. `
+              + x.blocks.map(b => `${b.name}: ${b.text}`).join(' ')).join(' ')
+            : 'Почивка.';
+          rows.push([`${d.label}, ${formatDate(d.date)}${d.cycle ? ` (ден ${d.cycle.day})` : ''}`,
+            what + (d.addOns.length ? ' ' + d.addOns.map(a => a.text).join(' ') : '') + (d.cycle ? ' ' + d.cycle.text : '')]);
+        }
+        add(tableOf(['Ден', 'Тренировка'], rows));
+      }
+    }
+
     const recipe = (box, o, label) => {
       if (!o) return;
       const d = el('div', undefined, 'opt');
@@ -269,7 +301,9 @@ export function printNutritionPlan(p, plan) {
     };
     const dayBox = (d) => {
       const box = add(el('div', undefined, 'day'));
-      box.appendChild(el('h3', `${d.label}, ${formatDate(d.date)} · около ${d.totals.kcal} kcal${d.cycle ? ` · ден ${d.cycle.day} от цикъла, ${d.cycle.label}` : ''}`));
+      box.appendChild(el('h3', `${d.label}, ${formatDate(d.date)} · около ${d.totals.kcal} kcal${d.cycle ? ` · ден ${d.cycle.day} от цикъла, ${d.cycle.label}` : ''}`
+        + (d.training?.sessions.length ? ` · ${d.training.sessions.map(x => `${x.label} ${x.minutes} мин`).join(', ')}` : '')));
+      if (d.training?.tips.length) box.appendChild(el('div', d.training.tips.join(' '), 'how'));
       for (const m of d.meals) recipe(box, m.option, `${m.label}: `);
     };
     if (plan.week && plan.week.length > 7) {
