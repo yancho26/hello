@@ -10,7 +10,7 @@ import { GOALS } from '../shared/nutrition.js';
 import { searchDrugs, drugName } from '../shared/drugs.js';
 import { planForm, planView, savedPlans } from './nutrition-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
-import { printNutritionPlan } from './adult-print.js';
+import { printNutritionPlan, printShopping } from './adult-print.js';
 
 const dec = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
 let selected = null;   // id на отворения човек или 'new'
@@ -118,6 +118,7 @@ function clientEditor(client, { onSaved, onClose }) {
     onSave: () => form.generate(true),
     saveLabel: clientId ? 'Запази режима' : 'Запази човека и режима',
     onPrint: () => printNutritionPlan(person(who), plan),
+    onPrintShopping: () => printShopping(person(who), plan),
   }));
 
   const last = c.plans?.length ? c.plans[c.plans.length - 1].plan.input : {};

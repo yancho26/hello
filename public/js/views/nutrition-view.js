@@ -6,11 +6,11 @@
 import { api } from '../api.js';
 import { badge, card, decimalFields, empty, field, h, numberInput, select, toast, mount } from '../ui/components.js';
 import { formatDate } from '../shared/dates.js';
-import { ACTIVITY, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences } from '../shared/nutrition.js';
+import { ACTIVITY, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, weekChunks } from '../shared/nutrition.js';
 import { dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../shared/diet-icd.js';
 import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
-import { printNutritionPlan } from './adult-print.js';
+import { printNutritionPlan, printShopping } from './adult-print.js';
 import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
@@ -46,6 +46,7 @@ export function nutritionTab(ctx) {
     onSave: () => form.generate(true),
     saveLabel: 'Запази в досието',
     onPrint: () => printNutritionPlan(p, plan),
+    onPrintShopping: () => printShopping(p, plan),
   }));
 
   const form = planForm({
@@ -104,13 +105,15 @@ export function savedPlans(saved, { show, print, remove }) {
     h('tbody', null, saved.map(n => h('tr', null,
       h('td.small.nowrap', null, formatDate(n.date)),
       h('td', null, `${n.plan.targets.kcal} kcal · белтък ${n.plan.targets.protein} г · ${GOALS[n.plan.input.goal] || ''}`,
-        n.plan.pattern ? h('div.tiny.dim', null, `${n.plan.pattern.label}${n.plan.week ? ' · седмично меню' : ''}`
+        n.plan.pattern ? h('div.tiny.dim', null, `${n.plan.pattern.label}${menuKind(n.plan)}`
           + (n.plan.input.diagnoses?.length ? ` · ${n.plan.input.diagnoses.map(d => d.code).join(', ')}` : '')) : null),
       h('td.actions', null,
         h('button.btn.xs', { onclick: () => show(n.plan) }, 'Покажи'), ' ',
         h('button.btn.xs', { onclick: () => print(n) }, '🖨'), ' ',
         h('button.btn.xs.danger', { onclick: () => remove(n) }, '✕'))))))));
 }
+
+const menuKind = (plan) => (!plan.week ? '' : plan.week.length > 7 ? ' · месечно меню' : ' · седмично меню');
 
 /* ------------------------------- форма ------------------------------- */
 
@@ -141,6 +144,7 @@ export function planForm(cfg) {
   const days = select([
     { value: 1, label: '1 ден, по 2 варианта', selected: Number(last.days || 1) === 1 },
     { value: 7, label: 'седмица с пазаруване', selected: Number(last.days || 1) === 7 },
+    { value: 28, label: 'месец (4 седмици), пазаруване по седмици', selected: Number(last.days || 1) === 28 },
   ], { name: 'days' });
   const quick = h('input', { type: 'checkbox', name: 'quick', checked: !!last.quick });
   const strength = h('input', { type: 'checkbox', name: 'strength', checked: !!last.strength });
@@ -344,30 +348,48 @@ function diagnosesBlock(plan) {
         : h('span.small.dim', null, ' — без специфични хранителни правила; режимът е общ')))));
 }
 
+/** Списък за пазаруване: продуктите по групи и подправките. */
+function shopGrid(shop) {
+  return h('div', null,
+    h('div.shop-grid', null, shop.groups.map(g => h('div.shop-group', null,
+      h('h3', null, g.label),
+      h('ul', null, g.items.map(it => h('li', null, h('span', null, it.name), h('span.dim', null, it.amount))))))),
+    shop.spices.length ? h('div.body.small', null, h('strong', null, 'Подправки и билки: '), shop.spices.join(', ')) : null);
+}
+
 /** Показване на изготвения режим. */
-export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Запази' } = {}) {
+export function planView(plan, { onVariant, onSave, onPrint, onPrintShopping, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
 
-  const menu = plan.week
-    ? h('div.stack', null, plan.week.map((d, i) => h('details.week-day', { open: i === 0 },
-      h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
-        d.cycle ? phaseChip(d.cycle) : null,
-        h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`
-          + (d.totals.fe !== undefined ? ` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг` : ''))),
-      h('div.meals', null, d.meals.map(m => h('div.meal', null,
-        h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
-        recipeCard(m.option)))))))
-    : h('div.meals', null, plan.meals.map(m => h('div.meal', null,
+  const dayView = (d, open) => h('details.week-day', { open },
+    h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
+      d.cycle ? phaseChip(d.cycle) : null,
+      h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`
+        + (d.totals.fe !== undefined ? ` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг` : ''))),
+    h('div.meals', null, d.meals.map(m => h('div.meal', null,
+      h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
+      recipeCard(m.option)))));
+  const month = plan.week && plan.week.length > 7;
+  const menu = month
+    // Месец: по седмици, всяка със своя списък за пазаруване.
+    ? h('div.stack', null, weekChunks(plan.week).map((days, w) => {
+      const shop = plan.shoppingWeeks?.[w];
+      return h('section.month-week', null,
+        h('h3.month-week-title', null, `Седмица ${w + 1}`, h('span.small.dim', null, ` · ${formatDate(days[0].date)} – ${formatDate(days[days.length - 1].date)}`)),
+        h('div.stack', null, days.map((d, i) => dayView(d, w === 0 && i === 0))),
+        shop ? h('details.month-shop', { open: w === 0 },
+          h('summary', null, `🛒 Пазаруване за седмица ${w + 1}`, h('span.small.dim', null, ` · ${shop.groups.reduce((n, g) => n + g.items.length, 0)} продукта`)),
+          shopGrid(shop)) : null);
+    }))
+    : plan.week
+      ? h('div.stack', null, plan.week.map((d, i) => dayView(d, i === 0)))
+      : h('div.meals', null, plan.meals.map(m => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time ? m.time + ' · ' : ''}≈${m.kcal} kcal`)),
       m.options.length ? m.options.map((o, i) => recipeCard(o, { label: `вариант ${i + 1}` })) : h('div.small.muted', null, 'Няма подходящо ястие.'))));
 
-  const shopping = plan.shopping ? card('Списък за пазаруване за седмицата', { icon: '🛒', tight: true },
-    h('div.shop-grid', null, plan.shopping.groups.map(g => h('div.shop-group', null,
-      h('h3', null, g.label),
-      h('ul', null, g.items.map(it => h('li', null, h('span', null, it.name), h('span.dim', null, it.amount))))))),
-    plan.shopping.spices.length ? h('div.body.small', null, h('strong', null, 'Подправки и билки: '), plan.shopping.spices.join(', ')) : null) : null;
+  const shopping = plan.shopping ? card('Списък за пазаруване за седмицата', { icon: '🛒', tight: true }, shopGrid(plan.shopping)) : null;
 
   const options = plan.week ? plan.week.flatMap(d => d.meals.map(m => m.option)) : plan.meals.flatMap(m => m.options);
   // Желязо и калций в менюто: средно за седмицата или за първия вариант на деня.
@@ -382,6 +404,7 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
       actions: [
         onVariant ? h('button.btn.sm', { onclick: onVariant }, '↻ Друго меню') : null,
         onPrint ? h('button.btn.sm', { onclick: onPrint }, '🖨 Печат') : null,
+        onPrintShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: onPrintShopping }, '🛒 Пазаруване') : null,
         onSave ? h('button.btn.sm.primary', { onclick: onSave }, saveLabel) : null,
       ],
     },
@@ -419,10 +442,12 @@ export function planView(plan, { onVariant, onSave, onPrint, saveLabel = 'Зап
       list('Контрол на теглото', plan.monitoring)),
     list('Бележки', plan.notes)),
 
-    card(plan.week ? 'Меню за седмицата' : 'Примерно меню за деня', {
+    card(month ? 'Меню за месеца' : plan.week ? 'Меню за седмицата' : 'Примерно меню за деня', {
       icon: '🍽',
     },
-    h('p.small.muted', { style: { marginTop: 0 } }, plan.week
+    h('p.small.muted', { style: { marginTop: 0 } }, month
+      ? 'Четири седмици, всяка със свой списък за пазаруване. В рамките на седмицата обядите и вечерите не се повтарят; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.'
+      : plan.week
       ? 'Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.'
       : `Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`,
     sourcedCount ? ` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.` : ''),

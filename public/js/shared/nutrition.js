@@ -17,8 +17,8 @@
  * DASH/средиземноморски тип), ESC/EASD 2023 и ADA 2026 (диабет), KDIGO 2024
  * (ХБЗ — белтък 0,8 г/кг при G3–G5, калий и фосфор по нужда), EULAR (подагра).
  *
- * Менюто е за 1 ден с по два варианта или за 7 дни, с рецепти от
- * recipes.js и списък за пазаруване. Не е предназначено за бременност,
+ * Менюто е за 1 ден с по два варианта, за 7 дни или за месец от 4 седмици,
+ * с рецепти от recipes.js и списък за пазаруване (при месеца — за всяка седмица). Не е предназначено за бременност,
  * кърмене, деца, хранителни разстройства и диализа.
  *
  * Менструален цикъл (cycle sync, версия 4.5): по избор менюто следва фазите —
@@ -123,6 +123,9 @@ export const PREFERENCES = table({
 
 export const WEEKDAYS = ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'];
 
+/** За колко дни е менюто: 1 ден с два варианта, седмица, месец от 4 седмици. */
+export const MENU_DAYS = [1, 7, 28];
+
 /** Ограничения, които следват от алергиите в досието. */
 export function allergyPreferences(allergies = []) {
   const rules = [
@@ -194,7 +197,7 @@ const KCAL_PER_KG = 7700;
 /**
  * @param {object} input
  *   sex, age, weight, height, waist, activity, goal, pace, targetWeight, pattern,
- *   mealsPerDay (3|4|5), days (1|7), quick, strength, preferences: [], allergies: [],
+ *   mealsPerDay (3|4|5), days (1|7|28), quick, strength, preferences: [], allergies: [],
  *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf,
  *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly,
  *   cycle: { periods, lastPeriod, length, bleed, contraception, menopause } — менструалният цикъл,
@@ -223,7 +226,8 @@ export function nutritionPlan(input) {
   const patternId = PATTERNS[input.pattern] ? input.pattern : (cond.has('htn') ? 'dash' : 'mediterranean');
   const pattern = PATTERNS[patternId];
   const mealsPerDay = [3, 4, 5].includes(Number(input.mealsPerDay)) ? Number(input.mealsPerDay) : 5;
-  const days = Number(input.days) === 7 ? 7 : 1;
+  // Меню за 1 ден (с два варианта), за седмица или за месец от 4 седмици.
+  const days = MENU_DAYS.includes(Number(input.days)) ? Number(input.days) : 1;
   const strength = !!input.strength;
 
   let goal = GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
@@ -520,8 +524,8 @@ export function nutritionPlan(input) {
 
   // Седмично меню — по едно ястие за всяко хранене, с ритъм за седмицата.
   let week = null;
-  if (days === 7) {
-    week = planWeek(slots, pools, variant, dayFocus).map((picks, d) => {
+  if (days > 1) {
+    week = planDays(slots, pools, variant, days, dayFocus).map((picks, d) => {
       const date = addDays(start, d);
       return {
         day: d + 1, label: weekdayOf(date), date, kcal: dayKcal(d),
@@ -614,7 +618,11 @@ export function nutritionPlan(input) {
     meals,
     day,
     week,
-    shopping: week ? shoppingList(week) : null,
+    shopping: week && days === 7 ? shoppingList(week) : null,
+    // Месечното меню: пазаруване за всяка седмица поотделно.
+    shoppingWeeks: week && days > 7 ? weekChunks(week).map((chunk, i) => ({
+      week: i + 1, from: chunk[0].date, to: chunk[chunk.length - 1].date, ...shoppingList(chunk),
+    })) : null,
     diagnoses: dx.considered,
     cycle: sync,
     flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied },
@@ -885,16 +893,27 @@ function score(r, items, tags, ctx) {
   return s;
 }
 
-/**
- * Седмица: по едно ястие за всяко хранене. Обядите и вечерите не се
- * повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти
- * седмично; основният белтък на обяда и вечерята е различен.
- */
-function planWeek(slots, pools, variant, focusOf = () => []) {
-  const lastUsed = new Map();
-  const counts = { fish: 0, legume: 0, redmeat: 0 };
+/** Дните на менюто по седмици (за месечното меню и пазаруването). */
+export function weekChunks(days) {
   const out = [];
-  for (let d = 0; d < 7; d++) {
+  for (let i = 0; i < days.length; i += 7) out.push(days.slice(i, i + 7));
+  return out;
+}
+
+/**
+ * Меню за n дни (7 или 28): по едно ястие за всяко хранене. В рамките на седмицата
+ * обядите и вечерите не се повтарят; ястие от предишна седмица се връща рядко,
+ * само ако няма друго подходящо. Всяка седмица: риба поне 2 пъти, бобови поне
+ * 3 пъти, червено месо до 2 пъти; основният белтък на обяда и вечерята е различен.
+ */
+function planDays(slots, pools, variant, n, focusOf = () => []) {
+  const lastUsed = new Map();
+  let counts = { fish: 0, legume: 0, redmeat: 0 };
+  const out = [];
+  for (let d = 0; d < n; d++) {
+    const dw = d % 7;
+    const weekStart = d - dw;
+    if (dw === 0) counts = { fish: 0, legume: 0, redmeat: 0 };
     const picks = [];
     const proteinsToday = new Set();
     const focus = focusOf(d);
@@ -907,9 +926,12 @@ function planWeek(slots, pools, variant, focusOf = () => []) {
       for (const x of pool) {
         let w = x.s;
         const last = lastUsed.get(x.r.name);
-        if (last !== undefined) w -= main ? 40 : (d - last <= 2 ? 30 : 3);
+        if (last !== undefined) {
+          if (!main) w -= d - last <= 2 ? 30 : 3;
+          else w -= last >= weekStart ? 40 : d - last < 14 ? 16 : 10;
+        }
         if (main) {
-          if (x.tags.has('fish') && counts.fish < 2) w += 4 - d * 0.3;
+          if (x.tags.has('fish') && counts.fish < 2) w += 4 - dw * 0.3;
           if (x.tags.has('legume') && counts.legume < 3) w += 3;
           if (x.tags.has('redmeat') && counts.redmeat >= 2) w -= 20;
           if (proteinsToday.has(x.protein)) w -= 3;

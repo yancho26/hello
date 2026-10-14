@@ -7,7 +7,7 @@ import { CONDITIONS } from '../shared/chronic.js';
 import { LABS, formatLab } from '../shared/labs.js';
 import { SCHEDULE_SLOTS, activeMeds, medLabel } from '../shared/meds.js';
 import { TOOLS } from '../shared/mental.js';
-import { GOALS } from '../shared/nutrition.js';
+import { GOALS, weekChunks } from '../shared/nutrition.js';
 
 const BASE_CSS = `
   body { font: 11pt/1.45 system-ui, "Segoe UI", sans-serif; margin: 14mm 13mm; color: #111; }
@@ -127,6 +127,34 @@ export function printMedList(p, data) {
 
 /* ------------------------------ хранителен режим ------------------------------ */
 
+const SHOP_CSS = `
+    .shop { columns: 3; column-gap: 8mm; font-size: 10pt; }
+    .shop h4 { margin: 2mm 0 1mm; font-size: 10.5pt; break-after: avoid; }
+    .shop div { break-inside: avoid; }
+    .page { break-before: page; }
+`;
+
+/** Само списъците за пазаруване — при месечното меню по един за всяка седмица. */
+export function printShopping(p, plan) {
+  const weeks = plan.shoppingWeeks
+    || (plan.shopping && plan.week ? [{ week: 1, from: plan.week[0].date, to: plan.week[plan.week.length - 1].date, ...plan.shopping }] : []);
+  printWindow('Пазаруване — ' + p.name, SHOP_CSS, (ctx) => {
+    const { el, add, list } = ctx;
+    header(ctx, 'Списък за пазаруване', p);
+    weeks.forEach((sh, i) => {
+      add(el('h2', `${weeks.length > 1 ? `Седмица ${sh.week}: ` : ''}${formatDate(sh.from)} – ${formatDate(sh.to)}`, i ? 'page' : undefined));
+      const box = add(el('div', undefined, 'shop'));
+      for (const g of sh.groups) {
+        const d = el('div');
+        d.appendChild(el('h4', g.label));
+        d.appendChild(list(g.items.map(it => `☐ ${it.name} — ${it.amount}`)));
+        box.appendChild(d);
+      }
+      if (sh.spices.length) add(el('div', 'Подправки и билки: ' + sh.spices.join(', '), 'muted'));
+    });
+  });
+}
+
 export function printNutritionPlan(p, plan) {
   printWindow('Хранителен режим — ' + p.name, `
     .targets { display: flex; flex-wrap: wrap; gap: 3mm 8mm; font-size: 11pt; margin: 2mm 0 3mm; }
@@ -227,24 +255,34 @@ export function printNutritionPlan(p, plan) {
       if (o.source?.length) d.appendChild(el('div', 'Източник: ' + o.source.map(x => `${x.org}, „${x.title}“`).join('; '), 'how'));
       box.appendChild(d);
     };
-    if (plan.week) {
+    // Списък за пазаруване с отметки за всяка група.
+    const shopping = (title, sh) => {
+      add(el('h2', title, 'page'));
+      const box = add(el('div', undefined, 'shop'));
+      for (const g of sh.groups) {
+        const d = el('div');
+        d.appendChild(el('h4', g.label));
+        d.appendChild(list(g.items.map(it => `☐ ${it.name} — ${it.amount}`)));
+        box.appendChild(d);
+      }
+      if (sh.spices.length) add(el('div', 'Подправки и билки: ' + sh.spices.join(', '), 'muted'));
+    };
+    const dayBox = (d) => {
+      const box = add(el('div', undefined, 'day'));
+      box.appendChild(el('h3', `${d.label}, ${formatDate(d.date)} · около ${d.totals.kcal} kcal${d.cycle ? ` · ден ${d.cycle.day} от цикъла, ${d.cycle.label}` : ''}`));
+      for (const m of d.meals) recipe(box, m.option, `${m.label}: `);
+    };
+    if (plan.week && plan.week.length > 7) {
+      // Месечно меню: всяка седмица и веднага след нея — пазаруването за нея.
+      weekChunks(plan.week).forEach((days, w) => {
+        add(el('h2', `Меню за седмица ${w + 1}: ${formatDate(days[0].date)} – ${formatDate(days[days.length - 1].date)}`, 'page'));
+        for (const d of days) dayBox(d);
+        if (plan.shoppingWeeks?.[w]) shopping(`Пазаруване за седмица ${w + 1}`, plan.shoppingWeeks[w]);
+      });
+    } else if (plan.week) {
       add(el('h2', 'Меню за седмицата', 'page'));
-      for (const d of plan.week) {
-        const box = add(el('div', undefined, 'day'));
-        box.appendChild(el('h3', `${d.label} · около ${d.totals.kcal} kcal${d.cycle ? ` · ден ${d.cycle.day} от цикъла, ${d.cycle.label}` : ''}`));
-        for (const m of d.meals) recipe(box, m.option, `${m.label}: `);
-      }
-      if (plan.shopping) {
-        add(el('h2', 'Списък за пазаруване', 'page'));
-        const shop = add(el('div', undefined, 'shop'));
-        for (const g of plan.shopping.groups) {
-          const d = el('div');
-          d.appendChild(el('h4', g.label));
-          d.appendChild(list(g.items.map(it => `☐ ${it.name} — ${it.amount}`)));
-          shop.appendChild(d);
-        }
-        if (plan.shopping.spices.length) add(el('div', 'Подправки и билки: ' + plan.shopping.spices.join(', '), 'muted'));
-      }
+      for (const d of plan.week) dayBox(d);
+      if (plan.shopping) shopping('Списък за пазаруване', plan.shopping);
     } else {
       add(el('h2', 'Примерно меню — изберете по един вариант за всяко хранене'));
       for (const m of plan.meals) {
