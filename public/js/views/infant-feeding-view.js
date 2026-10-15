@@ -130,15 +130,14 @@ function planView(p, plan) {
       h('thead', null, h('tr', null, h('th', null, 'Храна'), ...[4, 5, 6, 7, 8, 9, 10, 11].map(m => h('th.c', null, `${m}`)))),
       h('tbody', null, plan.foods.map(f => h('tr', null, h('td.small', null, f.label, f.allergen ? h('span.tiny.dim', null, ' · алерген — не се отлага') : null),
         ...[4, 5, 6, 7, 8, 9, 10, 11].map(m => h('td.c', null, m >= f.from && m <= f.to ? h(`span.food-dot.${f.color}`, { title: `${m} навършени месеца` }) : null))))))),
-    h('p.tiny.muted', { style: { margin: '8px 0 0' } }, 'Колоните са навършени месеци. Редът е по НЦОЗА 2013 (таблица 10), като нищо не се дава преди началото на захранването. ESPGHAN 2017: алергенните храни могат да се въведат още с началото на захранването.'),
+    h('p.tiny.muted', { style: { margin: '8px 0 0' } }, 'Колоните са навършени месеци. Всички групи, включително алергенните, се въвеждат през първите 2–3 месеца на захранването — една нова храна на всеки 3–5 дни (ESPGHAN 2024, EAACI 2020, AAP 2019, CDC). Нищо не се дава преди началото на захранването.'),
     h('div.nut-list', { style: { marginTop: '8px' } }, h('h3', null, 'Готово ли е за захранване'), h('ul', null, plan.readiness.map(t => h('li.small', null, t)))));
 
   const rules = card('Правила', { icon: '✓' },
     h('ul.rules-list', null, plan.rules.map(r => h('li.small', null, r.text, h('span.tiny.dim', null, ` (${r.src})`)))));
 
   return [now, growth, months, foods, rules,
-    h('p.tiny.muted', null, 'Източници: НЦОЗА 2013 — „Основи на здравословното хранене на деца до 3-годишна възраст“; FAO/WHO/UNU 2004 — Human energy requirements; СЗО 2009 — Infant and young child feeding; '
-      + 'ESPGHAN 2013 (витамин D) и 2017 (захранване); NICE NG75; AAP; растежни стандарти на СЗО. Количествата са ориентировъчни — бебето се храни според апетита си.')];
+    h('p.tiny.muted', null, 'Източници: НЦОЗА 2013 — „Основи на здравословното хранене на деца до 3-годишна възраст“; FAO/WHO/UNU 2004 — Human energy requirements; СЗО 2009 — Infant and young child feeding; ESPGHAN 2013 (витамин D), 2015 (арсен в ориза), 2017 (захранване), 2024 (отговор на 11 дружества на ръководството на СЗО; глутен и цьолиакия) и 2025 (веганско хранене); EAACI 2020 (алергии); AAP 2022 (кърмене), 2019 (алергии), 2017 (сокове) и препоръките за напитките; AAAAI/ACAAI/CSACI 2021; NIAID 2017 (фъстъци); DGA 2025–2030 и CDC (САЩ); NICE NG75; растежни стандарти на СЗО. Количествата са ориентировъчни — бебето се храни според апетита си.')];
 }
 
 function monthsAt(p, date, plan) {
@@ -157,7 +156,7 @@ function dayList(day) {
 function monthView(m, plan, open) {
   const breast = plan.input.feeding === 'breast';
   const milk = breast ? m.breast
-    : m.formula ? `${m.formula.feeds} пъти по ${range(m.formula.perFeedMin, m.formula.perFeedMax, 'мл')}; ${range(m.formula.dailyMin, m.formula.dailyMax, 'мл')} на ден${m.formula.inMeals ? ', заедно с млякото в кашите и пюретата' : ''}${m.formula.followOn ? ' (преходно мляко)' : ''}`
+    : m.formula ? `${m.formula.feeds} пъти по ${range(m.formula.perFeedMin, m.formula.perFeedMax, 'мл')}; ${range(m.formula.dailyMin, m.formula.dailyMax, 'мл')} на ден${m.formula.inMeals ? ', заедно с млякото в кашите и пюретата' : ''}${m.formula.followOn ? ' (начално или преходно мляко)' : ''}`
       : '';
   return h('details.week-day.infant-month', { open },
     h('summary', null, h('strong', null, m.label), h('span.small.dim', null, ` · ${m.feeds} хранения`),

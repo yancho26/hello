@@ -84,15 +84,18 @@ test('захранване: от 4, 5 или 6 месеца — храните �
     assert.equal(p.foods.find(f => f.id === 'veg').from, start);
   }
   const p4 = plan({ solidsStart: 4 });
-  assert.deepEqual(p4.foods.map(f => [f.id, f.from]), FOOD_GROUPS.map(f => [f.id, f.from]));
-  // Алергените (яйце, глутен, риба) са в първите месеци на захранването, не след година.
-  for (const f of FOOD_GROUPS.filter(x => x.allergen)) assert.ok(f.to <= 8, f.id);
-  // Храните за ядене с пръсти — след 9-ия месец (НЦОЗА 2013); закуските — от 9 месеца.
-  assert.equal(FOOD_GROUPS.find(f => f.id === 'finger').from, 9);
+  assert.deepEqual(p4.foods.map(f => f.id), FOOD_GROUPS.map(f => f.id));
+  // Алергените (яйце, фъстъци, глутен, риба, млечни, ядки) — в първите 2–3 месеца на захранването (версия 4.12).
+  for (const start of [4, 5, 6]) {
+    for (const f of plan({ solidsStart: start }).foods.filter(x => x.allergen)) assert.ok(f.from <= Math.max(start + 1, 6) && f.to <= 8, `${start}: ${f.id}`);
+  }
+  // Храната на бучки и за ядене с пръсти — от 8 месеца (ESPGHAN 2017: до 8–10 месеца); закуските — от 9 месеца.
+  assert.equal(p4.foods.find(f => f.id === 'finger').from, 8);
   assert.deepEqual(plan().months.map(m => !!m.snacks), [...Array(9).fill(false), true, true, true]);
-  // Риск от алергия — правилото за фъстъците (ESPGHAN 2017).
-  assert.ok(plan({ allergyRisk: true }).rules.some(r => /фъстъц/.test(r.text)));
-  assert.ok(!plan().rules.some(r => /фъстъц/.test(r.text)));
+  // Риск от алергия — правилото за ранните фъстъци (NIAID 2017); фъстъците са за всички деца.
+  assert.ok(plan({ allergyRisk: true }).rules.some(r => /Тежка екзема/.test(r.text)));
+  assert.ok(!plan().rules.some(r => /Тежка екзема/.test(r.text)));
+  assert.ok(plan().rules.some(r => /фъстъц/.test(r.text)));
   // Всяко правило е с източник; кърмените нямат правилото за приготвяне на мляко.
   assert.ok(plan().rules.every(r => r.text && r.src));
   assert.ok(plan({ feeding: 'breast' }).rules.length < plan().rules.length);

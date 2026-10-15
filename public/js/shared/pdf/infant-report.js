@@ -3,7 +3,7 @@
  * и правилата с източниците. */
 
 import { PDFDocument } from './pdf.js';
-import { C, Flow, bullets, chip, chipWidth, drawLines, textBlock, wrap } from './kit.js';
+import { C, Flow, bullets, chip, drawLines, textBlock, wrap } from './kit.js';
 import { formatAge, formatDate, today } from '../dates.js';
 import { FEEDING_TYPES, PLAN_MONTHS, SOLIDS_START, feedingFlags, monthDate } from '../infant-feeding.js';
 
@@ -264,7 +264,7 @@ function monthsSection(ctx) {
     const w = flow.width - 24;
     const parts = [];
     const milk = breast ? m.breast
-      : `${m.formula.feeds} пъти по ${range(m.formula.perFeedMin, m.formula.perFeedMax)} мл; ${range(m.formula.dailyMin, m.formula.dailyMax)} мл на ден${m.formula.inMeals ? ', заедно с млякото в кашите' : ''}${m.formula.followOn ? ' (преходно мляко)' : ''}.`;
+      : `${m.formula.feeds} пъти по ${range(m.formula.perFeedMin, m.formula.perFeedMax)} мл; ${range(m.formula.dailyMin, m.formula.dailyMax)} мл на ден${m.formula.inMeals ? ', заедно с млякото в кашите' : ''}${m.formula.followOn ? ' (начално или преходно мляко)' : ''}.`;
     parts.push(textBlock(doc, [{ text: breast ? 'Кърмене: ' : 'Мляко: ', font: 'semibold' }, { text: milk }], w, { size: 8.2 }));
     if (m.solids) parts.push(textBlock(doc, [{ text: 'Храна: ', font: 'semibold' }, { text: `${Array.isArray(m.solidMeals) ? range(m.solidMeals[0], m.solidMeals[1]) : ''} хранения на ден, порция ${m.firstSolidMonth ? `от 30 до ${m.portion.to}` : range(m.portion.from, m.portion.to)} г; ${m.texture}.${m.snacks ? ' 1–2 закуски с храни за ядене с пръсти.' : ''}` }], w, { size: 8.2 }));
     if (m.newFoods.length) parts.push(textBlock(doc, [{ text: 'Нови храни: ', font: 'semibold', color: C.green }, { text: m.newFoods.join('; ') }], w, { size: 8.2 }));
@@ -295,7 +295,7 @@ function monthsSection(ctx) {
 
 function foodsSection(ctx) {
   const { doc, flow, plan } = ctx;
-  heading(ctx, 'Кога се въвежда всяка храна', 'По НЦОЗА 2013 (таблица 10); нищо не се дава преди началото на захранването. ESPGHAN 2017: алергенните храни (яйце, глутен, риба) могат да се въведат още с началото на захранването.', { icon: '►', newPage: true });
+  heading(ctx, 'Кога се въвежда всяка храна', 'Всички групи, включително алергенните (яйце, фъстъци, глутен, риба, млечни, ядки), се въвеждат през първите 2–3 месеца на захранването — една нова храна на всеки 3–5 дни (ESPGHAN 2024, EAACI 2020, AAP 2019, CDC). Нищо не се дава преди началото на захранването.', { icon: '►', newPage: true });
   const labelW = 230;
   const months = [4, 5, 6, 7, 8, 9, 10, 11];
   const cw = (flow.width - labelW) / months.length;
@@ -330,21 +330,24 @@ function foodsSection(ctx) {
 function rulesSection(ctx) {
   const { doc, flow, plan, doctor, date } = ctx;
   heading(ctx, 'Правила', null, { icon: '✓', color: C.brand });
+  // Източникът — след текста, с цвят: някои правила са по няколко насоки (версия 4.12).
   for (const r of plan.rules) {
-    const tagW = chipWidth(doc, r.src, { size: 6.8 });
-    const b = textBlock(doc, r.text, flow.width - tagW - 30, { size: 8.4 });
+    const b = textBlock(doc, [{ text: r.text }, { text: `  ${r.src}`, font: 'semibold', color: C.brand }], flow.width - 14, { size: 8.4 });
     flow.add({
-      h: Math.max(18, b.h + 6),
+      h: Math.max(14, b.h + 4),
       draw: (page, x, y) => {
         page.circle(x + 5, y + 6.5, 3.2, { fill: C.brand });
         b.draw(page, x + 14, y);
-        chip(page, doc, r.src, x + flow.width - tagW, y, { size: 6.8, fg: C.brand, bg: C.brandSoft });
       },
     }, { gap: 3 });
   }
   flow.space(6);
   flow.text('Източници: НЦОЗА 2013 — „Основи на здравословното хранене на деца до 3-годишна възраст. Ръководство за здравни специалисти“ (Петрова, Дулева, Рангелова); FAO/WHO/UNU 2004 — Human energy requirements; '
-    + 'СЗО 2009 — Infant and young child feeding: model chapter; ESPGHAN 2013 — Vitamin D in the healthy paediatric population; ESPGHAN 2017 — Complementary feeding (Fewtrell и съавт.); NICE NG75 — Faltering growth; AAP — HealthyChildren.org; растежни стандарти на СЗО.',
+    + 'СЗО 2009 — Infant and young child feeding: model chapter; ESPGHAN 2013 — Vitamin D in the healthy paediatric population; ESPGHAN 2015 — Arsenic in rice; ESPGHAN 2017 — Complementary feeding (Fewtrell и съавт.); '
+    + 'ESPGHAN 2024 — WHO guideline on complementary feeding 2023: a multisociety response; ESPGHAN 2024 — Early diet and the risk of coeliac disease; ESPGHAN 2025 — Vegan diet in infants, children and adolescents; '
+    + 'EAACI 2020 — Preventing the development of food allergy in infants and young children; AAP 2022 — Breastfeeding and the use of human milk; AAP 2019 — Early nutritional interventions and atopic disease; '
+    + 'AAP 2017 — Fruit juice in infants, children, and adolescents; AAP — Healthy Beverage Quick Reference Guide; AAAAI/ACAAI/CSACI 2021 — Primary prevention of food allergy through nutrition; '
+    + 'NIAID 2017 — Addendum guidelines for the prevention of peanut allergy; Dietary Guidelines for Americans 2025–2030; CDC — When, what, and how to introduce solid foods; NICE NG75 — Faltering growth; растежни стандарти на СЗО.',
   { size: 7.4, color: C.ink2, after: 8 });
   noteBox(ctx, 'Планът е ориентировъчен и е изготвен от лекаря по данните в досието. При недоносено дете, заболяване, алергия или слабо наддаване храненето се определя индивидуално.', { bg: C.amberSoft, bar: C.amber, size: 8 });
   flow.need(50);
