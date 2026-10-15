@@ -7,10 +7,13 @@ import { C, Flow, bullets, card, checkbox, chip, chipRow, chipWidth, columns, dr
 import { formatAge, formatDate, today } from '../dates.js';
 import { GOALS, PACES, weekChunks } from '../nutrition.js';
 import { INTENSITY, TRAINING_LEVELS } from '../training.js';
+import { ui, withPlanLang } from '../i18n/plan-en.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 const thousands = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+/* Датата и текстовете около режима — на езика на режима (версия 4.11). */
+const fd = (iso) => ui(formatDate(iso));
 
 const MACRO = { protein: C.teal, carbs: '#d39b12', fat: C.rose };
 const MEAL_COLOR = { breakfast: C.amber, snack: C.teal, lunch: C.brand, dinner: C.sky };
@@ -41,12 +44,16 @@ const SECTION = {
  * practice — { name, phone }; doctor — { name }; fonts — { regular, semibold, bold, symbols } (байтове).
  * only: 'shopping' — само списъците за пазаруване.
  */
-export async function nutritionReport({ plan, person = {}, practice = {}, doctor = null, fonts, version = '', date = today(), only = null }) {
+export async function nutritionReport(args) {
+  return withPlanLang(args.plan, () => report(args));
+}
+
+function report({ plan, person = {}, practice = {}, doctor = null, fonts, version = '', date = today(), only = null }) {
   const training = only ? null : plan.training;
-  const title = only === 'shopping' ? 'Списък за пазаруване' : training ? 'Хранене и тренировки' : 'Личен хранителен режим';
+  const title = only === 'shopping' ? ui('Списък за пазаруване') : training ? ui('Хранене и тренировки') : ui('Личен хранителен режим');
   const doc = new PDFDocument({
     title: `${title} — ${person.name || ''}`.trim(), author: doctor?.name || practice.name || 'DocUp', subject: title,
-    creator: 'DocUp', producer: `DocUp ${version}`.trim(), lang: 'bg-BG',
+    creator: 'DocUp', producer: `DocUp ${version}`.trim(), lang: plan.lang === 'en' ? 'en-GB' : 'bg-BG',
   });
   doc.addFont('symbols', fonts.symbols).setFallback('symbols');
   doc.addFont('regular', fonts.regular).addFont('semibold', fonts.semibold).addFont('bold', fonts.bold);
@@ -64,7 +71,7 @@ export async function nutritionReport({ plan, person = {}, practice = {}, doctor
   if (only === 'shopping') {
     flow.newPage({ first: true });
     cover(ctx, { compact: true });
-    shoppingWeeks(plan).forEach((sh, i, all) => shopping(ctx, sh, all.length > 1 ? `Пазаруване за седмица ${sh.week}` : 'Списък за пазаруване', i > 0));
+    shoppingWeeks(plan).forEach((sh, i, all) => shopping(ctx, sh, all.length > 1 ? ui(`Пазаруване за седмица ${sh.week}`) : ui('Списък за пазаруване'), i > 0));
   } else {
     flow.newPage({ first: true });
     cover(ctx);
@@ -125,19 +132,19 @@ function personFacts(ctx) {
   const { plan, person, date } = ctx;
   const i = plan.input || {};
   const facts = [];
-  if (person.birthDate) facts.push(formatAge(person.birthDate, date));
-  else if (person.age || i.age) facts.push(`${person.age || i.age} г.`);
-  if (i.weight) facts.push(`${dec(i.weight)} кг`);
-  if (i.height) facts.push(`${i.height} см`);
-  if (plan.bmi) facts.push(`ИТМ ${dec(plan.bmi)}`);
+  if (person.birthDate) facts.push(ui(formatAge(person.birthDate, date)));
+  else if (person.age || i.age) facts.push(ui(`${person.age || i.age} г.`));
+  if (i.weight) facts.push(ui(`${dec(i.weight)} кг`));
+  if (i.height) facts.push(ui(`${i.height} см`));
+  if (plan.bmi) facts.push(ui(`ИТМ ${dec(plan.bmi)}`));
   return facts;
 }
 
 function menuKind(plan) {
-  if (!plan.week) return 'Примерно меню за ден';
+  if (!plan.week) return ui('Примерно меню за ден');
   const a = plan.week[0].date;
   const b = plan.week[plan.week.length - 1].date;
-  return `${plan.week.length > 7 ? 'Меню за месец' : `Меню за ${plan.week.length} дни`} · ${formatDate(a)} – ${formatDate(b)}`;
+  return `${plan.week.length > 7 ? ui('Меню за месец') : ui(`Меню за ${plan.week.length} дни`)} · ${fd(a)} – ${fd(b)}`;
 }
 
 /* ----------------------------------- корица ----------------------------------- */
@@ -150,14 +157,14 @@ function cover(ctx, { compact = false } = {}) {
   page.circle(page.w - 70, 18, 86, { fill: C.white, opacity: 0.07 });
   page.circle(page.w - 190, H - 6, 40, { fill: C.white, opacity: 0.06 });
   page.circle(64, H + 6, 26, { fill: C.white, opacity: 0.05 });
-  const kicker = compact ? 'ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ' : plan.training ? 'ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ' : 'ЛИЧЕН ПЛАН · ХРАНЕНЕ';
+  const kicker = compact ? ui('ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ') : plan.training ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ') : ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ');
   page.text(kicker, 40, 40, { font: 'semibold', size: 7.5, color: C.white, opacity: 0.85, spacing: 1.1 });
   page.text(title, 40, compact ? 70 : 76, { font: 'bold', size: compact ? 22 : 27, color: C.white });
   page.text(person.name || '', 40, compact ? 92 : 104, { font: 'semibold', size: 14, color: C.white });
-  if (!compact) page.text([...personFacts(ctx), `изготвен ${formatDate(date)}`].join('  ·  '), 40, 124, { size: 9, color: C.white, opacity: 0.92 });
+  if (!compact) page.text([...personFacts(ctx), ui(`изготвен ${formatDate(date)}`)].join('  ·  '), 40, 124, { size: 9, color: C.white, opacity: 0.92 });
   page.text(menuKind(plan), 40, compact ? 108 : 142, { size: 8.5, color: C.white, opacity: 0.85 });
   let ry = 40;
-  for (const [text, font, size] of [[practice.name, 'semibold', 9], [doctor?.name, 'regular', 8.5], [practice.phone ? `тел. ${practice.phone}` : '', 'regular', 8]]) {
+  for (const [text, font, size] of [[practice.name, 'semibold', 9], [doctor?.name, 'regular', 8.5], [practice.phone ? ui(`тел. ${practice.phone}`) : '', 'regular', 8]]) {
     if (!text) continue;
     page.text(text, page.w - 40, ry, { font, size, color: C.white, align: 'right', opacity: 0.95 });
     ry += size + 5;
@@ -170,11 +177,11 @@ function cover(ctx, { compact = false } = {}) {
 function projectionRuns(plan) {
   const pr = plan.projection;
   const goal = plan.input?.goal;
-  const head = { text: 'Цел: ', font: 'bold', color: C.brandDark };
-  if (!goal || goal === 'maintain') return [head, { text: 'поддържане на теглото.' }];
-  if (!pr) return [head, { text: `${GOALS[goal] || ''}.` }];
-  const parts = [`${GOALS[goal]}, ${PACES[plan.input.pace]?.label || ''} темпо`, `около ${pr.weeklyKg > 0 ? '+' : '−'}${dec(Math.abs(pr.weeklyKg))} кг седмично`];
-  if (pr.targetWeight) parts.push(`до ${dec(pr.targetWeight)} кг за около ${pr.weeks} седмици, към ${formatDate(pr.eta)}`);
+  const head = { text: ui('Цел: '), font: 'bold', color: C.brandDark };
+  if (!goal || goal === 'maintain') return [head, { text: ui('поддържане на теглото.') }];
+  if (!pr) return [head, { text: ui(`${GOALS[goal] || ''}.`) }];
+  const parts = [ui(`${GOALS[goal]}, ${PACES[plan.input.pace]?.label || ''} темпо`), ui(`около ${pr.weeklyKg > 0 ? '+' : '−'}${dec(Math.abs(pr.weeklyKg))} кг седмично`)];
+  if (pr.targetWeight) parts.push(ui(`до ${dec(pr.targetWeight)} кг за около ${pr.weeks} седмици, към ${formatDate(pr.eta)}`));
   return [head, { text: parts.join(' · ') + '.' }, ...(pr.note ? [{ text: ' ' + pr.note, color: C.ink2 }] : [])];
 }
 
@@ -192,7 +199,7 @@ function targets(ctx) {
   noteBox(ctx, projectionRuns(plan), { bg: C.brandSoft, bar: C.brand });
   for (const w of plan.warnings || []) noteBox(ctx, [{ text: '! ', font: 'bold', color: C.red }, { text: w }], { bg: C.redSoft, bar: C.red });
   flow.space(4);
-  heading(ctx, 'goals', 'Дневни цели', 'Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.');
+  heading(ctx, 'goals', ui('Дневни цели'), ui('Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.'));
 
   const H = 168;
   const leftW = 206;
@@ -202,18 +209,18 @@ function targets(ctx) {
   const ck = t.carbs * 4;
   const fk = t.fat * 9;
   const sum = pk + ck + fk || 1;
-  const share = [['Белтък', pk / sum, MACRO.protein], ['Въглехидрати', ck / sum, MACRO.carbs], ['Мазнини', fk / sum, MACRO.fat]];
+  const share = [[ui('Белтък'), pk / sum, MACRO.protein], [ui('Въглехидрати'), ck / sum, MACRO.carbs], [ui('Мазнини'), fk / sum, MACRO.fat]];
   const tiles = [
-    ['Белтък', t.protein, 'г', `${dec(t.proteinPerKg)} г/кг${t.proteinMax ? ` · до ${t.proteinMax} г` : ''}`, MACRO.protein],
-    ['Въглехидрати', t.carbs, 'г', `${t.carbPct}% · захари <${t.sugarMax} г`, MACRO.carbs],
-    ['Мазнини', t.fat, 'г', `${t.fatPct}% · наситени <${t.satFat} г`, MACRO.fat],
-    ['Фибри', t.fiber, 'г', 'поне толкова', C.green],
-    ['Сол', `<${dec(t.salt)}`, 'г', 'заедно с хляба', C.slate],
-    ['Течности', dec(Math.round(t.fluids / 100) / 10), 'л', 'вода, чай, супи', C.sky],
+    [ui('Белтък'), t.protein, ui('г'), ui(`${dec(t.proteinPerKg)} г/кг`) + (t.proteinMax ? ui(` · до ${t.proteinMax} г`) : ''), MACRO.protein],
+    [ui('Въглехидрати'), t.carbs, ui('г'), ui(`${t.carbPct}% · захари <${t.sugarMax} г`), MACRO.carbs],
+    [ui('Мазнини'), t.fat, ui('г'), ui(`${t.fatPct}% · наситени <${t.satFat} г`), MACRO.fat],
+    [ui('Фибри'), t.fiber, ui('г'), ui('поне толкова'), C.green],
+    [ui('Сол'), ui(`<${dec(t.salt)}`), ui('г'), ui('заедно с хляба'), C.slate],
+    [ui('Течности'), ui(dec(Math.round(t.fluids / 100) / 10)), ui('л'), ui('вода, чай, супи'), C.sky],
   ];
-  if (t.iron) tiles.push(['Желязо', t.iron, 'мг', `в менюто ≈${Math.round(m.fe)} мг`, C.rose]);
-  if (t.calcium) tiles.push(['Калций', t.calcium, 'мг', `в менюто ≈${Math.round(m.ca / 10) * 10} мг`, C.teal]);
-  tiles.push(['Хранения', plan.input?.mealsPerDay || (plan.week?.[0]?.meals.length ?? plan.meals?.length ?? ''), 'на ден', plan.pattern?.label || '', C.brand]);
+  if (t.iron) tiles.push([ui('Желязо'), t.iron, ui('мг'), ui(`в менюто ≈${Math.round(m.fe)} мг`), C.rose]);
+  if (t.calcium) tiles.push([ui('Калций'), t.calcium, ui('мг'), ui(`в менюто ≈${Math.round(m.ca / 10) * 10} мг`), C.teal]);
+  tiles.push([ui('Хранения'), plan.input?.mealsPerDay || (plan.week?.[0]?.meals.length ?? plan.meals?.length ?? ''), ui('на ден'), plan.pattern?.label || '', C.brand]);
   const shown = tiles.slice(0, 9);
 
   flow.add({
@@ -222,16 +229,16 @@ function targets(ctx) {
       // Енергия с кръгова диаграма на макронутриентите.
       page.rect(x, y, leftW, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 10 });
       page.gradient(x, y, leftW, 6, C.brandDark, C.teal, { radius: [10, 10, 0, 0] });
-      page.text('ЕНЕРГИЯ ДНЕВНО', x + 14, y + 26, { font: 'semibold', size: 7.5, color: C.ink2, spacing: 0.6 });
+      page.text(ui('ЕНЕРГИЯ ДНЕВНО'), x + 14, y + 26, { font: 'semibold', size: 7.5, color: C.ink2, spacing: 0.6 });
       const big = thousands(t.kcal);
       const bw = page.text(big, x + 14, y + 56, { font: 'bold', size: 28, color: C.brandDark });
       page.text('kcal', x + 18 + bw, y + 56, { font: 'semibold', size: 10, color: C.ink2 });
-      if (plan.energy) page.text(`покой ${thousands(plan.energy.bmr)} · разход ${thousands(plan.energy.tdee)}`, x + 14, y + 71, { size: 7.2, color: C.ink3 });
+      if (plan.energy) page.text(ui(`покой ${thousands(plan.energy.bmr)} · разход ${thousands(plan.energy.tdee)}`), x + 14, y + 71, { size: 7.2, color: C.ink3 });
       const cx = x + 52;
       const cy = y + 120;
       let a = 0;
       for (const [, v, color] of share) { page.ring(cx, cy, 34, 21, a, a + v * 360, { fill: color }); a += v * 360; }
-      page.text('Б · В · М', cx, cy + 3, { font: 'semibold', size: 6.5, color: C.ink2, align: 'center' });
+      page.text(ui('Б · В · М'), cx, cy + 3, { font: 'semibold', size: 6.5, color: C.ink2, align: 'center' });
       share.forEach(([label, v, color], i) => {
         const ly = y + 98 + i * 16;
         page.rect(x + 96, ly - 6.5, 8, 8, { fill: color, radius: 2 });
@@ -264,18 +271,18 @@ function targets(ctx) {
 
 function guidance(ctx) {
   const { doc, flow, plan } = ctx;
-  heading(ctx, 'guide', 'Как да се храните');
+  heading(ctx, 'guide', ui('Как да се храните'));
   if (plan.pattern) {
     const about = textBlock(doc, plan.pattern.about, flow.width, { size: 8.5, color: C.ink2 });
     flow.add({ h: 18 + about.h, draw: (page, x, y) => { chip(page, doc, plan.pattern.label, x, y, { size: 8, fg: C.green, bg: C.greenSoft }); about.draw(page, x, y + 18); } }, { gap: 8 });
   }
   const dx = plan.diagnoses || [];
   if (dx.length) {
-    subheading(ctx, 'Заболявания, взети предвид');
+    subheading(ctx, ui('Заболявания, взети предвид'));
     for (const c of dx) {
       const codeW = chipWidth(doc, c.code, { size: 7.5 }) + 6;
       const body = textBlock(doc, [{ text: c.name || '', font: 'semibold' },
-        { text: c.label ? ` — ${c.effects.join(', ')}${c.src ? ` (${c.src})` : ''}` : ' — без специфични хранителни правила; режимът е общ', color: C.ink2 }], flow.width - codeW, { size: 8.5 });
+        { text: c.label ? ` — ${c.effects.join(', ')}${c.src ? ` (${c.src})` : ''}` : ui(' — без специфични хранителни правила; режимът е общ'), color: C.ink2 }], flow.width - codeW, { size: 8.5 });
       flow.add({ h: Math.max(14, body.h), draw: (page, x, y) => { chip(page, doc, c.code, x, y, { size: 7.5, fg: C.brandDark, bg: C.brandSoft }); body.draw(page, x + codeW, y + 1); } }, { gap: 4 });
     }
     flow.space(6);
@@ -295,19 +302,19 @@ function guidance(ctx) {
       }),
     };
     flow.add(columns([
-      card(doc, 'Порции за деня', cw, () => portions, { color: C.green, soft: C.greenSoft }),
-      card(doc, 'Седмичен ритъм', cw, (w) => bullets(doc, plan.weekly || [], w, { color: C.green, size: 8.3 }), { color: C.green, soft: C.greenSoft }),
+      card(doc, ui('Порции за деня'), cw, () => portions, { color: C.green, soft: C.greenSoft }),
+      card(doc, ui('Седмичен ритъм'), cw, (w) => bullets(doc, plan.weekly || [], w, { color: C.green, size: 8.3 }), { color: C.green, soft: C.greenSoft }),
     ], flow.width), { gap: 10 });
   }
-  const three = [['Предпочитайте', plan.prefer, C.green, C.greenSoft, '✓'], ['Ограничете', plan.limit, C.amber, C.amberSoft, '!'], ['Избягвайте', plan.avoid, C.red, C.redSoft, '✗']];
+  const three = [[ui('Предпочитайте'), plan.prefer, C.green, C.greenSoft, '✓'], [ui('Ограничете'), plan.limit, C.amber, C.amberSoft, '!'], [ui('Избягвайте'), plan.avoid, C.red, C.redSoft, '✗']];
   listCards(ctx, three);
   if (plan.medNotes?.length) {
-    subheading(ctx, 'Лекарства и храна', C.sky);
+    subheading(ctx, ui('Лекарства и храна'), C.sky);
     flow.add(bullets(doc, plan.medNotes.map(n => [{ text: `${n.med}: `, font: 'semibold' }, { text: n.text }]), flow.width, { color: C.sky }), { gap: 6 });
   }
-  if (plan.habits) listCards(ctx, [['Навици', plan.habits, C.brand, C.brandSoft], ['Вкус без много сол', plan.flavor, C.teal, C.tealSoft], ['Контрол на теглото', plan.monitoring, C.sky, C.skySoft]]);
+  if (plan.habits) listCards(ctx, [[ui('Навици'), plan.habits, C.brand, C.brandSoft], [ui('Вкус без много сол'), plan.flavor, C.teal, C.tealSoft], [ui('Контрол на теглото'), plan.monitoring, C.sky, C.skySoft]]);
   if (plan.notes?.length) {
-    subheading(ctx, 'Бележки');
+    subheading(ctx, ui('Бележки'));
     flow.add(bullets(doc, plan.notes, flow.width, { color: C.brand }), { gap: 6 });
   }
 }
@@ -330,12 +337,12 @@ function listCards(ctx, groups) {
 function cycleBlock(ctx) {
   const { doc, flow, plan } = ctx;
   const c = plan.cycle;
-  heading(ctx, 'cycle', 'Цикъл и хранене');
+  heading(ctx, 'cycle', ui('Цикъл и хранене'));
   if (!c.applied) { flow.text(c.reason, { color: C.ink2 }); return; }
   const s = c.stats;
-  flow.text([{ text: `Последна менструация ${formatDate(s.lastStart)} · цикъл ${s.length} дни · менструация ${s.bleed} дни`
-    + (s.nextStart ? ` · следваща около ${formatDate(s.nextStart)}` : '') + '. ' },
-  { text: `В лутеалната фаза +${c.kcalUp} kcal, в останалите дни −${c.kcalDown} kcal — средно за цикъла същата енергия.`, color: C.ink2 }], { size: 8.5 });
+  flow.text([{ text: ui(`Последна менструация ${formatDate(s.lastStart)} · цикъл ${s.length} дни · менструация ${s.bleed} дни`)
+    + (s.nextStart ? ui(` · следваща около ${formatDate(s.nextStart)}`) : '') + '. ' },
+  { text: ui(`В лутеалната фаза +${c.kcalUp} kcal, в останалите дни −${c.kcalDown} kcal — средно за цикъла същата енергия.`), color: C.ink2 }], { size: 8.5 });
   const seen = [...new Set((plan.week || [{ cycle: c.days[0] }]).map(d => d.cycle?.phase).filter(Boolean))];
   const phases = seen.map(ph => {
     const d = (plan.week || []).find(x => x.cycle?.phase === ph)?.cycle || c.days[0];
@@ -351,20 +358,20 @@ function cycleBlock(ctx) {
 function trainingSection(ctx, tp) {
   const { doc, flow } = ctx;
   const w1 = tp.weeks[1] || tp.weeks[0];
-  heading(ctx, 'training', 'Тренировъчен план за 4 седмици',
-    `${tp.input.daysPerWeek} тренировки седмично по ${tp.input.minutes} мин · ${(TRAINING_LEVELS[tp.input.level] || '').split(' — ')[0]} · цели по СЗО 2020, интензивност по Compendium 2024, силови по ACSM.`,
+  heading(ctx, 'training', ui('Тренировъчен план за 4 седмици'),
+    ui(`${tp.input.daysPerWeek} тренировки седмично по ${tp.input.minutes} мин · ${(TRAINING_LEVELS[tp.input.level] || '').split(' — ')[0]} · цели по СЗО 2020, интензивност по Compendium 2024, силови по ACSM.`),
     { newPage: true });
   for (const w of tp.warnings) noteBox(ctx, [{ text: '! ', font: 'bold', color: C.red }, { text: w }], { bg: C.redSoft, bar: C.red, size: 8.4 });
 
   // Плочки.
   const tiles = [
-    ['Аеробни', w1.aerobic, 'мин/седм.', `цел ${tp.targets.aerobic}${tp.targets.aerobic < tp.targets.aerobicMax ? `–${tp.targets.aerobicMax}` : ''} (СЗО)`, C.coral],
-    ['Силови', w1.strength, 'дни/седм.', `цел поне ${tp.targets.strengthDays}`, C.brand],
-    ['Разход', thousands(w1.kcal), 'kcal/седм.', 'над покоя', C.teal],
-    tp.hr ? ['Пулс умерено', `${tp.hr.moderate[0]}–${tp.hr.moderate[1]}`, '/мин', `интензивно ${tp.hr.vigorous[0]}–${tp.hr.vigorous[1]}`, C.rose]
-      : ['Пулс', 'по RPE', '', 'бета-блокер: по усещането', C.rose],
+    [ui('Аеробни'), w1.aerobic, ui('мин/седм.'), ui(`цел ${tp.targets.aerobic}${tp.targets.aerobic < tp.targets.aerobicMax ? `–${tp.targets.aerobicMax}` : ''} (СЗО)`), C.coral],
+    [ui('Силови'), w1.strength, ui('дни/седм.'), ui(`цел поне ${tp.targets.strengthDays}`), C.brand],
+    [ui('Разход'), thousands(w1.kcal), ui('kcal/седм.'), ui('над покоя'), C.teal],
+    tp.hr ? [ui('Пулс умерено'), `${tp.hr.moderate[0]}–${tp.hr.moderate[1]}`, ui('/мин'), ui(`интензивно ${tp.hr.vigorous[0]}–${tp.hr.vigorous[1]}`), C.rose]
+      : [ui('Пулс'), ui('по RPE'), '', ui('бета-блокер: по усещането'), C.rose],
   ];
-  if (tp.targets.balanceDays) tiles.push(['Баланс', tp.targets.balanceDays === 7 ? 'всеки ден' : tp.targets.balanceDays, tp.targets.balanceDays === 7 ? '' : 'дни/седм.', 'СЗО', C.green]);
+  if (tp.targets.balanceDays) tiles.push([ui('Баланс'), tp.targets.balanceDays === 7 ? ui('всеки ден') : tp.targets.balanceDays, tp.targets.balanceDays === 7 ? '' : ui('дни/седм.'), ui('СЗО'), C.green]);
   const tw = (flow.width - 8 * (tiles.length - 1)) / tiles.length;
   flow.add({
     h: 54,
@@ -385,7 +392,7 @@ function trainingSection(ctx, tp) {
 
   // Интензивност: легенда в три колони.
   const lw = (flow.width - 2 * 12) / 3;
-  const legend = Object.entries(INTENSITY).map(([k, it]) => ({ k, b: textBlock(doc, [{ text: `${cap(it.label)}: `, font: 'semibold', color: INTENSITY_COLOR[k][0] }, { text: `RPE ${it.rpe} от 10, ${it.talk}` }], lw - 14, { size: 7, color: C.ink2 }) }));
+  const legend = Object.entries(INTENSITY).map(([k, it]) => ({ k, b: textBlock(doc, [{ text: `${cap(ui(it.label))}: `, font: 'semibold', color: INTENSITY_COLOR[k][0] }, { text: ui(`RPE ${it.rpe} от 10, ${it.talk}`) }], lw - 14, { size: 7, color: C.ink2 }) }));
   flow.add({
     h: Math.max(...legend.map(l => l.b.h)),
     draw: (page, x, y) => legend.forEach(({ k, b }, i) => {
@@ -394,8 +401,8 @@ function trainingSection(ctx, tp) {
     }),
   }, { gap: 10 });
 
-  listCards(ctx, [['Кога да тренирате', tp.timeAdvice, C.coral, C.coralSoft], ['Цикъл и тренировки', tp.cycle, C.rose, C.roseSoft]]);
-  if (tp.notes?.length) listCards(ctx, [['Бележки', tp.notes, C.brand, C.brandSoft]]);
+  listCards(ctx, [[ui('Кога да тренирате'), tp.timeAdvice, C.coral, C.coralSoft], [ui('Цикъл и тренировки'), tp.cycle, C.rose, C.roseSoft]]);
+  if (tp.notes?.length) listCards(ctx, [[ui('Бележки'), tp.notes, C.brand, C.brandSoft]]);
   trainingDetails(ctx, tp);
 }
 
@@ -420,7 +427,7 @@ function trainingCharts(ctx, tp) {
     draw: (page, x, y) => {
       // Стълбове по седмици.
       page.rect(x, y, chartW, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 10 });
-      page.text('Минути по седмици', x + 12, y + 17, { font: 'bold', size: 9, color: C.ink });
+      page.text(ui('Минути по седмици'), x + 12, y + 17, { font: 'bold', size: 9, color: C.ink });
       const maxV = Math.max(tp.targets.aerobic, ...weeks.map(w => w.mins.light + w.mins.moderate + w.mins.vigorous)) * 1.12;
       const step = maxV > 400 ? 200 : maxV > 200 ? 100 : 50;
       const top = Math.ceil(maxV / step) * step;
@@ -445,13 +452,13 @@ function trainingCharts(ctx, tp) {
           v0 += v;
         }
         page.text(String(v0), cx, Y(v0) - 4, { font: 'bold', size: 7, color: C.ink, align: 'center' });
-        page.text(`Седм. ${w.week}`, cx, py + ph + 12, { size: 7, color: C.ink2, align: 'center' });
-        page.text(`силови ${w.strength}`, cx, py + ph + 21, { size: 6.2, color: C.ink3, align: 'center' });
+        page.text(ui(`Седм. ${w.week}`), cx, py + ph + 12, { size: 7, color: C.ink2, align: 'center' });
+        page.text(ui(`силови ${w.strength}`), cx, py + ph + 21, { size: 6.2, color: C.ink3, align: 'center' });
       });
       // Целта на СЗО за аеробна активност.
       const ty = Y(tp.targets.aerobic);
       page.line(px, ty, px + pw, ty, { color: C.brand, width: 1, dash: [3, 2] });
-      const goal = `цел по СЗО: ${tp.targets.aerobic} мин аеробни`;
+      const goal = ui(`цел по СЗО: ${tp.targets.aerobic} мин аеробни`);
       page.text(goal, x + chartW - 12, y + 17, { font: 'semibold', size: 6.8, color: C.brand, align: 'right' });
       const gx = x + chartW - 16 - doc.width(goal, 'semibold', 6.8);
       page.line(gx - 16, y + 14.5, gx - 2, y + 14.5, { color: C.brand, width: 1, dash: [3, 2] });
@@ -459,18 +466,18 @@ function trainingCharts(ctx, tp) {
       // Видове тренировки.
       const dx = x + chartW + gap;
       page.rect(dx, y, donutW, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 10 });
-      page.text('Видове тренировки', dx + 12, y + 17, { font: 'bold', size: 9, color: C.ink });
+      page.text(ui('Видове тренировки'), dx + 12, y + 17, { font: 'bold', size: 9, color: C.ink });
       const cx = dx + 46;
       const cy = y + 72;
       let a = 0;
       acts.forEach(([act, m], i) => { page.ring(cx, cy, 30, 18, a, a + (m / total) * 360, { fill: PALETTE[i % PALETTE.length] }); a += (m / total) * 360; });
       page.text(`${thousands(total)}`, cx, cy + 1, { font: 'bold', size: 8, color: C.ink, align: 'center' });
-      page.text('мин', cx, cy + 9, { size: 6, color: C.ink3, align: 'center' });
+      page.text(ui('мин'), cx, cy + 9, { size: 6, color: C.ink3, align: 'center' });
       acts.slice(0, 6).forEach(([act, m], i) => {
         const ly = y + 116 + (i % 3) * 14;
         const lx = dx + 12 + Math.floor(i / 3) * ((donutW - 20) / 2);
         page.rect(lx, ly - 6.5, 8, 8, { fill: PALETTE[i % PALETTE.length], radius: 2 });
-        page.text(`${cap(ACT_SHORT[act] || act)} ${Math.round((m / total) * 100)}%`, lx + 11, ly, { size: 7, color: C.ink });
+        page.text(`${cap(ui(ACT_SHORT[act] || act))} ${Math.round((m / total) * 100)}%`, lx + 11, ly, { size: 7, color: C.ink });
       });
     },
   }, { gap: 12 });
@@ -479,7 +486,7 @@ function trainingCharts(ctx, tp) {
 /** Календар: 4 седмици × 7 дни с цветни етикети по интензивност. */
 function trainingCalendar(ctx, tp) {
   const { doc, flow } = ctx;
-  subheading(ctx, 'Календар на тренировките', C.coral);
+  subheading(ctx, ui('Календар на тренировките'), C.coral);
   const gap = 4;
   const cw = (flow.width - gap * 6) / 7;
   const chipH = 13;
@@ -494,20 +501,20 @@ function trainingCalendar(ctx, tp) {
         const rest = !d.sessions.length && !d.addOns.length;
         page.rect(cx, y, cw, H, { fill: rest ? C.bg : C.white, stroke: C.line, lineWidth: 0.6, radius: 6 });
         if (d.cycle) page.rect(cx, y + H - 3, cw, 3, { fill: PHASE[d.cycle.phase][0], radius: [0, 0, 6, 6] });
-        page.text(`${d.label.slice(0, 2)} ${formatDate(d.date).slice(0, 5)}`, cx + 5, y + 11, { font: 'semibold', size: 6.6, color: C.ink2 });
+        page.text(`${d.label.slice(0, ctx.plan.lang === 'en' ? 3 : 2)} ${formatDate(d.date).slice(0, 5)}`, cx + 5, y + 11, { font: 'semibold', size: 6.6, color: C.ink2 });
         let yy = y + 16;
-        if (rest) page.text('почивка', cx + cw / 2, y + H / 2 + 6, { size: 6.6, color: C.ink3, align: 'center' });
+        if (rest) page.text(ui('почивка'), cx + cw / 2, y + H / 2 + 6, { size: 6.6, color: C.ink3, align: 'center' });
         for (const s of d.sessions) {
           const [fg, bg] = INTENSITY_COLOR[s.intensity] || INTENSITY_COLOR.moderate;
           page.rect(cx + 3, yy, cw - 6, chipH, { fill: bg, radius: 4 });
           page.rect(cx + 3, yy, 3, chipH, { fill: fg, radius: [4, 0, 0, 4] });
-          const label = `${ACT_SHORT[s.activity] || s.activity} ${s.minutes}′`;
+          const label = `${ui(ACT_SHORT[s.activity] || s.activity)} ${s.minutes}′`;
           const ln = wrap(doc, label, cw - 14, 6.5, { font: 'semibold', color: fg })[0];
           if (ln) drawLines(page, [ln], cx + 9, yy + 2.2, 6.5);
           yy += chipH + 3;
         }
         if (d.addOns.length) {
-          const label = d.addOns.map(a => (a.kind === 'balance' ? 'баланс' : a.kind === 'strength' ? 'сила' : 'добавка')).join(', ');
+          const label = d.addOns.map(a => ui(a.kind === 'balance' ? 'баланс' : a.kind === 'strength' ? 'сила' : 'добавка')).join(', ');
           page.text(`+ ${label}`, cx + 6, yy + 9, { size: 6.2, color: C.ink2 });
         }
       }),
@@ -520,15 +527,15 @@ function trainingCalendar(ctx, tp) {
 function trainingDetails(ctx, tp) {
   const { doc, flow } = ctx;
   tp.weeks.forEach((w, wi) => {
-    subheading(ctx, `Седмица ${w.week} · ${formatDate(w.from)} – ${formatDate(w.to)}`, C.coral, { bookmark: false });
-    flow.text(`аеробни ${w.aerobic} мин · силови ${w.strength} · общо ${w.minutes} мин · ≈${thousands(w.kcal)} kcal над покоя`, { size: 7.8, color: C.ink2, after: 6 });
+    subheading(ctx, ui(`Седмица ${w.week}`) + ` · ${fd(w.from)} – ${fd(w.to)}`, C.coral, { bookmark: false });
+    flow.text(ui(`аеробни ${w.aerobic} мин · силови ${w.strength} · общо ${w.minutes} мин · ≈${thousands(w.kcal)} kcal над покоя`), { size: 7.8, color: C.ink2, after: 6 });
     for (const d of tp.days.filter(x => x.week === wi)) {
       if (!d.sessions.length && !d.addOns.length) continue;
       const blocks = [];
       for (const s of d.sessions) {
         const it = INTENSITY[s.intensity];
-        blocks.push(textBlock(doc, [{ text: `${cap(s.label)} · ${s.minutes} мин · ${it?.label || ''}`, font: 'semibold', color: (INTENSITY_COLOR[s.intensity] || INTENSITY_COLOR.moderate)[0] },
-          { text: `${s.time ? ` · ${s.time}` : ''}${s.long ? ' · дълга' : ''}${s.extra ? ' · ежедневно движение' : ''}`, color: C.ink2 }], flow.width - 120, { size: 8.2 }));
+        blocks.push(textBlock(doc, [{ text: `${cap(s.label)} · ` + ui(`${s.minutes} мин`) + ` · ${ui(it?.label || '')}`, font: 'semibold', color: (INTENSITY_COLOR[s.intensity] || INTENSITY_COLOR.moderate)[0] },
+          { text: `${s.time ? ` · ${s.time}` : ''}${s.long ? ui(' · дълга') : ''}${s.extra ? ui(' · ежедневно движение') : ''}`, color: C.ink2 }], flow.width - 120, { size: 8.2 }));
         for (const b of s.blocks) blocks.push(textBlock(doc, [{ text: `${b.name}: `, font: 'semibold' }, { text: b.text, color: C.ink }], flow.width - 120, { size: 7.8 }));
       }
       for (const a of d.addOns) blocks.push(textBlock(doc, [{ text: '+ ', font: 'bold', color: C.brand }, { text: a.text }], flow.width - 120, { size: 7.8, color: C.ink2 }));
@@ -541,8 +548,8 @@ function trainingDetails(ctx, tp) {
           const main = d.sessions[0]?.intensity || 'light';
           page.rect(x, y, 4, h, { fill: (INTENSITY_COLOR[main] || INTENSITY_COLOR.light)[0], radius: [6, 0, 0, 6] });
           page.text(d.label, x + 12, y + 14, { font: 'bold', size: 8.6, color: C.ink });
-          page.text(formatDate(d.date), x + 12, y + 25, { size: 7.2, color: C.ink3 });
-          if (d.cycle) chip(page, doc, `ден ${d.cycle.day}`, x + 12, y + 30, { size: 6.4, fg: PHASE[d.cycle.phase][0], bg: PHASE[d.cycle.phase][1], padX: 4 });
+          page.text(fd(d.date), x + 12, y + 25, { size: 7.2, color: C.ink3 });
+          if (d.cycle) chip(page, doc, ui(`ден ${d.cycle.day}`), x + 12, y + 30, { size: 6.4, fg: PHASE[d.cycle.phase][0], bg: PHASE[d.cycle.phase][1], padX: 4 });
           let yy = y + 6;
           for (const b of blocks) { b.draw(page, x + 108, yy); yy += b.h + 2; }
         },
@@ -557,29 +564,29 @@ function trainingDetails(ctx, tp) {
 function menu(ctx) {
   const { flow, plan } = ctx;
   if (!plan.week) {
-    heading(ctx, 'menu', 'Примерно меню за деня', `Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`, { newPage: true });
+    heading(ctx, 'menu', ui('Примерно меню за деня'), ui(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`), { newPage: true });
     for (const m of plan.meals) {
       subheading(ctx, `${m.label}${m.time ? ` · ${m.time}` : ''} · ≈${m.kcal} kcal`, MEAL_COLOR[m.meal] || C.brand);
-      m.options.forEach((o, i) => recipe(ctx, o, { meal: m.meal, label: `вариант ${i + 1}` }));
+      m.options.forEach((o, i) => recipe(ctx, o, { meal: m.meal, label: ui(`вариант ${i + 1}`) }));
     }
-    if (plan.shopping) shopping(ctx, plan.shopping, 'Списък за пазаруване', true);
+    if (plan.shopping) shopping(ctx, plan.shopping, ui('Списък за пазаруване'), true);
     return;
   }
   const month = plan.week.length > 7;
   const weeks = month ? weekChunks(plan.week) : [plan.week];
-  heading(ctx, 'menu', month ? 'Меню за месеца' : 'Меню за седмицата',
-    'Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.',
+  heading(ctx, 'menu', month ? ui('Меню за месеца') : ui('Меню за седмицата'),
+    ui('Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'),
     { newPage: true });
   weeks.forEach((days, w) => {
     if (month) {
-      flow.section = `Меню · седмица ${w + 1}`;
+      flow.section = ui(`Меню · седмица ${w + 1}`);
       if (w) flow.newPage();
-      subheading(ctx, `Седмица ${w + 1} · ${formatDate(days[0].date)} – ${formatDate(days[days.length - 1].date)}`, C.teal, { bookmark: true });
+      subheading(ctx, ui(`Седмица ${w + 1}`) + ` · ${fd(days[0].date)} – ${fd(days[days.length - 1].date)}`, C.teal, { bookmark: true });
     }
     overview(ctx, days);
     for (const d of days) dayCard(ctx, d);
     const sh = month ? plan.shoppingWeeks?.[w] : plan.shopping;
-    if (sh) shopping(ctx, { week: w + 1, ...sh }, month ? `Пазаруване за седмица ${w + 1}` : 'Списък за пазаруване', true);
+    if (sh) shopping(ctx, { week: w + 1, ...sh }, month ? ui(`Пазаруване за седмица ${w + 1}`) : ui('Списък за пазаруване'), true);
   });
 }
 
@@ -601,7 +608,7 @@ function overview(ctx, days) {
     draw: (page, x, y) => {
       page.rect(x, y, flow.width, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 8 });
       page.rect(x, y, flow.width, headH, { fill: C.tealSoft, radius: [8, 8, 0, 0] });
-      page.text('Ден', x + 8, y + 12, { font: 'bold', size: 7.4, color: C.teal });
+      page.text(ui('Ден'), x + 8, y + 12, { font: 'bold', size: 7.4, color: C.teal });
       meals.forEach((m, i) => {
         const mx = x + dayW + i * mw;
         page.circle(mx + 8, y + 9, 3, { fill: MEAL_COLOR[m.meal] || C.brand });
@@ -624,8 +631,8 @@ function overview(ctx, days) {
     },
   }, { gap: 6 });
   const legend = [];
-  if (days.some(d => d.cycle)) legend.push('● фаза на цикъла');
-  if (days.some(d => d.training?.sessions.length)) legend.push('▲ тренировъчен ден');
+  if (days.some(d => d.cycle)) legend.push(ui('● фаза на цикъла'));
+  if (days.some(d => d.training?.sessions.length)) legend.push(ui('▲ тренировъчен ден'));
   if (legend.length) flow.text(legend.join('   '), { size: 6.8, color: C.ink3, after: 6 });
 }
 
@@ -633,9 +640,9 @@ function dayCard(ctx, d) {
   const { doc, flow } = ctx;
   const chips = [];
   if (d.cycle) {
-    chips.push({ text: `ден ${d.cycle.day} от цикъла · ${d.cycle.label}${d.cycle.kcalAdd ? ` · ${d.cycle.kcalAdd > 0 ? '+' : '−'}${Math.abs(d.cycle.kcalAdd)} kcal` : ''}`, fg: PHASE[d.cycle.phase][0], bg: C.white });
+    chips.push({ text: ui(`ден ${d.cycle.day} от цикъла · ${d.cycle.label}`) + (d.cycle.kcalAdd ? ` · ${d.cycle.kcalAdd > 0 ? '+' : '−'}${Math.abs(d.cycle.kcalAdd)} kcal` : ''), fg: PHASE[d.cycle.phase][0], bg: C.white });
   }
-  for (const s of d.training?.sessions || []) chips.push({ text: `${cap(ACT_SHORT[s.activity] || s.activity)} ${s.minutes} мин · ${INTENSITY[s.intensity]?.label || ''}`, fg: C.coral, bg: C.white });
+  for (const s of d.training?.sessions || []) chips.push({ text: `${cap(ui(ACT_SHORT[s.activity] || s.activity))} ` + ui(`${s.minutes} мин`) + ` · ${ui(INTENSITY[s.intensity]?.label || '')}`, fg: C.coral, bg: C.white });
   const row = chips.length ? chipRow(doc, chips, flow.width - 24, { size: 7 }) : null;
   const H = 30 + (row ? row.h + 7 : 0);
   const head = {
@@ -644,14 +651,14 @@ function dayCard(ctx, d) {
       page.gradient(x, y, flow.width, H, C.tealSoft, C.brandSoft, { radius: 8 });
       page.text(d.label, x + 12, y + 19, { font: 'bold', size: 11, color: C.ink });
       const cx = x + 14 + doc.width(d.label, 'bold', 11);
-      page.text(formatDate(d.date), cx + 4, y + 19, { size: 8.5, color: C.ink2 });
+      page.text(fd(d.date), cx + 4, y + 19, { size: 8.5, color: C.ink2 });
       const t = d.totals;
-      page.text(`${thousands(t.kcal)} kcal · Б ${t.protein} г · фибри ${t.fiber} г${t.fe !== undefined ? ` · желязо ${Math.round(t.fe)} мг · калций ${Math.round(t.ca / 10) * 10} мг` : ''}`,
+      page.text(ui(`${thousands(t.kcal)} kcal · Б ${t.protein} г · фибри ${t.fiber} г`) + (t.fe !== undefined ? ui(` · желязо ${Math.round(t.fe)} мг · калций ${Math.round(t.ca / 10) * 10} мг`) : ''),
         x + flow.width - 12, y + 19, { font: 'semibold', size: 7.6, color: C.teal, align: 'right' });
       if (row) row.draw(page, x + 12, y + 28);
     },
   };
-  const tips = d.training?.tips?.length ? textBlock(doc, [{ text: 'Около тренировката: ', font: 'semibold', color: C.coral }, { text: d.training.tips.join(' ') }], flow.width - 20, { size: 7.8, color: C.ink2 }) : null;
+  const tips = d.training?.tips?.length ? textBlock(doc, [{ text: ui('Около тренировката: '), font: 'semibold', color: C.coral }, { text: d.training.tips.join(' ') }], flow.width - 20, { size: 7.8, color: C.ink2 }) : null;
   const first = d.meals[0]?.option ? recipeBlock(ctx, d.meals[0].option, d.meals[0]) : null;
   flow.need(head.h + (tips ? tips.h + 6 : 0) + (first ? first.h : 0) + 8);
   flow.add(head, { gap: 6 });
@@ -665,18 +672,18 @@ function recipeBlock(ctx, o, { meal, label, time, kcal } = {}) {
   const { doc, flow } = ctx;
   const leftW = 74;
   const w = flow.width - leftW - 8;
-  if (!o) return textBlock(doc, 'Няма подходящо ястие при избраните ограничения.', w, { size: 8, color: C.ink3 });
+  if (!o) return textBlock(doc, ui('Няма подходящо ястие при избраните ограничения.'), w, { size: 8, color: C.ink3 });
   const parts = [
-    textBlock(doc, [{ text: o.name, font: 'bold' }, { text: o.time ? `  ${o.time} мин` : '', color: C.ink3 }], w, { size: 9.2 }),
+    textBlock(doc, [{ text: o.name, font: 'bold' }, { text: o.time ? '  ' + ui(`${o.time} мин`) : '', color: C.ink3 }], w, { size: 9.2 }),
     textBlock(doc, o.items.map(x => x.text.replace(/^\+ /, '+ ')).join(' · '), w, { size: 7.9, color: C.ink2 }),
   ];
-  if (o.method) parts.push(textBlock(doc, [{ text: o.method }, ...(o.flavor?.length ? [{ text: ` За вкус: ${o.flavor.join(', ')}.`, color: C.ink2 }] : [])], w, { size: 7.8 }));
-  parts.push(textBlock(doc, [{ text: `${o.kcal} kcal · Б ${o.protein} г · В ${o.carbs} г · М ${o.fat} г · фибри ${o.fiber} г`, font: 'semibold', color: C.teal }], w, { size: 7.2 }));
+  if (o.method) parts.push(textBlock(doc, [{ text: o.method }, ...(o.flavor?.length ? [{ text: ui(` За вкус: ${o.flavor.join(', ')}.`), color: C.ink2 }] : [])], w, { size: 7.8 }));
+  parts.push(textBlock(doc, [{ text: ui(`${o.kcal} kcal · Б ${o.protein} г · В ${o.carbs} г · М ${o.fat} г · фибри ${o.fiber} г`), font: 'semibold', color: C.teal }], w, { size: 7.2 }));
   if (o.source?.length) {
-    parts.push(textBlock(doc, [{ text: 'Източник: ', color: C.ink3 }, ...o.source.flatMap((s, i) => [
+    parts.push(textBlock(doc, [{ text: ui('Източник: '), color: C.ink3 }, ...o.source.flatMap((s, i) => [
       ...(i ? [{ text: '; ', color: C.ink3 }] : []),
-      { text: `${s.org}, „${s.title}“`, color: C.sky, url: s.url },
-      { text: s.page && !s.url.includes('healthy-eating-recipes') ? `, стр. ${s.page}` : '', color: C.ink3 },
+      { text: ui(`${s.org}, „${s.title}“`), color: C.sky, url: s.url },
+      { text: s.page && !s.url.includes('healthy-eating-recipes') ? ui(`, стр. ${s.page}`) : '', color: C.ink3 },
     ])], w, { size: 7 }));
   }
   const h = parts.reduce((s, p) => s + p.h + 2.5, 0) + 8;
@@ -714,12 +721,14 @@ function shoppingWeeks(plan) {
 
 function shopping(ctx, sh, titleText, newPage = false) {
   const { doc, flow } = ctx;
-  heading(ctx, 'shop', titleText, sh.from ? `${formatDate(sh.from)} – ${formatDate(sh.to)} · ${sh.groups.reduce((n, g) => n + g.items.length, 0)} продукта. Количествата са за всички дни от менюто.` : null, { newPage, level: 1 });
+  heading(ctx, 'shop', titleText, sh.from ? `${fd(sh.from)} – ${fd(sh.to)} · ` + ui(`${sh.groups.reduce((n, g) => n + g.items.length, 0)} продукта. Количествата са за всички дни от менюто.`) : null, { newPage, level: 1 });
   const gap = 12;
   const cols = 3;
   const cw = (flow.width - gap * (cols - 1)) / cols;
   const size = 7.8;
-  const itemH = (it) => Math.max(1, wrap(doc, it.name, cw - 58, size).length) * size * 1.32 + 3.2;
+  // Името се пренася преди количеството: „220 г (сурово тегло)“ е по-широко от „1 бр.“.
+  const nameW = (it) => Math.min(cw - 58, cw - 26 - doc.width(it.amount, 'semibold', size - 0.4));
+  const itemH = (it) => Math.max(1, wrap(doc, it.name, nameW(it), size).length) * size * 1.32 + 3.2;
   const groupH = (g) => 22 + g.items.reduce((s, it) => s + itemH(it), 0) + 6;
   const drawGroup = (page, g, x, y) => {
     const color = SHOP_COLOR[g.cat] || C.slate;
@@ -730,7 +739,7 @@ function shopping(ctx, sh, titleText, newPage = false) {
     let yy = y + 22;
     for (const it of g.items) {
       checkbox(page, x + 2, yy + 1.2, 7, C.ink3);
-      const lines = wrap(doc, it.name, cw - 58, size);
+      const lines = wrap(doc, it.name, nameW(it), size);
       drawLines(page, lines, x + 14, yy - 0.8, size, { lh: 1.32 });
       page.text(it.amount, x + cw - 2, yy + size * 0.95, { font: 'semibold', size: size - 0.4, color: C.ink2, align: 'right' });
       yy += itemH(it);
@@ -755,7 +764,7 @@ function shopping(ctx, sh, titleText, newPage = false) {
     pending = rest;
     if (pending.length) flow.newPage();
   }
-  if (sh.spices?.length) flow.text([{ text: 'Подправки и билки: ', font: 'semibold' }, { text: sh.spices.join(', '), color: C.ink2 }], { size: 8, after: 8 });
+  if (sh.spices?.length) flow.text([{ text: ui('Подправки и билки: '), font: 'semibold' }, { text: sh.spices.join(', '), color: C.ink2 }], { size: 8, after: 8 });
 }
 
 /* ---------------------------------- източници ---------------------------------- */
@@ -768,9 +777,9 @@ function sources(ctx) {
     const key = `${s.url}|${s.title}|${s.page || ''}`;
     if (!seen.has(key)) seen.set(key, s);
   }
-  heading(ctx, 'sources', 'Източници и бележки', null, { newPage: flow.room < 220 });
+  heading(ctx, 'sources', ui('Източници и бележки'), null, { newPage: flow.room < 220 });
   if (seen.size) {
-    subheading(ctx, `Рецепти с публикуван източник (${seen.size})`, C.slate);
+    subheading(ctx, ui(`Рецепти с публикуван източник (${seen.size})`), C.slate);
     const byBook = new Map();
     for (const s of seen.values()) {
       const k = s.book || 'nhlbi.nih.gov — Healthy Eating Recipes';
@@ -781,24 +790,24 @@ function sources(ctx) {
       flow.text([{ text: book, font: 'semibold', color: C.ink }], { size: 8, after: 2 });
       flow.add(bullets(doc, list.sort((a, b) => (a.title < b.title ? -1 : 1)).map(s => [
         { text: s.title, color: C.sky, url: s.url },
-        { text: s.page && !s.url.includes('healthy-eating-recipes') ? `, стр. ${s.page}` : '', color: C.ink3 },
+        { text: s.page && !s.url.includes('healthy-eating-recipes') ? ui(`, стр. ${s.page}`) : '', color: C.ink3 },
       ]), flow.width, { size: 7.6, color: C.slate, gap: 1.5 }), { gap: 6 });
     }
   }
-  flow.text('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. '
-    + (plan.cycle?.applied ? 'Фазите на цикъла — по FIGO 2018 и ASRM 2024. ' : '')
-    + (plan.training ? 'Тренировките — по СЗО 2020, 2024 Adult Compendium of Physical Activities и ACSM. ' : '')
-    + 'Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата.',
+  flow.text(ui('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
+    + (plan.cycle?.applied ? ui('Фазите на цикъла — по FIGO 2018 и ASRM 2024. ') : '')
+    + (plan.training ? ui('Тренировките — по СЗО 2020, 2024 Adult Compendium of Physical Activities и ACSM. ') : '')
+    + ui('Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата.'),
   { size: 7.6, color: C.ink2, after: 6 });
-  noteBox(ctx, 'Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на изготвяне. Той е ориентировъчен — при напреднало хронично бъбречно заболяване, диализа, бременност или хранителни разстройства е нужен диетолог.',
+  noteBox(ctx, ui('Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на изготвяне. Той е ориентировъчен — при напреднало хронично бъбречно заболяване, диализа, бременност или хранителни разстройства е нужен диетолог.'),
     { bg: C.amberSoft, bar: C.amber, size: 8 });
   flow.need(50);
   flow.space(24);
   const { page } = flow;
   page.line(flow.x, flow.y, flow.x + 190, flow.y, { color: C.ink3, width: 0.6 });
   page.line(flow.x + flow.width - 150, flow.y, flow.x + flow.width, flow.y, { color: C.ink3, width: 0.6 });
-  page.text(`Лекар: ${doctor?.name || ''}`, flow.x, flow.y + 11, { size: 8, color: C.ink2 });
-  page.text(`Дата: ${formatDate(date)}`, flow.x + flow.width - 150, flow.y + 11, { size: 8, color: C.ink2 });
+  page.text(ui('Лекар: ') + (doctor?.name || ''), flow.x, flow.y + 11, { size: 8, color: C.ink2 });
+  page.text(ui('Дата: ') + fd(date), flow.x + flow.width - 150, flow.y + 11, { size: 8, color: C.ink2 });
   flow.y += 18;
 }
 
@@ -811,6 +820,6 @@ function footers(ctx) {
     const y = page.h - 30;
     page.line(40, y - 10, page.w - 40, y - 10, { color: C.line, width: 0.5 });
     page.text(`DocUp${practice.name ? ` · ${practice.name}` : ''}`, 40, y, { size: 7, color: C.ink3 });
-    page.text(`стр. ${i + 1} от ${n}`, page.w - 40, y, { font: 'semibold', size: 7, color: C.ink2, align: 'right' });
+    page.text(ui(`стр. ${i + 1} от ${n}`), page.w - 40, y, { font: 'semibold', size: 7, color: C.ink2, align: 'right' });
   });
 }

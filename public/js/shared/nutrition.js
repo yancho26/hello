@@ -31,7 +31,8 @@
 import { bmi as bmiOf } from './clinical.js';
 import { table } from './table.js';
 import { addDays, today } from './dates.js';
-import { FOODS, FOOD_CATS, RECIPES, mainProtein, mealsOf, recipeTags, totals } from './recipes.js';
+import { FOODS, FOOD_CATS, LIQUIDS, RECIPES, YIELDS, mainProtein, mealsOf, rawOf, recipeTags, shopName, totals } from './recipes.js';
+import { renderMethod } from './recipe-method.js';
 import { dietProfiles } from './diet-icd.js';
 import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
 import { activityFromTraining, trainingNutrition, trainingPlan } from './training.js';
@@ -192,6 +193,8 @@ export function mifflinStJeor({ sex, age, weight, height }) {
 }
 
 const round = (v, step = 1) => Math.round(v / step) * step;
+/** Първата буква — главна. */
+const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const dec = (v) => String(v).replace('.', ',');
 const KCAL_PER_KG = 7700;
 
@@ -299,7 +302,7 @@ export function nutritionPlan(input) {
   const cardio = ['htn', 'chd', 'pad', 'stroke', 'hf', 'dyslip'].some(c => cond.has(c));
   const onRaas = ['ACEI', 'ARB', 'ARNI', 'MRA', 'FINERENONE'].some(c => classes.has(c));
   const limitK = (egfr > 0 && egfr < 45 && onRaas) || input.potassium >= 5.0 || ckdAdvanced || dx.limitK;
-  const lowSalt = cond.has('htn') || cond.has('hf') || ckd || dialysis;
+  const lowSalt = cond.has('htn') || cond.has('hf') || ckd || dialysis || dx.lowSalt;
 
   // Енергия.
   const bmr = mifflinStJeor({ sex, age, weight, height });
@@ -623,6 +626,11 @@ export function nutritionPlan(input) {
   }
   if (ckd && proteinCut) notes.push('Порциите на месо, риба, яйца, млечни и бобови в менюто са намалени заради ограничението на белтъка.');
 
+  // Приготвянето с окончателните грамове на всяка порция.
+  const options = [...meals.flatMap(m => m.options), ...(week || []).flatMap(d => d.meals.map(m => m.option))].filter(Boolean);
+  for (const o of options) o.method = renderMethod(o.template, o.items, { swaps: o.swaps });
+  for (const o of options) delete o.template;
+
   const day = dayTotals(meals.map(m => m.options[0]));
 
   // Желязо и калций в менюто спрямо препоръката.
@@ -740,7 +748,7 @@ function cycleSyncFor(input, { start, days, stats, dx, target, floor, strength }
   if (!stats.lastStart) return no('Няма дата на последната менструация — въведете я, за да се изчислят фазите.');
   if (!stats.natural) {
     const what = CONTRACEPTION[stats.contraception].label;
-    return no(`${what[0].toUpperCase()}${what.slice(1)}: овулацията е потисната и няма лутеална фаза — менюто е еднакво за всички дни.`);
+    return no(`${upper1(what)}: овулацията е потисната и няма лутеална фаза — менюто е еднакво за всички дни.`);
   }
   if (stats.late) return no(stats.flags.find(f => f.code === 'late' || f.code === 'amenorrhea')?.text || 'Менструацията закъснява.');
   const phases = phasesFrom(stats, start, days);
@@ -836,7 +844,7 @@ function hash(text, seed) {
 const NO_SWAP = new Set(['Диня със сирене', 'Извара с горски плодове и канела']);
 
 function substituted(r, prefs) {
-  if (NO_SWAP.has(r.name)) return { name: r.name, items: r.items.map(([food, grams]) => ({ food, grams })), swaps: [] };
+  if (NO_SWAP.has(r.name)) return { name: r.name, items: r.items.map(([food, grams]) => ({ food, grams, orig: food })), swaps: [] };
   let name = r.name;
   const swaps = [];
   const items = r.items.map(([id, g]) => {
@@ -847,15 +855,14 @@ function substituted(r, prefs) {
         food = map[food];
       }
     }
-    if (food !== id) swaps.push(`${shortName(food)} вместо ${shortName(id)}`);
+    if (food !== id && !swaps.some(([a, b]) => a === id && b === food)) swaps.push([id, food]);
     // Заместителят е със същата енергия, а не със същия грамаж (напр. сухи ядки → варена елда).
     const grams = food === id ? g : g * FOODS[id].kcal / FOODS[food].kcal;
-    return { food, grams };
+    return { food, grams, orig: id };
   });
-  return { name: name.charAt(0).toUpperCase() + name.slice(1), items, swaps: [...new Set(swaps)] };
+  return { name: name.charAt(0).toUpperCase() + name.slice(1), items, swaps };
 }
 
-const shortName = (id) => FOODS[id].name.split(', ')[0];
 
 function excluded(items, ctx) {
   const { prefs, cond } = ctx;
@@ -1010,9 +1017,10 @@ function portionText(foodId, grams, maxPieces = 3) {
     return { grams: g, text: `${f.name} — ${g} г (≈${dec(g / f.unit.grams)} с.л.)` };
   }
   const g = grams >= 100 ? round(grams, 10) : Math.max(5, round(grams, 5));
-  return { grams: g, text: `${f.name} — ${g} ${LIQUIDS.has(foodId) ? 'мл' : 'г'}` };
+  const raw = rawOf(foodId, g);
+  const note = raw ? ` (${raw.grams} г ${raw.kind === 'dry' ? 'сухо' : 'сурово'} тегло)` : '';
+  return { grams: g, text: `${f.name} — ${g} ${LIQUIDS.has(foodId) ? 'мл' : 'г'}${note}` };
 }
-const LIQUIDS = new Set(['milk', 'lfmilk', 'oatmilk', 'kefir']);
 
 /* Най-много грамове от една съставка в едно ястие — ястието да остане истинско ястие,
  * а не 700 г краставици. Отделно никоя съставка не расте над 2,5 пъти порцията в рецептата. */
@@ -1071,8 +1079,9 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
     : resize(it, it.grams * (starch(it) ? starchFactor : rich(it) ? richFactor : factor))));
   const t = totals(items);
   return {
-    name: sub.name, items, time: r.time, flavor: r.flavor, source: r.source || null,
-    method: r.method + (sub.swaps.length ? ` Замени: ${sub.swaps.join(', ')}.` : ''),
+    key: r.name, name: sub.name, items, time: r.time, flavor: r.flavor, source: r.source || null,
+    // Приготвянето се попълва накрая — с окончателните грамове на порцията (renderMethod).
+    template: r.method, swaps: sub.swaps, method: '',
     kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na, fe: t.fe, ca: t.ca,
   };
 }
@@ -1256,7 +1265,7 @@ export function shoppingList(week) {
     cat, label: FOOD_CATS[cat],
     items: [...grams.entries()].filter(([food]) => FOODS[food].cat === cat)
       .sort((a, b) => FOODS[a[0]].name.localeCompare(FOODS[b[0]].name, 'bg'))
-      .map(([food, g]) => ({ food, name: FOODS[food].name, grams: Math.round(g), amount: amountText(food, g) })),
+      .map(([food, g]) => ({ food, name: shopName(food), grams: Math.round(g), amount: amountText(food, g) })),
   })).filter(g => g.items.length);
   return { groups, spices: [...spices].sort((a, b) => a.localeCompare(b, 'bg')) };
 }
@@ -1265,8 +1274,12 @@ function amountText(food, g) {
   const f = FOODS[food];
   if (f.unit?.name === 'бр.') return `${Math.ceil(g / f.unit.grams)} бр.`;
   const unit = LIQUIDS.has(food) ? ['мл', 'л'] : ['г', 'кг'];
-  if (g >= 1000) return `${dec(Math.round(g / 100) / 10)} ${unit[1]}`;
-  return `${Math.max(10, Math.round(g / 10) * 10)} ${unit[0]}`;
+  // Сварените и печените храни се купуват сухи или сурови.
+  const y = YIELDS[food];
+  const buy = y ? g / (y.dry || y.raw) : g;
+  const note = y ? ` (${y.dry ? 'сухо' : 'сурово'} тегло)` : '';
+  if (buy >= 1000) return `${dec(Math.round(buy / 100) / 10)} ${unit[1]}${note}`;
+  return `${Math.max(10, Math.round(buy / 10) * 10)} ${unit[0]}${note}`;
 }
 
 /* -------------------------------- съвети на диетолог -------------------------------- */

@@ -13,6 +13,7 @@ import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-di
 import { busy, downloadNutritionPdf } from './pdf-export.js';
 import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
 import { trainingCard, trainingChip, trainingFields, trainingTips } from './training-view.js';
+import { ui as L, withPlanLang } from '../shared/i18n/plan-en.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
 
@@ -147,6 +148,10 @@ export function planForm(cfg) {
     { value: 7, label: 'седмица с пазаруване', selected: Number(last.days || 1) === 7 },
     { value: 28, label: 'месец (4 седмици), пазаруване по седмици', selected: Number(last.days || 1) === 28 },
   ], { name: 'days' });
+  const lang = select([
+    { value: 'bg', label: 'български', selected: (last.lang || 'bg') === 'bg' },
+    { value: 'en', label: 'английски (English)', selected: last.lang === 'en' },
+  ], { name: 'lang' });
   const quick = h('input', { type: 'checkbox', name: 'quick', checked: !!last.quick });
   const strength = h('input', { type: 'checkbox', name: 'strength', checked: !!last.strength });
   const sourced = h('input', { type: 'checkbox', name: 'sourcedOnly', checked: !!last.sourcedOnly });
@@ -193,6 +198,7 @@ export function planForm(cfg) {
       preferences: fd.getAll('pref'), diagnoses: dx.value(), pregnancyWeek: dx.week(),
       ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
       training: tr.read(),
+      lang: d.lang || 'bg',
     };
   };
   const generate = (save = false) => cfg.onGenerate(read(), save);
@@ -219,7 +225,8 @@ export function planForm(cfg) {
       h('div.form-grid', null,
         h('div', null, field('Хранителен модел', pattern, patternHint)),
         h('div', null, field('Хранения на ден', meals)),
-        h('div', null, field('Меню', days))),
+        h('div', null, field('Меню', days)),
+        h('div', null, field('Език на режима', lang, 'Менюто, рецептите, съветите и PDF отчетът.'))),
       h('div.q-opts', { style: { marginTop: '10px' } },
         h('label.opt', null, quick, h('span', null, 'бързи рецепти, до 20 минути')),
         h('label.opt', null, strength, h('span', null, 'силови тренировки — повече белтък')),
@@ -303,6 +310,8 @@ export function diagnosesEditor(initial = [], { week = null } = {}) {
 
 /* ------------------------------- показване ------------------------------- */
 
+const fd = (iso) => L(formatDate(iso));
+
 const list = (title, items, cls = '') => (items && items.length ? h('div.nut-list' + (cls ? '.' + cls : ''), null, h('h3', null, title),
   h('ul', null, items.map(x => h('li', null, x)))) : null);
 
@@ -314,30 +323,30 @@ export function sourceText(src) {
 
 /** Рецепта: състав, приготвяне, подправки, време, стойности и източник. */
 function recipeCard(o, { label = null, open = false } = {}) {
-  if (!o) return h('div.small.muted', null, 'Няма подходящо ястие при избраните ограничения.');
+  if (!o) return h('div.small.muted', null, L('Няма подходящо ястие при избраните ограничения.'));
   return h('div.recipe', null,
     h('div.recipe-head', null,
       label ? badge('', label) : null,
       h('strong', null, o.name),
-      o.time ? h('span.tiny.dim', null, `⏱ ${o.time} мин`) : null),
+      o.time ? h('span.tiny.dim', null, L(`⏱ ${o.time} мин`)) : null),
     h('div.small.muted', null, o.items.map(x => x.text).join(' · ')),
-    o.method ? h('details.recipe-how', { open }, h('summary', null, 'Приготвяне'),
+    o.method ? h('details.recipe-how', { open }, h('summary', null, L('Приготвяне')),
       h('p.small', null, o.method),
-      o.flavor?.length ? h('p.small', null, h('strong', null, 'За вкус: '), o.flavor.join(', ')) : null) : null,
-    h('div.tiny.dim', null, `${o.kcal} kcal · Б ${o.protein} г · В ${o.carbs} г · М ${o.fat} г · фибри ${o.fiber} г`),
-    o.source?.length ? h('div.tiny.recipe-src', null, '📖 Източник: ',
-      ...o.source.flatMap((s, i) => [i ? '; ' : '', h('a', { href: s.url, target: '_blank', rel: 'noopener' }, `${s.org}, „${s.title}“`),
-        s.page && !s.url.includes('healthy-eating-recipes') ? `, стр. ${s.page}` : ''])) : null);
+      o.flavor?.length ? h('p.small', null, h('strong', null, L('За вкус: ')), o.flavor.join(', ')) : null) : null,
+    h('div.tiny.dim', null, L(`${o.kcal} kcal · Б ${o.protein} г · В ${o.carbs} г · М ${o.fat} г · фибри ${o.fiber} г`)),
+    o.source?.length ? h('div.tiny.recipe-src', null, L('📖 Източник: '),
+      ...o.source.flatMap((s, i) => [i ? '; ' : '', h('a', { href: s.url, target: '_blank', rel: 'noopener' }, L(`${s.org}, „${s.title}“`)),
+        s.page && !s.url.includes('healthy-eating-recipes') ? L(`, стр. ${s.page}`) : ''])) : null);
 }
 
 function projectionText(plan) {
   const pr = plan.projection;
   const goal = plan.input.goal;
-  if (goal === 'maintain') return 'Цел: поддържане на теглото.';
-  if (!pr) return `Цел: ${GOALS[goal] || GOALS.maintain}.`;
-  const parts = [`Цел: ${GOALS[goal]}, ${PACES[plan.input.pace]?.label || ''} темпо`,
-    `около ${pr.weeklyKg > 0 ? '+' : '−'}${dec(Math.abs(pr.weeklyKg))} кг седмично`];
-  if (pr.targetWeight) parts.push(`до ${dec(pr.targetWeight)} кг за около ${pr.weeks} седмици, към ${formatDate(pr.eta)}`);
+  if (goal === 'maintain') return L('Цел: поддържане на теглото.');
+  if (!pr) return L(`Цел: ${GOALS[goal] || GOALS.maintain}.`);
+  const parts = [L(`Цел: ${GOALS[goal]}, ${PACES[plan.input.pace]?.label || ''} темпо`),
+    L(`около ${pr.weeklyKg > 0 ? '+' : '−'}${dec(Math.abs(pr.weeklyKg))} кг седмично`)];
+  if (pr.targetWeight) parts.push(L(`до ${dec(pr.targetWeight)} кг за около ${pr.weeks} седмици, към ${fd(pr.eta)}`));
   return parts.join(' · ');
 }
 
@@ -345,11 +354,11 @@ function projectionText(plan) {
 function diagnosesBlock(plan) {
   const dx = plan.diagnoses || [];
   if (!dx.length) return null;
-  return h('div.nut-list.dx', null, h('h3', null, 'Заболявания, взети предвид'),
+  return h('div.nut-list.dx', null, h('h3', null, L('Заболявания, взети предвид')),
     h('ul', null, dx.map(c => h('li', null,
       h('strong', null, c.code), ' ', c.name || '',
       c.label ? h('span.small', null, ` — ${c.effects.join(', ')}`, c.src ? h('span.dim', null, ` (${c.src})`) : null)
-        : h('span.small.dim', null, ' — без специфични хранителни правила; режимът е общ')))));
+        : h('span.small.dim', null, L(' — без специфични хранителни правила; режимът е общ'))))));
 }
 
 /** Списък за пазаруване: продуктите по групи и подправките. */
@@ -358,21 +367,26 @@ function shopGrid(shop) {
     h('div.shop-grid', null, shop.groups.map(g => h('div.shop-group', null,
       h('h3', null, g.label),
       h('ul', null, g.items.map(it => h('li', null, h('span', null, it.name), h('span.dim', null, it.amount))))))),
-    shop.spices.length ? h('div.body.small', null, h('strong', null, 'Подправки и билки: '), shop.spices.join(', ')) : null);
+    shop.spices.length ? h('div.body.small', null, h('strong', null, L('Подправки и билки: ')), shop.spices.join(', ')) : null);
 }
 
 /** Показване на изготвения режим. */
-export function planView(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = 'Запази' } = {}) {
+export function planView(plan, opts = {}) {
+  // Надписите около режима — на езика на режима (версия 4.11).
+  return withPlanLang(plan, () => planBody(plan, opts));
+}
+
+function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
 
   const dayView = (d, open) => h('details.week-day', { open },
-    h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
+    h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${fd(d.date)}`),
       d.cycle ? phaseChip(d.cycle) : null,
       trainingChip(d.training),
-      h('span.grow'), h('span.small.muted', null, `${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`
-        + (d.totals.fe !== undefined ? ` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг` : ''))),
+      h('span.grow'), h('span.small.muted', null, L(`${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`)
+        + (d.totals.fe !== undefined ? L(` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг`) : ''))),
     trainingTips(d.training),
     h('div.meals', null, d.meals.map(m => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
@@ -383,19 +397,19 @@ export function planView(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLa
     ? h('div.stack', null, weekChunks(plan.week).map((days, w) => {
       const shop = plan.shoppingWeeks?.[w];
       return h('section.month-week', null,
-        h('h3.month-week-title', null, `Седмица ${w + 1}`, h('span.small.dim', null, ` · ${formatDate(days[0].date)} – ${formatDate(days[days.length - 1].date)}`)),
+        h('h3.month-week-title', null, L(`Седмица ${w + 1}`), h('span.small.dim', null, ` · ${fd(days[0].date)} – ${fd(days[days.length - 1].date)}`)),
         h('div.stack', null, days.map((d, i) => dayView(d, w === 0 && i === 0))),
         shop ? h('details.month-shop', { open: w === 0 },
-          h('summary', null, `🛒 Пазаруване за седмица ${w + 1}`, h('span.small.dim', null, ` · ${shop.groups.reduce((n, g) => n + g.items.length, 0)} продукта`)),
+          h('summary', null, L(`🛒 Пазаруване за седмица ${w + 1}`), h('span.small.dim', null, L(` · ${shop.groups.reduce((n, g) => n + g.items.length, 0)} продукта`))),
           shopGrid(shop)) : null);
     }))
     : plan.week
       ? h('div.stack', null, plan.week.map((d, i) => dayView(d, i === 0)))
       : h('div.meals', null, plan.meals.map(m => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time ? m.time + ' · ' : ''}≈${m.kcal} kcal`)),
-      m.options.length ? m.options.map((o, i) => recipeCard(o, { label: `вариант ${i + 1}` })) : h('div.small.muted', null, 'Няма подходящо ястие.'))));
+      m.options.length ? m.options.map((o, i) => recipeCard(o, { label: L(`вариант ${i + 1}`) })) : h('div.small.muted', null, L('Няма подходящо ястие.')))));
 
-  const shopping = plan.shopping ? card('Списък за пазаруване за седмицата', { icon: '🛒', tight: true }, shopGrid(plan.shopping)) : null;
+  const shopping = plan.shopping ? card(L('Списък за пазаруване за седмицата'), { icon: '🛒', tight: true }, shopGrid(plan.shopping)) : null;
 
   const options = plan.week ? plan.week.flatMap(d => d.meals.map(m => m.option)) : plan.meals.flatMap(m => m.options);
   // Желязо и калций в менюто: средно за седмицата или за първия вариант на деня.
@@ -405,9 +419,10 @@ export function planView(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLa
   const sourcedCount = options.filter(o => o?.source?.length).length;
 
   return h('div.stack', null,
-    card(`Режим: ${t.kcal} kcal дневно`, {
+    card(L(`Режим: ${t.kcal} kcal дневно`), {
       icon: '📝',
       actions: [
+        plan.lang === 'en' ? badge('', 'English') : null,
         onVariant ? h('button.btn.sm', { onclick: onVariant }, '↻ Друго меню') : null,
         onPdf ? h('button.btn.sm', { onclick: busy(onPdf), title: 'Цветен PDF отчет: цели, насоки, тренировки, меню, пазаруване и източници' }, plan.training ? '📄 PDF с тренировките' : '📄 PDF отчет') : null,
         onPdfShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: busy(onPdfShopping), title: 'Само списъците за пазаруване като PDF' }, '🛒 PDF пазаруване') : null,
@@ -418,56 +433,56 @@ export function planView(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLa
     h('div.alert-strip.info', { style: { marginBottom: '12px' } }, projectionText(plan),
       plan.projection?.note ? h('div.small', { style: { fontWeight: 400 } }, plan.projection.note) : null),
     h('div.tiles', null,
-      tile('Енергия', t.kcal, 'kcal', `покой ${plan.energy.bmr} · разход ${plan.energy.tdee}`),
-      tile('Белтък', t.protein, 'г', `${dec(t.proteinPerKg)} г/кг${t.proteinMax ? ` · до ${t.proteinMax} г` : ''}`),
-      tile('Въглехидрати', t.carbs, 'г', `${t.carbPct}% · захари <${t.sugarMax} г`),
-      tile('Мазнини', t.fat, 'г', `${t.fatPct}% · наситени <${t.satFat} г`),
-      tile('Фибри', t.fiber, 'г'),
-      tile('Сол', '<' + t.salt, 'г'),
-      tile('Течности', dec(Math.round(t.fluids / 100) / 10), 'л'),
-      t.iron ? tile('Желязо', t.iron, 'мг', `в менюто ≈${Math.round(minerals.fe)} мг`) : null,
-      t.calcium ? tile('Калций', t.calcium, 'мг', `в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`) : null),
+      tile(L('Енергия'), t.kcal, 'kcal', L(`покой ${plan.energy.bmr} · разход ${plan.energy.tdee}`)),
+      tile(L('Белтък'), t.protein, L('г'), L(`${dec(t.proteinPerKg)} г/кг`) + (t.proteinMax ? L(` · до ${t.proteinMax} г`) : '')),
+      tile(L('Въглехидрати'), t.carbs, L('г'), L(`${t.carbPct}% · захари <${t.sugarMax} г`)),
+      tile(L('Мазнини'), t.fat, L('г'), L(`${t.fatPct}% · наситени <${t.satFat} г`)),
+      tile(L('Фибри'), t.fiber, L('г')),
+      tile(L('Сол'), '<' + t.salt, L('г')),
+      tile(L('Течности'), L(dec(Math.round(t.fluids / 100) / 10)), L('л')),
+      t.iron ? tile(L('Желязо'), t.iron, L('мг'), L(`в менюто ≈${Math.round(minerals.fe)} мг`)) : null,
+      t.calcium ? tile(L('Калций'), t.calcium, L('мг'), L(`в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`)) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,
-    plan.pattern ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, `Модел: ${plan.pattern.label}. `), plan.pattern.about) : null,
+    plan.pattern ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, L(`Модел: ${plan.pattern.label}. `)), plan.pattern.about) : null,
     diagnosesBlock(plan),
     cyclePlanBlock(plan),
     plan.portions ? h('div.nut-cols', null,
-      h('div.nut-list', null, h('h3', null, 'Порции за деня'),
+      h('div.nut-list', null, h('h3', null, L('Порции за деня')),
         h('table.portions', null, h('tbody', null, plan.portions.map(x => h('tr', null,
           h('td', null, h('strong', null, x.count)), h('td', null, x.group, h('div.tiny.dim', null, x.unit))))))),
-      list('Седмичен ритъм', plan.weekly)) : null,
+      list(L('Седмичен ритъм'), plan.weekly)) : null,
     h('div.nut-cols', null,
-      list('Предпочитайте', plan.prefer, 'good'),
-      list('Ограничете', plan.limit, 'limit'),
-      list('Избягвайте', plan.avoid, 'avoid')),
-    plan.medNotes.length ? h('div.nut-list.med', null, h('h3', null, 'Лекарства и храна'),
+      list(L('Предпочитайте'), plan.prefer, 'good'),
+      list(L('Ограничете'), plan.limit, 'limit'),
+      list(L('Избягвайте'), plan.avoid, 'avoid')),
+    plan.medNotes.length ? h('div.nut-list.med', null, h('h3', null, L('Лекарства и храна')),
       h('ul', null, plan.medNotes.map(n => h('li', null, h('strong', null, n.med + ': '), n.text)))) : null,
     h('div.nut-cols', null,
-      list('Навици', plan.habits),
-      list('Вкус без много сол', plan.flavor),
-      list('Контрол на теглото', plan.monitoring)),
-    list('Бележки', plan.notes)),
+      list(L('Навици'), plan.habits),
+      list(L('Вкус без много сол'), plan.flavor),
+      list(L('Контрол на теглото'), plan.monitoring)),
+    list(L('Бележки'), plan.notes)),
 
     trainingCard(plan),
 
-    card(month ? 'Меню за месеца' : plan.week ? 'Меню за седмицата' : 'Примерно меню за деня', {
+    card(month ? L('Меню за месеца') : plan.week ? L('Меню за седмицата') : L('Примерно меню за деня'), {
       icon: '🍽',
     },
     h('p.small.muted', { style: { marginTop: 0 } }, month
-      ? 'Четири седмици, всяка със свой списък за пазаруване. В рамките на седмицата обядите и вечерите не се повтарят; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.'
+      ? L('Четири седмици, всяка със свой списък за пазаруване. В рамките на седмицата обядите и вечерите не се повтарят; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.')
       : plan.week
-      ? 'Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.'
-      : `Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`,
-    sourcedCount ? ` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.` : ''),
-    plan.trainingToday ? h('div.row.tight', { style: { flexWrap: 'wrap', marginBottom: '8px' } }, h('strong.small', null, 'Тренировка днес: '),
-      trainingChip(plan.trainingToday) || h('span.small.dim', null, 'почивка'), trainingTips(plan.trainingToday)) : null,
+      ? L('Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.')
+      : L(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`),
+    sourcedCount ? L(` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.`) : ''),
+    plan.trainingToday ? h('div.row.tight', { style: { flexWrap: 'wrap', marginBottom: '8px' } }, h('strong.small', null, L('Тренировка днес: ')),
+      trainingChip(plan.trainingToday) || h('span.small.dim', null, L('почивка')), trainingTips(plan.trainingToday)) : null,
     menu),
     shopping,
     h('p.tiny.muted', null,
-      'Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. '
-      + (plan.cycle?.applied ? 'Фазите на цикъла — по FIGO 2018 и ASRM 2024; промените по фази — по Tucker 2024, Benton 2020, EFSA 2015, ACOG 2023. ' : '')
-      + 'Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата. '
-      + 'Режимът е ориентировъчен — при напреднало ХБЗ, диализа, бременност или хранителни разстройства е нужен диетолог.'));
+      L('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
+      + (plan.cycle?.applied ? L('Фазите на цикъла — по FIGO 2018 и ASRM 2024; промените по фази — по Tucker 2024, Benton 2020, EFSA 2015, ACOG 2023. ') : '')
+      + L('Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата. ')
+      + L('Режимът е ориентировъчен — при напреднало ХБЗ, диализа, бременност или хранителни разстройства е нужен диетолог.')));
 }
 
 export { empty };

@@ -6,6 +6,7 @@ import { formatDate } from '../shared/dates.js';
 import {
   ACTIVITIES, INTENSITY, SESSION_MINUTES, TRAINING_FOCUS, TRAINING_LEVELS, TRAINING_TIMES,
 } from '../shared/training.js';
+import { ui } from '../shared/i18n/plan-en.js';
 
 const LEVEL_BY_ACTIVITY = { sedentary: 'beginner', light: 'beginner', moderate: 'intermediate', active: 'advanced', athlete: 'advanced' };
 const FOCUS_BY_GOAL = { lose: 'weight', gain: 'muscle', maintain: 'health' };
@@ -65,13 +66,15 @@ export function trainingFields(cfg = {}) {
 
 /* ------------------------------------ в режима ------------------------------------ */
 
+const fdl = (iso) => ui(formatDate(iso));
+
 /** Кратко: „🏋 55 мин · 🚶 20 мин“ — за деня от менюто. */
 export function trainingChip(t) {
   if (!t || !t.sessions.length && !t.addOns.length) return null;
-  const parts = t.sessions.map(s => `${s.icon} ${s.minutes} мин`);
-  if (t.addOns.includes('strength')) parts.push('сила 15 мин');
-  if (t.addOns.includes('balance')) parts.push('баланс 10 мин');
-  return h('span.train-chip', { title: t.sessions.map(s => `${s.label}, ${INTENSITY[s.intensity].label}`).join('; ') }, parts.join(' · '));
+  const parts = t.sessions.map(s => `${s.icon} ` + ui(`${s.minutes} мин`));
+  if (t.addOns.includes('strength')) parts.push(ui('сила 15 мин'));
+  if (t.addOns.includes('balance')) parts.push(ui('баланс 10 мин'));
+  return h('span.train-chip', { title: t.sessions.map(s => `${s.label}, ${ui(INTENSITY[s.intensity].label)}`).join('; ') }, parts.join(' · '));
 }
 
 /** Съветите за храненето около тренировката в деня от менюто. */
@@ -80,12 +83,14 @@ export function trainingTips(t) {
   return h('div.train-tips.small', null, '🏃 ', t.tips.join(' '));
 }
 
+const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 const sessionLine = (s, hr, rpeOnly) => {
   const it = INTENSITY[s.intensity];
   // Пулсът е ориентир само за аеробните тренировки; при силовите и пилатеса — усещането.
   const aerobicRole = ['cardio', 'mixed', 'sport'].includes(ACTIVITIES[s.activity]?.role);
-  const pulse = !rpeOnly && hr && aerobicRole && s.intensity !== 'light' ? `, пулс ${hr[s.intensity].join('–')}` : '';
-  return `${s.label[0].toUpperCase()}${s.label.slice(1)} · ${s.minutes} мин · ${it.label} (RPE ${it.rpe}${pulse})${s.time ? ` · ${s.time}` : ''}${s.long ? ' · дълга' : ''}`;
+  const pulse = !rpeOnly && hr && aerobicRole && s.intensity !== 'light' ? ui(`, пулс ${hr[s.intensity].join('–')}`) : '';
+  return `${upper1(s.label)} · ` + ui(`${s.minutes} мин`) + ` · ${ui(it.label)} (RPE ${it.rpe}${pulse})${s.time ? ` · ${s.time}` : ''}${s.long ? ui(' · дълга') : ''}`;
 };
 
 /** Картата „Тренировъчен план“. */
@@ -99,36 +104,36 @@ export function trainingCard(plan) {
   const weekView = (wk, i) => {
     const days = t.days.filter(d => d.week === i);
     return h('details.week-day.train-week', { open: i === 0 },
-      h('summary', null, h('strong', null, `Седмица ${wk.week}`), h('span.small.dim', null, ` ${formatDate(wk.from)} – ${formatDate(wk.to)}`),
-        h('span.grow'), h('span.small.muted', null, `аеробни ${wk.aerobic} мин · силови ${wk.strength} · общо ${wk.minutes} мин · ≈${wk.kcal} kcal`)),
+      h('summary', null, h('strong', null, ui(`Седмица ${wk.week}`)), h('span.small.dim', null, ` ${fdl(wk.from)} – ${fdl(wk.to)}`),
+        h('span.grow'), h('span.small.muted', null, ui(`аеробни ${wk.aerobic} мин · силови ${wk.strength} · общо ${wk.minutes} мин · ≈${wk.kcal} kcal`))),
       h('div.train-days', null, days.map(d => h('div.train-day' + (d.sessions.length ? '' : '.rest'), null,
-        h('div.train-day-head', null, h('strong', null, d.label), h('span.small.dim', null, ` ${formatDate(d.date)}`),
-          d.cycle ? h(`span.cycle-chip.ph-${d.cycle.phase}`, null, `${d.cycle.icon} ден ${d.cycle.day}`) : null),
+        h('div.train-day-head', null, h('strong', null, d.label), h('span.small.dim', null, ` ${fdl(d.date)}`),
+          d.cycle ? h(`span.cycle-chip.ph-${d.cycle.phase}`, null, `${d.cycle.icon} ` + ui(`ден ${d.cycle.day}`)) : null),
         d.sessions.length ? d.sessions.map(s => h('details.train-session', null,
-          h('summary', null, `${s.icon} `, sessionLine(s, t.hr, t.rpeOnly), s.extra ? h('span.tiny.dim', null, ' · ежедневно движение') : null),
+          h('summary', null, `${s.icon} `, sessionLine(s, t.hr, t.rpeOnly), s.extra ? h('span.tiny.dim', null, ui(' · ежедневно движение')) : null),
           h('ul.small', null, s.blocks.map(b => h('li', null, h('strong', null, b.name + ': '), b.text)))))
-          : h('div.small.dim', null, 'Почивка или леко движение.'),
+          : h('div.small.dim', null, ui('Почивка или леко движение.')),
         d.addOns.length ? h('ul.small.train-addons', null, d.addOns.map(a => h('li', null, a.text))) : null,
         d.cycle ? h('div.tiny.muted', null, d.cycle.text) : null))));
   };
-  return card('Тренировъчен план за 4 седмици', { icon: '🏃' },
+  return card(ui('Тренировъчен план за 4 седмици'), { icon: '🏃' },
     t.warnings.length ? h('div.stack', { style: { gap: '6px', marginBottom: '12px' } }, t.warnings.map(w => h('div.alert-strip.warn', null, w))) : null,
     h('div.tiles', null,
-      tile('Аеробни', w1.aerobic, 'мин/седм.', `цел ${t.targets.aerobic}${t.targets.aerobic < t.targets.aerobicMax ? `–${t.targets.aerobicMax}` : ''} (СЗО); интензивните се броят двойно`),
-      tile('Силови', w1.strength, 'дни/седм.', `цел поне ${t.targets.strengthDays} (СЗО)`),
-      t.targets.balanceDays ? tile('Баланс', t.targets.balanceDays === 7 ? 'всеки ден' : `${t.targets.balanceDays}`, t.targets.balanceDays === 7 ? '' : 'дни/седм.', 'СЗО, Too Fit To Fracture') : null,
-      tile('Тренировки', t.input.daysPerWeek, '× седм.', `по ${t.input.minutes} мин · ${TRAINING_LEVELS[t.input.level].split(' — ')[0]}`),
-      tile('Разход', w1.kcal, 'kcal/седм.', 'над покоя, по Compendium 2024'),
-      t.hr ? tile('Пулс', `${t.hr.moderate[0]}–${t.hr.moderate[1]}`, '/мин', `умерено; интензивно ${t.hr.vigorous[0]}–${t.hr.vigorous[1]}; макс. ≈${t.hr.max}`)
-        : tile('Пулс', '—', '', 'бета-блокер: водете се по RPE')),
+      tile(ui('Аеробни'), w1.aerobic, ui('мин/седм.'), ui(`цел ${t.targets.aerobic}${t.targets.aerobic < t.targets.aerobicMax ? `–${t.targets.aerobicMax}` : ''} (СЗО); интензивните се броят двойно`)),
+      tile(ui('Силови'), w1.strength, ui('дни/седм.'), ui(`цел поне ${t.targets.strengthDays} (СЗО)`)),
+      t.targets.balanceDays ? tile(ui('Баланс'), t.targets.balanceDays === 7 ? ui('всеки ден') : `${t.targets.balanceDays}`, t.targets.balanceDays === 7 ? '' : ui('дни/седм.'), ui('СЗО, Too Fit To Fracture')) : null,
+      tile(ui('Тренировки'), t.input.daysPerWeek, ui('× седм.'), ui(`по ${t.input.minutes} мин · ${TRAINING_LEVELS[t.input.level].split(' — ')[0]}`)),
+      tile(ui('Разход'), w1.kcal, ui('kcal/седм.'), ui('над покоя, по Compendium 2024')),
+      t.hr ? tile(ui('Пулс'), `${t.hr.moderate[0]}–${t.hr.moderate[1]}`, ui('/мин'), ui(`умерено; интензивно ${t.hr.vigorous[0]}–${t.hr.vigorous[1]}; макс. ≈${t.hr.max}`))
+        : tile(ui('Пулс'), '—', '', ui('бета-блокер: водете се по RPE'))),
     h('p.small.muted', { style: { margin: '8px 0 0' } },
-      Object.values(INTENSITY).map(i => `${i.label[0].toUpperCase()}${i.label.slice(1)}: RPE ${i.rpe} от 10, ${i.talk}`).join('. ') + '.'),
+      Object.values(INTENSITY).map(i => `${upper1(ui(i.label))}: ` + ui(`RPE ${i.rpe} от 10, ${i.talk}`)).join('. ') + '.'),
     h('div.nut-cols', null,
-      list('Кога да тренирате', t.timeAdvice),
-      list('Цикъл и тренировки', t.cycle),
-      list('Бележки', t.notes)),
+      list(ui('Кога да тренирате'), t.timeAdvice),
+      list(ui('Цикъл и тренировки'), t.cycle),
+      list(ui('Бележки'), t.notes)),
     h('div.stack', { style: { marginTop: '10px' } }, t.weeks.map(weekView)),
     h('p.tiny.muted', { style: { margin: '10px 0 0' } },
-      'Цели по СЗО 2020; интензивност по 2024 Adult Compendium of Physical Activities; силови по ACSM; при заболявания — по насоката, посочена до всяка бележка. '
-      + 'Обемът расте постепенно, 4-тата седмица е по-лека. Менюто дава повече енергия в дните с повече тренировка и по-малко в почивните.'));
+      ui('Цели по СЗО 2020; интензивност по 2024 Adult Compendium of Physical Activities; силови по ACSM; при заболявания — по насоката, посочена до всяка бележка. ')
+      + ui('Обемът расте постепенно, 4-тата седмица е по-лека. Менюто дава повече енергия в дните с повече тренировка и по-малко в почивните.')));
 }

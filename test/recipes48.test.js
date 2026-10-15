@@ -11,9 +11,9 @@ const sourced = RECIPES.filter(r => r.source);
 const fromBook = (part) => sourced.filter(r => r.source.some(s => s.url.includes(part)));
 const base = { sex: 'f', age: 41, weight: 78, height: 166, activity: 'light', asOf: '2026-10-14' };
 
-test('4.8: 242 рецепти, 115 с източник, от трите нови издания', () => {
-  assert.equal(RECIPES.length, 242);
-  assert.equal(sourced.length, 115);
+test('4.8 и 4.11: 259 рецепти, 132 с източник, от трите нови издания', () => {
+  assert.equal(RECIPES.length, 259);
+  assert.equal(sourced.length, 132);
   assert.ok(fromBook('WEHL-RecipeBook_508.pdf').length >= 7, 'African American Style');
   assert.ok(fromBook('Your_Heart_Your_Life_Recipe_Book.pdf').length >= 7, 'Latino Recipes');
   assert.ok(fromBook('new_dash.pdf').length >= 6, 'DASH');

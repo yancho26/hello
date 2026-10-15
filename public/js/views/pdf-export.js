@@ -34,7 +34,9 @@ export async function downloadNutritionPdf(person, plan, { only = null } = {}) {
       doctor: state.doctor ? { name: state.doctor.name } : null,
       version: state.server?.version || '', date: today(),
     });
-    const kind = only === 'shopping' ? 'Пазаруване' : plan.training ? 'Хранене и тренировки' : 'Хранителен режим';
+    const kind = plan.lang === 'en'
+      ? (only === 'shopping' ? 'Shopping' : plan.training ? 'Nutrition and training' : 'Nutrition plan')
+      : (only === 'shopping' ? 'Пазаруване' : plan.training ? 'Хранене и тренировки' : 'Хранителен режим');
     const name = `${safeName(`${kind} - ${person.name || ''} - ${formatDate(today()).replace(/ г\.$/, '')}`)}.pdf`;
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a');

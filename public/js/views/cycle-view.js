@@ -6,6 +6,7 @@ import { card, confirmDialog, field, h, input, mount, numberInput, select, toast
 import { addDays, ageInMonthsExact, daysBetween, formatDate, today } from '../shared/dates.js';
 import { CONTRACEPTION, DEFAULT_BLEED, DEFAULT_LENGTH, PHASES, cleanCycle, cycleStats, phasesFrom } from '../shared/cycle.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
+import { ui } from '../shared/i18n/plan-en.js';
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const ageOf = (p) => (p.birthDate ? Math.floor(ageInMonthsExact(p.birthDate, today()) / 12) : p.age ?? null);
@@ -201,11 +202,13 @@ export function cycleFields({ cycle = null, last = {}, age = null, hint = '' } =
 
 /* ----------------------------- в изготвения режим ----------------------------- */
 
+const fdl = (iso) => ui(formatDate(iso));
+
 /** Етикет на фазата за ден от менюто. */
 export function phaseChip(c) {
   if (!c) return null;
-  return h(`span.cycle-chip.ph-${c.phase}`, { title: c.predicted ? 'прогноза' : '' },
-    `${c.icon} ден ${c.day} · ${c.label}${c.kcalAdd ? ` · ${c.kcalAdd > 0 ? '+' : '−'}${Math.abs(c.kcalAdd)} kcal` : ''}`);
+  return h(`span.cycle-chip.ph-${c.phase}`, { title: c.predicted ? ui('прогноза') : '' },
+    `${c.icon} ` + ui(`ден ${c.day} · ${c.label}`) + (c.kcalAdd ? ` · ${c.kcalAdd > 0 ? '+' : '−'}${Math.abs(c.kcalAdd)} kcal` : ''));
 }
 
 /** Блокът „Цикъл и хранене“ в режима. */
@@ -213,16 +216,16 @@ export function cyclePlanBlock(plan) {
   const c = plan.cycle;
   if (!c) return null;
   if (!c.applied) {
-    return h('div.nut-list.cycle', null, h('h3', null, 'Цикъл и хранене'), h('p.small', null, c.reason));
+    return h('div.nut-list.cycle', null, h('h3', null, ui('Цикъл и хранене')), h('p.small', null, c.reason));
   }
   const s = c.stats;
   return h('div.nut-list.cycle', null,
-    h('h3', null, 'Цикъл и хранене'),
+    h('h3', null, ui('Цикъл и хранене')),
     h('p.small', { style: { margin: '0 0 6px' } },
-      `Последна менструация ${formatDate(s.lastStart)} · цикъл ${s.length} дни · менструация ${s.bleed} дни`
-      + (s.nextStart ? ` · следваща около ${formatDate(s.nextStart)}` : ''),
-      h('br'), `Енергия: в лутеалната фаза +${c.kcalUp} kcal, в останалите дни −${c.kcalDown} kcal — средно за цикъла същата.`),
-    plan.week ? null : h('p.small', { style: { margin: '0 0 6px' } }, 'Менюто е за ', phaseChip(c.days[0]), '.'),
+      ui(`Последна менструация ${fdl(s.lastStart)} · цикъл ${s.length} дни · менструация ${s.bleed} дни`)
+      + (s.nextStart ? ui(` · следваща около ${fdl(s.nextStart)}`) : ''),
+      h('br'), ui(`Енергия: в лутеалната фаза +${c.kcalUp} kcal, в останалите дни −${c.kcalDown} kcal — средно за цикъла същата.`)),
+    plan.week ? null : h('p.small', { style: { margin: '0 0 6px' } }, ui('Менюто е за '), phaseChip(c.days[0]), '.'),
     h('ul', null, c.evidence.map(t => h('li.small', null, t))),
     c.notes.length ? h('ul', null, c.notes.map(t => h('li.small', null, t))) : null,
     h('p.tiny.muted', { style: { margin: '6px 0 0' } }, c.notIncluded));

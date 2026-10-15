@@ -34,6 +34,8 @@ export const PHASES = table({
 
 export const DEFAULT_LENGTH = 28;
 export const DEFAULT_BLEED = 5;
+/** Първата буква — главна. */
+const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const LUTEAL_DAYS = 14;
 const PREMENSTRUAL_DAYS = 5;
 /* Записи, по-далечни от година, не влизат в оценката. */
@@ -120,7 +122,7 @@ export function cycleStats(cycle = {}, { age = null, asOf = today() } = {}) {
     return out;
   }
   if (!natural) {
-    flag('hormonal', 'info', `${CONTRACEPTION[contraception].label[0].toUpperCase()}${CONTRACEPTION[contraception].label.slice(1)}: овулацията е потисната и кървенето не е истинска менструация — фазите не се изчисляват.`);
+    flag('hormonal', 'info', `${upper1(CONTRACEPTION[contraception].label)}: овулацията е потисната и кървенето не е истинска менструация — фазите не се изчисляват.`);
   }
 
   // Редовност по FIGO — нужни са поне 3 цикъла.

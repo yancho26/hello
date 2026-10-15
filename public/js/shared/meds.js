@@ -599,7 +599,7 @@ export function foodNotes(patient, asOf = today()) {
       if (seen.has(text)) continue;
       if (matches(key, m.drug, classes)) {
         seen.add(text);
-        out.push({ med: medLabel(m), text });
+        out.push({ med: medLabel(m), drug: m.drug, text });
       }
     }
   }

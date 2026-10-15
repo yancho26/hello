@@ -87,6 +87,8 @@ const FOCUS_WEIGHT = {
 };
 
 const round = (v, step = 1) => Math.round(v / step) * step;
+/** Първата буква — главна. */
+const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const DAY_NAMES = ['Понеделник', 'Вторник', 'Сряда', 'Четвъртък', 'Петък', 'Събота', 'Неделя'];
 const weekdayIndex = (iso) => {
   const [y, m, d] = iso.split('-').map(Number);
@@ -222,7 +224,7 @@ export function sessionContent(s, safety = {}) {
         ? ['напади назад', 'гребане с ластик', 'глутеус мост на един крак', 'лицеви опори на пейка', 'странична опора']
         : ['клек до стол', 'лицеви опори на стена, пейка или колене', 'глутеус мост', 'гребане с ластик', 'планк 20–40 с'];
       add('Загрявка', `${warm} мин раздвижване на ставите и ходене на място.`);
-      add('Основна част', `${st.n} обиколки × ${st.reps} повторения: ${list.join('; ')}. ${st.rpe[0].toUpperCase() + st.rpe.slice(1)}.${spine}${supine}`);
+      add('Основна част', `${st.n} обиколки × ${st.reps} повторения: ${list.join('; ')}. ${upper1(st.rpe)}.${spine}${supine}`);
       add('Разпускане', `${cool} мин разтягане.`);
       break;
     }
@@ -544,8 +546,8 @@ export function trainingPlan(input) {
   if (removed.length) {
     for (const r of removed) {
       notes.unshift(r.replacedBy
-        ? `${ACTIVITIES[r.activity].label[0].toUpperCase()}${ACTIVITIES[r.activity].label.slice(1)} е заменено с „${ACTIVITIES[r.replacedBy].label}“: ${r.reason}.`
-        : `${ACTIVITIES[r.activity].label[0].toUpperCase()}${ACTIVITIES[r.activity].label.slice(1)} не е включено: ${r.reason}.`);
+        ? `${upper1(ACTIVITIES[r.activity].label)} е заменено с „${ACTIVITIES[r.replacedBy].label}“: ${r.reason}.`
+        : `${upper1(ACTIVITIES[r.activity].label)} не е включено: ${r.reason}.`);
     }
   }
   if (!chosen.length) notes.unshift('Не са избрани тренировки — планът е с ходене и упражнения у дома.');
