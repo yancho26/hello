@@ -11,9 +11,12 @@ import { searchDrugs, drugName } from '../shared/drugs.js';
 import { planForm, planView, progressCard, savedPlans } from './nutrition-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
 import { downloadNutritionPdf } from './pdf-export.js';
+import { foodCatalog } from './food-catalog.js';
+import { FOODS } from '../shared/recipes.js';
 
 const dec = (v) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
 let selected = null;   // id на отворения човек или 'new'
+let view = 'people';   // 'people' — хората извън листата; 'foods' — каталогът на храните (версия 4.15)
 
 export async function renderNutritionPage(host) {
   const { clients } = await api.nutritionClients();
@@ -45,6 +48,20 @@ export async function renderNutritionPage(host) {
     : empty('Още няма хора извън пациентската листа. „Нов човек“ започва нов хранителен режим.', '🥗'));
   drawList();
 
+  const tabs = h('div.tabs.no-print', { role: 'tablist' },
+    [['people', 'Хора извън листата'], ['foods', `Каталог на храните (${Object.keys(FOODS).length})`]].map(([id, label]) =>
+      h('button' + (view === id ? '.active' : ''), { role: 'tab', 'aria-selected': String(view === id), onclick: () => { view = id; rerender(); } }, label)));
+  if (view === 'foods') {
+    mount(host,
+      h('div.page-head', null,
+        h('div.titles', null,
+          h('h1', null, 'Хранене'),
+          h('div.muted.small', null, `${state.practice.name} · състав на храните, „богати на …“ и порции`))),
+      tabs,
+      card('Каталог на храните', { icon: '🥦' }, foodCatalog()));
+    return;
+  }
+
   mount(host,
     h('div.page-head', null,
       h('div.titles', null,
@@ -52,6 +69,7 @@ export async function renderNutritionPage(host) {
         h('div.muted.small', null, `${state.practice.name} · хранителен режим за хора извън пациентската листа`)),
       h('div.row.no-print', null,
         h('button.btn.primary', { onclick: () => open('new') }, '+ Нов човек'))),
+    tabs,
     h('div.alert-strip.info', { style: { marginBottom: '14px' } },
       'За пациент от листата режимът се изготвя в досието му, раздел „Хранене“ — там данните се вземат от досието. '
       + 'Тук въведете човека и всичките му заболявания по МКБ-10; записът не става пациент и не влиза в справките.'),

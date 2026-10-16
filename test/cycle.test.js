@@ -113,7 +113,8 @@ test('цикъл: почистване и сливане на данните', (
 test('храни: желязо и калций за всяка храна и в сборовете', () => {
   for (const [id, f] of Object.entries(FOODS)) {
     assert.ok(f.fe >= 0 && f.fe < 15 && f.ca >= 0 && f.ca < 1300, id);
-    assert.ok(f.fe > 0 || f.ca > 0, `${id}: има стойност`);
+    // Рафинираните олиа (слънчогледово, рапично) нямат нито желязо, нито калций.
+    assert.ok(f.fe > 0 || f.ca > 0 || f.flags.has('oil'), `${id}: има стойност`);
   }
   assert.ok(FOODS.lentils.fe > FOODS.rice.fe && FOODS.kashkaval.ca > FOODS.milk.ca);
   const t = totals([{ food: 'lentils', grams: 150 }, { food: 'yogurt', grams: 200 }]);

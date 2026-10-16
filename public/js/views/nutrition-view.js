@@ -452,6 +452,22 @@ export function diagnosesEditor(initial = [], { week = null } = {}) {
 
 const fd = (iso) => L(formatDate(iso));
 
+/* Витамини и минерали в менюто спрямо EFSA (версия 4.15). */
+function microBlock(plan) {
+  const m = plan.micro;
+  if (!m?.rows?.length) return null;
+  const num = (v) => (plan.lang === 'en' ? String(v) : dec(v));
+  return h('div.nut-list.micro', null,
+    h('h3', null, L(m.basis === 'week' ? 'Витамини и минерали — средно на ден в менюто' : 'Витамини и минерали — в първия вариант на деня')),
+    h('table.micro-table', null, h('tbody', null, m.rows.map(r => h('tr', { class: 'st-' + r.status },
+      h('td', null, r.label),
+      h('td.num', null, `${num(r.value)} ${r.unit}`),
+      h('td.bar', null, h('div.micro-bar' + (r.max ? '.max' : ''), { title: `${r.pct}%` }, h('span', { style: { width: Math.min(100, r.pct) + '%' } }))),
+      h('td.num.dim', null, `${r.max ? '< ' : ''}${num(r.ref)} ${r.unit}`))))),
+    m.notes.length ? h('ul', null, m.notes.map(n => h('li', null, n.text))) : null,
+    h('p.tiny.dim', { style: { margin: '6px 0 0' } }, L('Препоръки за възрастни по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.')));
+}
+
 const list = (title, items, cls = '') => (items && items.length ? h('div.nut-list' + (cls ? '.' + cls : ''), null, h('h3', null, title),
   h('ul', null, items.map(x => h('li', null, x)))) : null);
 
@@ -605,6 +621,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, onSwap, saveL
     dislikes.length ? h('p.small', { style: { margin: '6px 0 0' } }, h('strong', null, L('Не яде: ')), dislikes.join(', ') + '.') : null,
     diagnosesBlock(plan),
     cyclePlanBlock(plan),
+    microBlock(plan),
     plan.portions ? h('div.nut-cols', null,
       h('div.nut-list', null, h('h3', null, L('Порции за деня')),
         h('table.portions', null, h('tbody', null, plan.portions.map(x => h('tr', null,

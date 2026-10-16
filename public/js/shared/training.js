@@ -30,6 +30,9 @@
 
 import { table } from './table.js';
 import { addDays } from './dates.js';
+import { BALANCE_SETS, EXERCISES, HOME_EQUIPMENT, WARMUP, coolDownStretches, equipmentFor, pickExercises } from './exercises.js';
+
+export { EXERCISES, HOME_EQUIPMENT };
 
 /* ------------------------------------ речници ------------------------------------ */
 
@@ -53,7 +56,26 @@ export const ACTIVITIES = table({
   team: { label: 'отборен спорт (футбол, волейбол, баскетбол)', icon: '⚽', role: 'sport', met: { light: 3.0, moderate: 7.0, vigorous: 9.5 }, impact: 'high', contact: true }, // 15720, 15610, 15605
   racket: { label: 'тенис, падел или бадминтон', icon: '🎾', role: 'sport', met: { light: 4.5, moderate: 5.5, vigorous: 8.0 }, impact: 'high', contact: true }, // 15685, 15030, 15690
   hiking: { label: 'планински преходи', icon: '🥾', role: 'cardio', met: { light: 3.8, moderate: 5.3, vigorous: 7.8 }, impact: 'low' }, // 17081, 17082, 17012
+  // Версия 4.15.
+  chair: { label: 'упражнения на стол', icon: '🪑', role: 'strength', met: { light: 2.5, moderate: 2.5, vigorous: 2.5 }, strength: true, impact: 'none' }, // 02140
+  stretching: { label: 'разтягане и гъвкавост', icon: '🤲', role: 'mobility', met: { light: 2.3, moderate: 2.3, vigorous: 2.3 }, impact: 'none' }, // 02101
+  stairs: { label: 'изкачване на стълби', icon: '🪜', role: 'cardio', met: { light: 4.5, moderate: 6.8, vigorous: 9.3 }, impact: 'low' }, // 17133, 17131, 17134
+  waterwalk: { label: 'ходене във вода', icon: '🌊', role: 'cardio', met: { light: 2.5, moderate: 4.8, vigorous: 6.8 }, impact: 'none' }, // 18367, 18368, 18369
+  ebike: { label: 'електрически велосипед', icon: '🛵', role: 'cardio', met: { light: 4.0, moderate: 6.0, vigorous: 6.8 }, impact: 'none' }, // 01088, 01084, 01080
+  folk: { label: 'хора и народни танци', icon: '🪗', role: 'cardio', met: { light: 4.5, moderate: 5.0, vigorous: 9.8 }, balance: true, impact: 'low' }, // 03025, 03033, 03031
+  gardening: { label: 'градинска работа', icon: '🌱', role: 'cardio', met: { light: 2.3, moderate: 3.8, vigorous: 6.0 }, impact: 'low' }, // 08260, 08245, 08262
+  xcski: { label: 'ски бягане', icon: '⛷', role: 'cardio', met: { light: 6.8, moderate: 8.5, vigorous: 11.3 }, impact: 'low' }, // 19080, 19090, 19100
+  alpineski: { label: 'ски (спускане)', icon: '🎿', role: 'sport', met: { light: 7.0, moderate: 7.0, vigorous: 7.0 }, impact: 'low', contact: true }, // 19075
+  skating: { label: 'кънки (лед или ролери)', icon: '⛸', role: 'cardio', met: { light: 5.5, moderate: 7.0, vigorous: 9.0 }, balance: true, impact: 'low', contact: true }, // 19020, 19030, 19040
+  paddling: { label: 'каяк, кану или гребане с лодка', icon: '🛶', role: 'cardio', met: { light: 3.5, moderate: 5.0, vigorous: 9.0 }, impact: 'none' }, // 18070, 18100, 18106
+  climbing: { label: 'катерене (стена или скали)', icon: '🧗', role: 'mixed', met: { light: 5.8, moderate: 7.3, vigorous: 8.8 }, strength: true, impact: 'low', contact: true }, // 15537, 15535, 15534
+  combat: { label: 'бокс или бойни изкуства', icon: '🥊', role: 'mixed', met: { light: 5.8, moderate: 7.3, vigorous: 10.3 }, impact: 'high', contact: true }, // 15110, 15457, 15430
+  tabletennis: { label: 'тенис на маса', icon: '🏓', role: 'sport', met: { light: 4.0, moderate: 4.0, vigorous: 4.0 }, impact: 'low' }, // 15660
+  golf: { label: 'голф', icon: '⛳', role: 'sport', met: { light: 3.5, moderate: 4.3, vigorous: 4.5 }, impact: 'low' }, // 15290, 15265, 15285
 });
+
+/* Рискови за падане или удар — изключват се при антикоагулант, бременност и остеопоротична фрактура. */
+const FALL_RISK = ['team', 'combat', 'alpineski', 'skating', 'climbing'];
 
 export const TRAINING_LEVELS = table({
   beginner: 'начинаещ — досега почти без тренировки',
@@ -86,60 +108,17 @@ export const INTENSITY = table({
   vigorous: { label: 'интензивно', rpe: '7–8', talk: 'казвате само по няколко думи' },
 });
 
-/* Упражненията в плана и как се правят (версия 4.14). Имената са същите като в текста на тренировката. */
-const SQUAT_HOW = 'Стъпалата са на ширината на раменете; клякате назад и надолу, сякаш сядате на стол, гърбът е изправен, коленете следват посоката на пръстите; ставате, като бутате пода с петите.';
-const RDL_HOW = 'Коленете са леко свити, гърбът — изправен; навеждате се, като бутате таза назад, тежестта се плъзга по бедрата до средата на подбедрицата; изправяте се, като стягате седалището.';
-const LUNGE_HOW = 'Крачка напред или назад и сгъване на двете колене до около 90°; предното коляно е над стъпалото, тялото — изправено; връщате се, като бутате с предния крак.';
-const PLANK_HOW = 'Опора на предмишниците и пръстите (по-лесно — на колене); тялото е в права линия от главата до петите, коремът е стегнат, дишате спокойно.';
-const SIDE_HOW = 'Легнали настрани, опора на лакътя (по-лесно — и на коленете); повдигате таза, докато тялото е в права линия, и задържате 15–30 с на всяка страна.';
-const BRIDGE_HOW = 'По гръб, коленете са свити, стъпалата на пода; повдигате таза, докато коленете, тазът и раменете са на една линия, задържате 1–2 с и спускате бавно.';
-const ROW_BAND_HOW = 'Ластикът е закачен пред вас на височината на гърдите; дърпате дръжките към корема, лопатките се събират назад, после връщате бавно.';
-const OHP_HOW = 'Дъмбелите са на нивото на раменете; избутвате ги нагоре, без да извивате кръста, и ги спускате бавно (седнал — с опрян гръб).';
-const PUSHUP_HOW = 'Ръцете са малко по-широко от раменете, тялото — в права линия; сгъвате лактите, докато гърдите почти стигнат опората, и се избутвате. Най-лесно е на стена, после на пейка, после на колене и на пода.';
-export const EXERCISES = table({
-  gobletSquat: { name: 'клек с гира или лег-преса', how: `${SQUAT_HOW} Гирата е пред гърдите; на лег-преса коленете не се заключват в края.` },
-  cableRow: { name: 'гребане на долен скрипец', how: 'Седнал, гърбът е изправен; дърпате дръжката към корема, лопатките се събират назад; връщате бавно, без да се навеждате напред.' },
-  chestMachine: { name: 'натиск от гърди на машина седнал', how: 'Гърбът е опрян; бутате дръжките напред до почти изпънати ръце и връщате бавно; издишвате при бутането.' },
-  dbChest: { name: 'натиск от гърди с дъмбели', how: 'По гръб на пейка, стъпалата на пода; спускате дъмбелите до нивото на гърдите, лактите са на около 45° от тялото, и ги избутвате нагоре.' },
-  dbRdl: { name: 'римска тяга с дъмбели', how: RDL_HOW },
-  plank: { name: 'планк 20–40 с', how: PLANK_HOW },
-  lungeStep: { name: 'напади назад или качване на стъпало', how: `${LUNGE_HOW} Или: качвате се на стабилно стъпало с целия крак и слизате бавно.` },
-  pulldown: { name: 'вертикален скрипец', how: 'Седнал, хватът е малко по-широк от раменете; дърпате лоста към горната част на гърдите, лактите — надолу и назад, без люлеене.' },
-  dbPressSeated: { name: 'раменни преси с дъмбели седнал', how: OHP_HOW },
-  bridge: { name: 'глутеус мост', how: BRIDGE_HOW },
-  sidePlankKnees: { name: 'странична опора на колене', how: SIDE_HOW },
-  deadBug: { name: '„мъртва буболечка“ (dead bug)', how: 'По гръб, ръцете са нагоре, коленете — свити над таза; бавно спускате противоположните ръка и крак, като кръстът остава прилепен към пода.' },
-  dbRow: { name: 'гребане с дъмбел', how: 'Опора с ръка и коляно на пейка, гърбът е прав; дърпате дъмбела към хълбока и го спускате бавно.' },
-  press: { name: 'раменни преси', how: OHP_HOW },
-  armsCable: { name: 'бицепс и трицепс на скрипец', how: 'Лактите остават до тялото; сгъвате (бицепс) или изпъвате (трицепс) само в лакътя, бавно и без люлеене.' },
-  barSquat: { name: 'клек с щанга или гира', how: `${SQUAT_HOW} Слизате до дълбочина без болка.` },
-  rdl: { name: 'римска тяга', how: RDL_HOW },
-  lunges: { name: 'напади', how: LUNGE_HOW },
-  legCurl: { name: 'сгъване за задно бедро на машина', how: 'Сгъвате коленете срещу съпротивлението и връщате бавно; тазът остава опрян.' },
-  calfRaise: { name: 'повдигане на пръсти', how: 'Изправен, с ръка на опора; повдигате петите възможно най-високо и ги спускате бавно.' },
-  backLunge: { name: 'напади назад', how: LUNGE_HOW },
-  bandRow: { name: 'гребане с ластик', how: ROW_BAND_HOW },
-  singleBridge: { name: 'глутеус мост на един крак', how: `${BRIDGE_HOW} Единият крак е изпънат във въздуха, тазът остава хоризонтален.` },
-  benchPushup: { name: 'лицеви опори на пейка', how: PUSHUP_HOW },
-  sidePlank: { name: 'странична опора', how: SIDE_HOW },
-  chairSquat: { name: 'клек до стол', how: 'Столът е зад вас; сядате бавно, докато докоснете седалката, и ставате, без да помагате с ръцете; коленете следват пръстите.' },
-  wallPushup: { name: 'лицеви опори на стена, пейка или колене', how: PUSHUP_HOW },
-  wallPushup2: { name: 'лицеви опори на стена или пейка', how: PUSHUP_HOW },
-  jumpSquat: { name: 'клек с подскок', how: 'Клякате и подскачате нагоре; приземявате се меко, на свити колене.' },
-  squat: { name: 'клек', how: SQUAT_HOW },
-  trxRow: { name: 'гребане с ластик или TRX', how: `${ROW_BAND_HOW} С TRX — наклонени назад, придърпвате тялото към дръжките.` },
-  climbers: { name: '„катерач“ (mountain climbers)', how: 'Опора на ръцете като за лицева опора; редувате бързо придърпване на коленете към гърдите.' },
-  stepUp: { name: 'качване на стъпало', how: 'Качвате се на стабилно стъпало с целия крак, изправяте се и слизате бавно; редувате краката.' },
-  pushups: { name: 'лицеви опори', how: PUSHUP_HOW },
-  plankShort: { name: 'планк', how: PLANK_HOW },
-  oneLeg: { name: 'стоене на един крак', how: 'До стабилна опора (плот, облегало); стоите на един крак 10–30 с, после на другия. Когато стане лесно — без ръце или със затворени очи, но пак до опората.' },
-  heelToe: { name: 'ходене пета-пръсти', how: 'Ходите по права линия, като петата на предния крак опира пръстите на задния; до стена или плот за опора.' },
-  tandem: { name: 'тандемна стойка', how: 'Стоите с единия крак точно пред другия, пета до пръсти, 10–30 с; после ги разменяте.' },
-  pelvic: { name: 'тазово дъно', how: 'Стягате мускулите, с които задържате урината и газовете, и ги повдигате навътре, без да стягате седалището, корема и бедрата и без да задържате дъха; задържате няколко секунди и отпускате напълно. Поне 8 стягания 3 пъти на ден (NICE NG123).' },
-});
 const names = (...ids) => ids.map(id => EXERCISES[id].name);
-const HOME_STRENGTH = ['chairSquat', 'wallPushup2', 'bridge', 'bandRow'];
-const BALANCE = ['oneLeg', 'heelToe', 'tandem'];
+/* Силовите и домашните тренировки по движения (версия 4.15): A и B — цялото тяло, upper и lower —
+ * горна и долна част за напредналите с цел „сила и мускули“. */
+const GYM_SETS = {
+  A: ['squat', 'pullH', 'pushH', 'hinge', 'core'],
+  B: ['lunge', 'pullV', 'pushV', 'glute', 'coreSide'],
+  upper: ['pushH', 'pullH', 'pushV', 'pullV', 'arms'],
+  lower: ['squat', 'hinge', 'lunge', 'kneeFlex', 'calf'],
+};
+const HOME_SETS = { A: ['squat', 'pushH', 'glute', 'pullH', 'core'], B: ['lunge', 'pullH', 'glute', 'pushH', 'coreSide'] };
+const HOME_ADDON = ['squat', 'pushH', 'glute', 'pullH'];
 
 /* Тренировъчни дни в седмицата (0 = понеделник) по брой. */
 const DAY_PATTERNS = { 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 5], 5: [0, 1, 3, 4, 5], 6: [0, 1, 2, 3, 4, 5], 7: [0, 1, 2, 3, 4, 5, 6] };
@@ -148,11 +127,11 @@ const WEEK_LOAD = { beginner: [0.75, 0.85, 0.95, 1], intermediate: [0.9, 1, 1.1,
 /* Тежест на всеки вид тренировка според целта — колко сесии получава. */
 const FOCUS_WEIGHT = {
   health: {},
-  weight: { gym: 1.5, hiit: 1.5, running: 1.3, cycling: 1.3, swimming: 1.2, rowing: 1.2, walking: 1.2 },
-  muscle: { gym: 3, bodyweight: 2.5, hiit: 1.5, reformer: 1.2 },
-  endurance: { running: 2, cycling: 2, swimming: 2, rowing: 1.8, hiking: 1.5 },
-  mobility: { reformer: 2, matpilates: 2, yoga: 2, taichi: 1.5 },
-  bone: { gym: 2, bodyweight: 1.5, running: 1.3, hiking: 1.3, dance: 1.2, taichi: 1.2, swimming: 0.6, cycling: 0.6 },
+  weight: { gym: 1.5, hiit: 1.5, running: 1.3, cycling: 1.3, swimming: 1.2, rowing: 1.2, walking: 1.2, stairs: 1.3, xcski: 1.3, combat: 1.2 },
+  muscle: { gym: 3, bodyweight: 2.5, hiit: 1.5, reformer: 1.2, climbing: 1.3, chair: 1.2 },
+  endurance: { running: 2, cycling: 2, swimming: 2, rowing: 1.8, hiking: 1.5, xcski: 2, paddling: 1.5, stairs: 1.3 },
+  mobility: { reformer: 2, matpilates: 2, yoga: 2, taichi: 1.5, stretching: 2 },
+  bone: { gym: 2, bodyweight: 1.5, running: 1.3, hiking: 1.3, dance: 1.2, taichi: 1.2, swimming: 0.6, cycling: 0.6, stairs: 1.3, folk: 1.2, ebike: 0.6, paddling: 0.6, waterwalk: 0.6 },
 };
 
 const round = (v, step = 1) => Math.round(v / step) * step;
@@ -208,7 +187,7 @@ export function trainingSafety({ age, bmi, sex = null, cond = new Set(), codes =
   }
   if (out.rpeOnly) out.notes.push('Бета-блокер: пулсът не отразява натоварването — водете се по усещането (RPE) и теста с говорене.');
   if (classes.has('VKA') || classes.has('DOAC') || has(/^Z92\.1|^Z79\.01/)) {
-    out.exclude.set('team', 'антикоагулант — риск от удар и кървене при контактен спорт');
+    for (const a of FALL_RISK) out.exclude.set(a, 'антикоагулант — риск от удар, падане и кървене');
     out.notes.push('Антикоагулант: без контактни спортове и дейности с риск от падане.');
   }
   if (cond.has('osteoporosis') || has(/^M8[01]/)) {
@@ -217,7 +196,7 @@ export function trainingSafety({ age, bmi, sex = null, cond = new Set(), codes =
     if (has(/^M80/)) {
       out.replace.set('running', ['walking', 'остеопоротична фрактура — без силно натоварване с удар']);
       out.noJumps = true;
-      out.exclude.set('team', 'остеопоротична фрактура — риск от падане');
+      for (const a of FALL_RISK) out.exclude.set(a, 'остеопоротична фрактура — риск от падане');
     }
     out.notes.push('Остеопороза: силови упражнения поне 2 пъти седмично (8–12 повторения), баланс всеки ден 15–20 мин, упражнения за мускулите на гърба; без сгъване на гръбнака напред и завъртане до краен обхват под натоварване — „щадене на гръбнака“ (Too Fit To Fracture).');
   }
@@ -238,7 +217,8 @@ export function trainingSafety({ age, bmi, sex = null, cond = new Set(), codes =
   if (cond.has('copd') || has(/^J44/)) out.notes.push('ХОББ: интервали с почивки; задухът по скалата на Борг до умерен; белодробна рехабилитация при възможност (GOLD).');
   if (has(/^J45/)) out.notes.push('Астма: дълга загрявка; при астма от усилие — бронходилататор 15 мин преди тренировка по назначение (GINA); студен въздух — шал или маска.');
   if (has(/^G40/)) {
-    out.notes.push('Епилепсия: плуване само с придружител; без катерене и дейности на височина.');
+    out.exclude.set('climbing', 'епилепсия — без катерене и дейности на височина');
+    out.notes.push('Епилепсия: плуване, ходене във вода и гребане — само с придружител; без катерене и дейности на височина.');
   }
   if (has(/^F50/) || amenorrhea) {
     cap('moderate');
@@ -247,7 +227,7 @@ export function trainingSafety({ age, bmi, sex = null, cond = new Set(), codes =
   if (has(/^F3[23]|^F41/)) out.notes.push('Депресия и тревожност: редовните тренировки, особено групови, намаляват оплакванията.');
   if (cond.has('ckd')) out.notes.push('ХБЗ: редовна умерена активност, поне 150 мин седмично според възможностите (KDIGO 2024).');
   if (pregnancy) {
-    out.exclude.set('team', 'бременност — контакт и риск от падане');
+    for (const a of FALL_RISK) out.exclude.set(a, 'бременност — контакт и риск от падане');
     out.noJumps = true;
     if (level === 'beginner') out.replace.set('running', ['walking', 'бременност — който не е бягал преди, започва с ходене']);
     if (level !== 'advanced') cap('moderate');
@@ -330,25 +310,40 @@ export function sessionContent(s, safety = {}) {
   const supine = safety.noSupine ? ' Без продължително лежане по гръб — вариантите са настрани, седнал или изправен.' : '';
   switch (activity) {
     case 'gym': {
-      const lists = {
-        A: ['gobletSquat', 'cableRow', safety.noSupine ? 'chestMachine' : 'dbChest', 'dbRdl', 'plank'],
-        B: ['lungeStep', 'pulldown', 'dbPressSeated', 'bridge', safety.noSupine ? 'sidePlankKnees' : 'deadBug'],
-        upper: ['dbChest', 'dbRow', 'press', 'pulldown', 'armsCable'],
-        lower: ['barSquat', 'rdl', 'lunges', 'legCurl', 'calfRaise'],
-      };
-      const ids = lists[variant || 'A'];
+      // Упражненията — по движения, с уредите във фитнеса, до нивото и безопасни (версия 4.15).
+      const ids = pickExercises(GYM_SETS[variant || 'A'], { have: equipmentFor('gym'), level, safety, week });
+      const stretch = coolDownStretches(variant === 'upper' ? 'upper' : 'all', safety);
       add('Загрявка', `${warm} мин колело или кростренажор и 1 лека серия от първите упражнения.`);
       add('Основна част', `${st.n} серии × ${st.reps} повторения, почивка 1–2 мин: ${names(...ids).join('; ')}. Тежест: ${st.rpe}.${spine}`, ids);
-      add('Разпускане', `${cool} мин разтягане на бедрата, гърдите и гърба.`);
+      add('Разпускане', `${cool} мин разтягане: ${names(...stretch).join('; ')}.`, stretch);
       break;
     }
     case 'bodyweight': {
-      const ids = variant === 'B'
-        ? ['backLunge', 'bandRow', 'singleBridge', 'benchPushup', 'sidePlank']
-        : ['chairSquat', 'wallPushup', 'bridge', 'bandRow', 'plank'];
-      add('Загрявка', `${warm} мин раздвижване на ставите и ходене на място.`);
+      // У дома — с уредите, които човекът има (без избор — ластик).
+      const ids = pickExercises(HOME_SETS[variant === 'B' || variant === 'lower' ? 'B' : 'A'], { have: equipmentFor('bodyweight', safety.equipment), level, safety, week });
+      const warmup = WARMUP.filter(id => !(safety.noJumps && EXERCISES[id].jump));
+      const stretch = coolDownStretches('all', safety);
+      add('Загрявка', `${warm} мин загрявка: ${names(...warmup).join('; ')}.`, warmup);
       add('Основна част', `${st.n} обиколки × ${st.reps} повторения: ${names(...ids).join('; ')}. ${upper1(st.rpe)}.${spine}${supine}`, ids);
-      add('Разпускане', `${cool} мин разтягане.`);
+      add('Разпускане', `${cool} мин разтягане: ${names(...stretch).join('; ')}.`, stretch);
+      break;
+    }
+    case 'chair': {
+      // Упражнения на стол — за трудно подвижни и за начало след дълго обездвижване (NHS).
+      const have = equipmentFor('bodyweight', safety.equipment);
+      const ids = ['sitToStand', 'hipMarch', 'seatedKneeExt', 'seatedPress', have.has('band') ? 'seatedRow' : 'bicepsCurl', 'seatedHeelToe'];
+      const stretch = ['chestStretch', 'upperTwist', 'ankleStretch', 'neckRotation'].filter(id => !(safety.spineSparing && EXERCISES[id].spineRot));
+      add('Загрявка', `${warm} мин седнал: ${names('hipMarch', 'shoulderRolls').join('; ')}.`, ['hipMarch', 'shoulderRolls']);
+      add('Основна част', `${level === 'beginner' ? 2 : 3} обиколки × 8–12 повторения: ${names(...ids).join('; ')}. Бавно и с контрол; столът е стабилен, без колелца.`, ids);
+      add('Разпускане', `${cool} мин разтягане седнал: ${names(...stretch).join('; ')}.`, stretch);
+      break;
+    }
+    case 'stretching': {
+      const ids = ['calfStretch', safety.noSupine ? 'hamstringStand' : 'hamstringStretch', safety.noSupine ? 'quadStand' : 'thighStretch',
+        'hipFlexor', 'chestStretch', 'sideBend', 'upperTwist', 'neckRotation']
+        .filter(id => !(safety.spineSparing && (EXERCISES[id].spineFlex || EXERCISES[id].spineRot)));
+      add('Загрявка', `${warm} мин загрявка: ${names(...WARMUP).join('; ')}.`, WARMUP);
+      add('Основна част', `${main} мин разтягане — всяко по 15–30 с, 2–3 пъти, без болка: ${names(...ids).join('; ')}.`, ids);
       break;
     }
     case 'reformer':
@@ -384,7 +379,8 @@ export function sessionContent(s, safety = {}) {
       } else {
         add('Основна част', `${main} мин леко бягане, RPE 4–5${level === 'advanced' && week === 2 ? '; последните 10 мин — темпо RPE 6–7' : ''}.`);
       }
-      add('Разпускане', `${cool} мин ходене и разтягане на прасците и бедрата.`);
+      const legs = coolDownStretches('legs', safety);
+      add('Разпускане', `${cool} мин ходене и разтягане: ${names(...legs).join('; ')}.`, legs);
       break;
     }
     case 'walking':
@@ -393,7 +389,7 @@ export function sessionContent(s, safety = {}) {
       else add('Основна част', intensity === 'vigorous' || (level !== 'beginner' && week > 0)
         ? `${main} мин: редувайте 3 мин много бързо и 2 мин нормално ходене; с щеки (нордическо ходене) се натоварват и ръцете.`
         : `${main} мин бързо ходене — леко се задъхвате, но можете да говорите.`);
-      add('Разпускане', `${cool} мин бавно ходене и разтягане.`);
+      { const legs = coolDownStretches('legs', safety); add('Разпускане', `${cool} мин бавно ходене и разтягане: ${names(...legs).join('; ')}.`, legs); }
       break;
     case 'cycling':
       add('Загрявка', `${warm} мин леко въртене.`);
@@ -420,9 +416,10 @@ export function sessionContent(s, safety = {}) {
       break;
     case 'hiit': {
       const jumps = !safety.noJumps && level !== 'beginner';
+      const ids = pickExercises(['squat', 'pullH', 'cardio', 'lunge', 'pushH', 'core'],
+        { have: equipmentFor('bodyweight', safety.equipment), level, safety: { ...safety, noJumps: !jumps, noFloor: safety.noSupine }, week });
       add('Загрявка', `${warm} мин раздвижване и леки клякания.`);
-      add('Основна част', `Кръг от 6 упражнения — ${intensity === 'vigorous' ? '40 с работа / 20 с почивка' : '30 с работа / 30 с почивка'}, ${level === 'beginner' ? 2 : 3} обиколки: ${jumps ? 'клек с подскок' : 'клек'}; гребане с ластик или TRX; ${jumps ? '„катерач“ (mountain climbers)' : 'качване на стъпало'}; напади; лицеви опори; ${safety.noSupine ? 'странична опора' : 'планк'}.${jumps ? '' : ' Без подскоци.'}${spine}`,
-        [jumps ? 'jumpSquat' : 'squat', 'trxRow', jumps ? 'climbers' : 'stepUp', 'lunges', 'pushups', safety.noSupine ? 'sidePlank' : 'plankShort']);
+      add('Основна част', `Кръг от ${ids.length} упражнения — ${intensity === 'vigorous' ? '40 с работа / 20 с почивка' : '30 с работа / 30 с почивка'}, ${level === 'beginner' ? 2 : 3} обиколки: ${names(...ids).join('; ')}.${jumps ? '' : ' Без подскоци.'}${spine}`, ids);
       add('Разпускане', `${cool} мин ходене и разтягане.`);
       break;
     }
@@ -439,6 +436,60 @@ export function sessionContent(s, safety = {}) {
       break;
     case 'hiking':
       add('Преход', `${minutes} мин по пресечен терен в разговорно темпо; щеки при спускане, вода и храна за повече от час.`);
+      break;
+    /* Версия 4.15. */
+    case 'stairs':
+      add('Загрявка', `${warm} мин ходене по равно.`);
+      add('Основна част', intensity === 'vigorous'
+        ? `${main} мин: изкачване по стълби с по-бързо темпо, слизане бавно — слизането натоварва коленете повече; с ръка на парапета.`
+        : `${main} мин: изкачване по стълби в темпо, в което можете да говорите, и бавно слизане; почивка на площадката при нужда.`);
+      add('Разпускане', `${cool} мин бавно ходене и ${names('calfStretch')[0]}.`, ['calfStretch']);
+      break;
+    case 'waterwalk':
+      add('Загрявка', `${warm} мин бавно ходене във вода до кръста.`);
+      add('Основна част', `${main} мин ходене във вода — напред, встрани и назад, с ръцете под водата; ${INTENSITY[intensity].label} темпо. Водата поема част от теглото — подходящо при болки в ставите и наднормено тегло.`);
+      add('Разпускане', `${cool} мин бавно ходене.`);
+      break;
+    case 'ebike':
+      add('Колоездене', `${minutes} мин: колкото по-слаба е помощта на мотора, толкова по-голямо е натоварването; ${intensity === 'vigorous' ? 'без помощ по равно и нагоре' : 'лека помощ — разговорно темпо'}; каска.`);
+      break;
+    case 'folk':
+      add('Хора', `${minutes} мин хора и народни танци${safety.noJumps ? ' — бавни хора, без подскоци' : ''}; ${INTENSITY[intensity].label} темпо. Подобряват баланса и координацията.`);
+      break;
+    case 'gardening':
+      add('Градина', `${minutes} мин работа в градината — копаене, плевене, носене; почивки и смяна на дейността на 15–20 мин, повдигане със свити колене и изправен гръб.`);
+      break;
+    case 'xcski':
+      add('Загрявка', `${warm} мин леко пързаляне.`);
+      add('Основна част', intensity === 'vigorous' ? `${main} мин с отсечки по-бързо (RPE 7–8) и леко между тях.` : `${main} мин равномерно, RPE 4–6.`);
+      add('Разпускане', `${cool} мин леко и разтягане.`);
+      break;
+    case 'alpineski':
+      add('Загрявка', '10 мин раздвижване на коленете, бедрата и глезените, леки клякания.');
+      add('Каране', `${Math.max(10, minutes - 10)} мин с почивки; каска; по-лесни писти в края на деня, когато умората расте.`);
+      break;
+    case 'skating':
+      add('Загрявка', `${warm} мин леко пързаляне.`);
+      add('Основна част', `${main} мин ${INTENSITY[intensity].label} пързаляне; каска и протектори за китките и коленете.`);
+      add('Разпускане', `${cool} мин леко и разтягане.`);
+      break;
+    case 'paddling':
+      add('Гребане', `${minutes} мин ${INTENSITY[intensity].label}; сила от тялото и краката, не само от ръцете; спасителна жилетка.`);
+      break;
+    case 'climbing':
+      add('Загрявка', '10 мин раздвижване на пръстите, китките и раменете и лесни маршрути.');
+      add('Катерене', `${Math.max(10, minutes - 15)} мин с почивки между маршрутите; осигуряване и каска на скали.`);
+      add('Разпускане', '5 мин разтягане на предмишниците и раменете.');
+      break;
+    case 'combat':
+      add('Загрявка', `${warm} мин въже или раздвижване и ${names('shadowBox')[0]}.`, ['shadowBox']);
+      add('Основна част', `${main} мин техника, круша или упражнения по двойки; ${INTENSITY[intensity].label} темпо${safety.noJumps ? ', без скокове' : ''}. Защитни ръкавици; спаринг — само с предпазна екипировка.`);
+      add('Разпускане', `${cool} мин разтягане.`);
+      break;
+    case 'tabletennis':
+    case 'golf':
+      add('Загрявка', '5–10 мин раздвижване на раменете, гърба и китките.');
+      add('Игра', `${Math.max(10, minutes - 10)} мин${s.activity === 'golf' ? ' — ходене между дупките вместо количка' : ''}.`);
       break;
     default:
       add('Тренировка', `${minutes} мин.`);
@@ -522,6 +573,10 @@ export function trainingPlan(input) {
   const minutes = SESSION_MINUTES.includes(Number(input.minutes)) ? Number(input.minutes) : 45;
   const time = TRAINING_TIMES[input.time] ? input.time : 'any';
   const safety = trainingSafety({ ...input, level });
+  // Уредите у дома (версия 4.15); без избор — ластик, както досега.
+  const equipment = Array.isArray(input.equipment) ? input.equipment.filter(e => HOME_EQUIPMENT[e]) : null;
+  safety.equipment = equipment || undefined;
+  const homeHave = equipmentFor('bodyweight', safety.equipment);
   const chosen = (input.activities || []).filter(a => ACTIVITIES[a]);
   const { list, removed } = allowedActivities(chosen.length ? chosen : ['walking', 'bodyweight'], safety);
   const acts = list.length ? list : ['walking'];
@@ -588,6 +643,9 @@ export function trainingPlan(input) {
     }
 
     const strengthDays = [...plan.values()].filter(s => ACTIVITIES[s.activity].strength).length;
+    // Добавените силови упражнения — с уредите у дома; балансът — различен по седмици (версия 4.15).
+    const homeMoves = pickExercises(HOME_ADDON, { have: homeHave, level: 'beginner', safety, week: w });
+    const balanceMoves = BALANCE_SETS[w].filter(id => EXERCISES[id].need.every(n => homeHave.has(n)));
     let addStrength = Math.max(0, safety.strengthMin - strengthDays);
     let balanceLeft = safety.balanceDaily ? 7 : safety.balance3 ? 3 : 0;
     let aerobic = 0;
@@ -613,11 +671,11 @@ export function trainingPlan(input) {
       // Силови упражнения, ако избраните тренировки не стигат до 2 дни седмично (СЗО).
       const addOns = [];
       if (addStrength > 0 && s && !ACTIVITIES[s.activity].strength) {
-        addOns.push({ kind: 'strength', minutes: 15, text: 'Сила 15 мин след тренировката: клек до стол, лицеви опори на стена или пейка, глутеус мост, гребане с ластик — по 2 серии × 12–15.', moves: HOME_STRENGTH });
+        addOns.push({ kind: 'strength', minutes: 15, text: `Сила 15 мин след тренировката: ${names(...homeMoves).join('; ')} — по 2 серии × 12–15.`, moves: homeMoves });
         addStrength--;
       }
       if (balanceLeft > 0 && (s || safety.balanceDaily)) {
-        addOns.push({ kind: 'balance', minutes: 10, text: 'Баланс 10 мин: стоене на един крак, ходене пета-пръсти, тандемна стойка — до опора.', moves: BALANCE });
+        addOns.push({ kind: 'balance', minutes: 10, text: `Баланс 10 мин: ${names(...balanceMoves).join('; ')} — до опора.`, moves: balanceMoves });
         balanceLeft--;
       }
       if (safety.pelvicFloor) addOns.push({ kind: 'pelvic', minutes: 5, text: 'Тазово дъно: поне 8 стягания, 3 пъти през деня.', moves: ['pelvic'] });
@@ -627,7 +685,7 @@ export function trainingPlan(input) {
     for (const d of weekDays) {
       if (addStrength <= 0) break;
       if (!d.sessions.length) {
-        d.addOns.unshift({ kind: 'strength', minutes: 15, text: 'Сила 15 мин у дома: клек до стол, лицеви опори на стена или пейка, глутеус мост, гребане с ластик — по 2 серии × 12–15.', moves: HOME_STRENGTH });
+        d.addOns.unshift({ kind: 'strength', minutes: 15, text: `Сила 15 мин у дома: ${names(...homeMoves).join('; ')} — по 2 серии × 12–15.`, moves: homeMoves });
         addStrength--;
       }
     }
@@ -716,7 +774,7 @@ export function trainingPlan(input) {
   return {
     input: {
       activities: chosen, level, daysPerWeek: days, minutes, time, focus, cyclePeriodize: !!input.cyclePeriodize,
-      restingHr: rest >= 40 && rest <= 100 ? rest : null,
+      restingHr: rest >= 40 && rest <= 100 ? rest : null, equipment,
     },
     targets: {
       aerobic: aerobicGoal, aerobicMax: 300, strengthDays: safety.strengthMin,

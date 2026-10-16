@@ -38,6 +38,40 @@ export const EN_FOODS = {
   phyllo: ['phyllo dough'], corntortilla: ['corn tortilla'], edamame: ['edamame (green soybeans)'],
   melon: ['cantaloupe'], plantain: ['plantain'], cereal: ['whole-grain oat rings (cereal)'], cornflakes: ['cornflakes'],
   cornbread: ['cornbread (muffin)'],
+  // 4.15
+  oatbran: ['oat bran'], barley: ['pearl barley', 'cooked'], millet: ['millet', 'cooked'],
+  spelt: ['spelt', 'cooked'], whitepasta: ['pasta', 'cooked'], crispbread: ['rye crispbread'],
+  ricecakes: ['rice cakes'], popcorn: ['air-popped popcorn, unsalted'], blackbeans: ['black beans', 'cooked'],
+  whitebeans: ['white beans', 'cooked'], favabeans: ['fava beans', 'cooked'], splitpeas: ['split peas', 'cooked'],
+  soybeans: ['soybeans', 'cooked'], tempeh: ['tempeh'], soymilk: ['soy drink with calcium'],
+  chickenliver: ['chicken livers', 'simmered'], beefliver: ['beef liver', 'braised'], rabbit: ['rabbit', 'stewed'],
+  lamb: ['lean leg of lamb', 'roasted'], veal: ['veal leg', 'roasted'], porkchop: ['lean pork loin chop', 'broiled'],
+  herring: ['herring', 'baked'], seabass: ['sea bass', 'baked'], seabream: ['sea bream', 'baked'],
+  carp: ['carp', 'baked'], catfish: ['catfish', 'baked'], tilapia: ['tilapia', 'baked'],
+  anchovy: ['European anchovies, fresh'], cannedsalmon: ['canned salmon (with bones)'], squid: ['squid, raw'],
+  mussels: ['mussels, shelled', 'cooked'], octopus: ['octopus', 'cooked'], quailegg: ['quail eggs'],
+  wholemilk: ['whole milk 3%'], skimmilk: ['skim milk'], buttermilk: ['buttermilk'], sheepmilk: ['sheep milk'],
+  goatmilk: ['goat milk'], cream: ['light cream 20%'], wholeyogurt: ['yogurt 3.6%'],
+  skyr: ['nonfat strained yogurt (skyr)'], skimcottage: ['fat-free cottage cheese'],
+  ricotta: ['ricotta (part-skim)'], creamcheese: ['light cream cheese'], goatcheese: ['soft goat cheese'],
+  emmental: ['Emmental (Swiss cheese)'], whey: ['whey protein isolate'], cashews: ['cashews'],
+  pistachios: ['pistachios, unsalted'], peanuts: ['peanuts, dry-roasted, unsalted'], brazilnuts: ['Brazil nuts'],
+  almondbutter: ['almond butter, unsalted'], chia: ['chia seeds'], sesame: ['sesame seeds'],
+  hemp: ['hemp seeds, hulled'], sunoil: ['sunflower oil'], canola: ['rapeseed (canola) oil'],
+  flaxoil: ['flaxseed oil'], greenpepper: ['green peppers'], hotpepper: ['hot chili pepper'],
+  roastedpepper: ['roasted red peppers (jar)'], cannedtomato: ['canned peeled tomatoes, no salt added'],
+  tomatojuice: ['tomato juice, no salt added'], redcabbage: ['red cabbage'], brussels: ['Brussels sprouts'],
+  kohlrabi: ['kohlrabi'], sauerkraut: ['sauerkraut'], pickles: ['pickled cucumbers'], romaine: ['romaine lettuce'],
+  iceberg: ['iceberg lettuce'], chard: ['Swiss chard'], sorrel: ['sorrel'], nettle: ['stinging nettles', 'blanched'],
+  sprouts: ['alfalfa sprouts'], okra: ['okra'], artichoke: ['artichoke', 'cooked'], celeriac: ['celeriac'],
+  parsnip: ['parsnip'], turnip: ['turnip'], oystermush: ['oyster mushrooms'], scallions: ['spring onions'],
+  garlic: ['garlic'], parsley: ['parsley'], dill: ['dill'], cherries: ['sweet cherries'],
+  sourcherries: ['sour cherries'], apricot: ['apricots'], nectarine: ['nectarine'], fig: ['fresh figs'],
+  tangerine: ['tangerine'], persimmon: ['persimmon'], quince: ['quince'], pomegranate: ['pomegranate seeds'],
+  grapefruit: ['grapefruit'], blueberries: ['blueberries'], raspberries: ['raspberries'],
+  blackberries: ['blackberries'], lemonjuice: ['lemon juice'], applesauce: ['unsweetened applesauce'],
+  raisins: ['raisins'], dates: ['dates'], driedapricots: ['dried apricots'], cocoa: ['cocoa powder, unsweetened'],
+  jam: ['jam'],
 };
 
 /** Пълното име: „brown rice, cooked“. */
@@ -51,6 +85,7 @@ export const EN_CATS = {
 };
 
 export const EN_FLAVOR = {
+  'сол на върха на ножа': 'a pinch of salt', 'сумак': 'sumac',
   'анасон': 'anise', 'балсамов оцет': 'balsamic vinegar', 'бахар': 'allspice', 'босилек': 'basil', 'бял пипер': 'white pepper',
   'бяло вино': 'white wine', 'ванилия': 'vanilla', 'горчица': 'mustard', 'горчица на прах': 'dry mustard', 'градински чай': 'sage',
   'дафинов лист': 'bay leaf', 'джинджифил': 'ginger', 'джоджен': 'spearmint', 'дижонска горчица': 'Dijon mustard',

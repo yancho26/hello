@@ -1069,3 +1069,37 @@ ul.rules-list li { margin-bottom: 6px; }
 ul.dev-check { list-style: none; margin: 4px 0 0; padding: 0; }
 ul.dev-check li { position: relative; padding-left: 22px; margin-bottom: 4px; }
 ul.dev-check li::before { content: ''; position: absolute; left: 2px; top: 3px; width: 11px; height: 11px; border: 1.5px solid var(--ink-3); border-radius: 3px; }
+
+/* Витамини и минерали в менюто (версия 4.15). */
+.nut-list.micro { margin-top: 10px; }
+.micro-table { width: 100%; max-width: 560px; border-collapse: collapse; font-size: 13px; }
+.micro-table td { padding: 3px 6px 3px 0; vertical-align: middle; }
+.micro-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.micro-table td.bar { width: 38%; min-width: 70px; }
+.micro-bar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.micro-bar span { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
+.micro-table tr.st-near .micro-bar span { background: #d9a400; }
+.micro-table tr.st-low .micro-bar span { background: var(--danger); }
+.micro-table tr.st-high .micro-bar span { background: var(--danger); }
+.micro-table tr.st-low td:first-child, .micro-table tr.st-high td:first-child { font-weight: 600; }
+@media (max-width: 520px) { .micro-table td.bar { min-width: 48px; width: 26%; } .micro-table { font-size: 12.5px; } }
+
+/* Каталог на храните (версия 4.15). */
+.food-filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.food-filters label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--ink-2); min-width: 140px; }
+.food-filters label.grow { flex: 1 1 240px; }
+.food-filters label.check { flex-direction: row; align-items: center; min-width: 0; gap: 6px; padding-bottom: 8px; color: var(--ink); }
+.food-filters select, .food-filters input[type=search] { width: 100%; }
+.food-table td.num, .food-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.food-claims { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.food-claims .chip { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--ok-soft); color: var(--ok); }
+.food-claims .chip.claim-source { background: #eef3fb; color: #2f5f9e; }
+.food-claims .chip.claim-low, .food-claims .chip.claim-verylow { background: #f3f1e8; color: #6b5a12; }
+tr.food-detail td { background: var(--surface-2); }
+.food-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 14px; font-size: 13px; }
+.food-detail-grid > div { display: flex; flex-wrap: wrap; gap: 0 6px; align-items: baseline; }
+@media (max-width: 520px) { .food-filters label { min-width: calc(50% - 6px); flex: 1 1 calc(50% - 6px); } }
+@media (max-width: 520px) {
+  .food-table .opt { display: none; }
+  .food-detail-grid { grid-template-columns: 1fr 1fr; font-size: 12.5px; }
+}

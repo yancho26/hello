@@ -23,7 +23,7 @@ const WORDS = {
   },
 };
 
-const FATS = new Set(['oil', 'butter']);
+const FATS = new Set(['oil', 'butter', 'sunoil', 'canola', 'flaxoil']);
 const MARKER = /\{([a-z0-9]+(?:,[a-z0-9]+)*)\}/g;
 
 /** Количеството на съставка в порцията: „150 г“, „2 бр.“, „10 г, ≈1 с.л.“, „45 г сухо тегло, …“. */

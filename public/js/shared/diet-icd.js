@@ -205,7 +205,7 @@ const PROFILES = [
     prefer: ['Витамин B12: месо, риба, яйца, млечни; при веганско хранене — добавка задължително.'] },
   { re: /^D52/, label: 'недостиг на фолат', src: 'NICE CKS',
     prefer: ['Фолат: листни зеленчуци, бобови, броколи, пълнозърнести.'] },
-  { re: /^E83\.1/, label: 'хемохроматоза', src: 'EASL 2022', exclude: ['shrimp'],
+  { re: /^E83\.1/, label: 'хемохроматоза', src: 'EASL 2022', exclude: ['shrimp', 'mussels', 'squid', 'octopus'],
     avoid: ['Хемохроматоза: добавки с желязо и с витамин C; сурови морски дарове.'],
     limit: ['Хемохроматоза: алкохол; червено месо — умерено.'] },
   { re: /^E4[0-6]|^R64|^R63\.4|^M62\.5|^M62\.84/, label: 'недохранване или саркопения', src: 'ESPEN 2022 гериатрия, GLIM', proteinMin: 1.2,
@@ -268,7 +268,7 @@ const PROFILES = [
   { re: /^K31\.8/, label: 'гастропареза', src: 'ACG 2022 гастропареза', dietitian: true,
     prefer: ['Гастропареза: храна на малки частици (пасирана, ситно смляна, добре сготвена) — по-малко оплаквания (ACG 2022); по-малко мазни храни се понасят по-добре.'],
     notes: ['Гастропареза при диабет: добрият контрол на кръвната захар намалява риска от влошаване (ACG 2022).'] },
-  { re: /^Z94/, label: 'трансплантиран орган', src: 'КХП на такролимус и циклоспорин',
+  { re: /^Z94/, label: 'трансплантиран орган', src: 'КХП на такролимус и циклоспорин', exclude: ['grapefruit'],
     avoid: ['Трансплантация: грейпфрут и помело (и сокът им) — повишават нивото на такролимус и циклоспорин.'],
     notes: ['Трансплантация: добре сготвени храни и чисти продукти при силна имуносупресия; калий, фосфор и белтък — по резултатите и по указание на нефролога или хепатолога.'] },
   { re: /^N40/, label: 'хиперплазия на простатата', src: 'EAU мъжки LUTS',
@@ -307,6 +307,12 @@ const PROFILES = [
 ];
 
 /** Кой профил отговаря на кода (първото съвпадение печели). */
+/* Имената на изключените храни в „взети предвид“. */
+const EXCLUDED_NAMES = {
+  tunasteak: 'прясна риба тон', shrimp: 'морски дарове', mussels: 'морски дарове', squid: 'морски дарове',
+  octopus: 'морски дарове', chickenliver: 'черен дроб', beefliver: 'черен дроб', grapefruit: 'грейпфрут',
+};
+
 export function profileFor(code) {
   const c = normIcd(code);
   return PROFILES.find(pr => pr.re.test(c)) || null;
@@ -319,7 +325,7 @@ function pregnancyEffects(week) {
   return {
     energyAdd: add,
     noLose: 'По време на бременност отслабване не се планира — режимът е за наддаване в препоръчаните граници.',
-    exclude: ['tunasteak'],
+    exclude: ['tunasteak', 'chickenliver', 'beefliver'],
     prefer: ['Бременност: фолиева киселина 400 мкг дневно (поне до 12. седмица), йодирана сол, риба с малко живак 2 пъти седмично.'],
     avoid: ['Бременност: алкохол; сурово или недопечено месо, риба и яйца; непастьоризирани млечни продукти; черен дроб; риба меч, акула и много риба тон.'],
     limit: ['Бременност: кафе — до 200 мг кофеин дневно (около 2 чаши).'],
@@ -376,7 +382,7 @@ export function dietProfiles(diagnoses = [], opts = {}) {
     if (pr.amenorrhea) { out.amenorrhea = true; effects.push('без дефицит при ИТМ под 25'); }
     if (pr.menopause) { out.menopause = true; effects.push('без фази на цикъла'); }
     if (pr.lactation) out.lactation = true;
-    if (pr.exclude?.length) effects.push('изключени: ' + pr.exclude.map(f => f === 'tunasteak' ? 'прясна риба тон' : f === 'shrimp' ? 'морски дарове' : f).join(', '));
+    if (pr.exclude?.length) effects.push('изключени: ' + [...new Set(pr.exclude.map(f => EXCLUDED_NAMES[f] || f))].join(', '));
     if (pr.cond?.length && !effects.length) effects.push('правилата за ' + pr.label);
     if (!effects.length) effects.push('съвети в режима');
     out.considered.push({ code, name, label: pr.label, effects, src: pr.src || '', dietitian: !!pr.dietitian });

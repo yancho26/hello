@@ -28,6 +28,10 @@ const ACT_SHORT = {
   gym: 'фитнес', bodyweight: 'у дома', reformer: 'реформър', matpilates: 'пилатес', yoga: 'йога', taichi: 'тай чи',
   running: 'бягане', walking: 'ходене', cycling: 'колело', swimming: 'плуване', rowing: 'гребане', hiit: 'HIIT',
   dance: 'танци', team: 'отборен спорт', racket: 'тенис', hiking: 'преход',
+  // Версия 4.15.
+  chair: 'на стол', stretching: 'разтягане', stairs: 'стълби', waterwalk: 'във вода', ebike: 'ел. колело', folk: 'хора',
+  gardening: 'градина', xcski: 'ски бягане', alpineski: 'ски', skating: 'кънки', paddling: 'каяк', climbing: 'катерене',
+  combat: 'бокс', tabletennis: 'тенис на маса', golf: 'голф',
 };
 const PALETTE = [C.brand, C.teal, C.coral, C.sky, '#d39b12', C.rose, C.green, C.slate];
 const SHOP_COLOR = { veg: C.green, fruit: C.coral, grain: '#b8860b', legume: C.amber, protein: C.rose, dairy: C.sky, nuts: '#8d6e63', fat: C.teal, other: C.slate };
@@ -317,6 +321,40 @@ function targets(ctx) {
     },
   }, { gap: 8 });
   if (t.proteinNote) flow.text(t.proteinNote, { size: 8, color: C.ink2 });
+  microTable(ctx);
+}
+
+/** Витамини и минерали в менюто спрямо EFSA (версия 4.15): две колони с ленти и подсказките. */
+function microTable(ctx) {
+  const { doc, flow, plan } = ctx;
+  const m = plan.micro;
+  if (!m?.rows?.length) return;
+  const num = (v) => (plan.lang === 'en' ? String(v) : dec(v));
+  flow.space(6);
+  subheading(ctx, m.basis === 'week' ? ui('Витамини и минерали — средно на ден в менюто') : ui('Витамини и минерали — в първия вариант на деня'), C.teal);
+  const half = Math.ceil(m.rows.length / 2);
+  const rowH = 15;
+  const H = half * rowH + 6;
+  const colW = (flow.width - 14) / 2;
+  const color = (r) => (r.status === 'ok' ? C.green : r.status === 'near' ? C.amber : C.red);
+  flow.add({
+    h: H,
+    draw: (page, x, y) => {
+      m.rows.forEach((r, i) => {
+        const cx = x + (i < half ? 0 : colW + 14);
+        const cy = y + (i % half) * rowH;
+        page.rect(cx, cy, colW, rowH - 2, { fill: i % 2 ? C.white : C.bg, radius: 3 });
+        page.text(r.label, cx + 6, cy + 9.5, { font: r.status === 'ok' || r.status === 'near' ? 'regular' : 'semibold', size: 7.4, color: C.ink });
+        const bx = cx + colW * 0.43;
+        const bw = colW * 0.22;
+        page.rect(bx, cy + 4, bw, 5, { fill: C.line, radius: 2.5 });
+        page.rect(bx, cy + 4, Math.max(1.5, bw * Math.min(1, r.pct / 100)), 5, { fill: color(r), radius: 2.5 });
+        page.text(`${num(r.value)} / ${r.max ? '<' : ''}${num(r.ref)} ${r.unit}`, cx + colW - 6, cy + 9.5, { size: 7.2, color: C.ink2, align: 'right' });
+      });
+    },
+  }, { gap: 6 });
+  for (const n of m.notes || []) noteBox(ctx, n.text, { bg: C.amberSoft, bar: C.amber, size: 8 });
+  flow.text(ui('Препоръки за възрастни по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.'), { size: 7, color: C.ink3 });
 }
 
 /* ----------------------------------- насоки ----------------------------------- */

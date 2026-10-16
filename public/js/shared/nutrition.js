@@ -31,7 +31,7 @@
 import { bmi as bmiOf } from './clinical.js';
 import { table } from './table.js';
 import { addDays, daysBetween, today } from './dates.js';
-import { FOODS, FOOD_CATS, LIQUIDS, RECIPES, YIELDS, mainProtein, mealsOf, rawOf, recipeTags, shopName, totals } from './recipes.js';
+import { FOODS, FOOD_CATS, LIQUIDS, NUTRIENT_KEYS, RECIPES, YIELDS, mainProtein, mealsOf, nutrientsOf, rawOf, recipeTags, servingOf, shopName, totals, baseName } from './recipes.js';
 import { renderMethod } from './recipe-method.js';
 import { dietProfiles } from './diet-icd.js';
 import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
@@ -548,11 +548,15 @@ export function nutritionPlan(input) {
     warnings.push(`При тези диагнози (${[...new Set(who)].join(', ')}) режимът е ориентировъчен — обсъдете го с диетолог.`);
   }
 
+  // Грейпфрутът не влиза в менюто, ако някое от лекарствата не се съчетава с него (версия 4.15).
+  const exclude = new Set(dx.exclude);
+  if ((input.medNotes || []).some(n => /грейпфрут/i.test(n))) exclude.add('grapefruit');
+
   // Рецептите, които стават за човека, с оценка за подходящост.
   const ctx = {
     prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
     sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
-    exclude: dx.exclude, penalize: dx.penalize, dislikes,
+    exclude, penalize: dx.penalize, dislikes,
   };
   const lowerCarb = diabetes || patternId === 'lowcarb';
   // При модела с малко въглехидрати нишестето не расте; при диабет расте умерено.
@@ -702,6 +706,10 @@ export function nutritionPlan(input) {
     notes.push(`Калций в менюто: около ${round(avgOf('ca'), 10)} мг дневно при препоръка ${calcium} мг (EFSA). Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`);
   }
 
+  // Витамини, минерали и мастни киселини в менюто спрямо EFSA (версия 4.15).
+  const micro = microRows({ avgOf, sex, target, targets, pregnancy: !!dx.pregnancy, lactation: !!dx.lactation, limitK, ckd });
+  const microHints = microNotes(micro, { ctx, prefs, classes, pregnancy: !!dx.pregnancy });
+
   return {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
@@ -716,6 +724,7 @@ export function nutritionPlan(input) {
     energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor, activity: activityId },
     refWeight: Math.round(refWeight),
     targets,
+    micro: { basis: week ? 'week' : 'day', rows: micro, notes: microHints },
     projection,
     pattern: { id: patternId, label: pattern.label, about: pattern.about },
     portions: portionsFor(target, prefs),
@@ -1144,7 +1153,8 @@ function resize(it, grams, maxPieces = 3) {
 
 /* Нишестени храни — при диабет и по-малко въглехидрати порциите им се намаляват. */
 const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli', 'buckwheat', 'quinoa', 'rice', 'whiterice',
-  'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas', 'tortilla', 'corntortilla', 'phyllo']);
+  'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas', 'tortilla', 'corntortilla', 'phyllo',
+  'barley', 'millet', 'spelt', 'whitepasta', 'crispbread', 'ricecakes', 'oatbran', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas']);
 
 /* На брой се води съставка от поне половин плод или яйце; по-малкото се мащабира в грамове. */
 const isPiece = (it) => FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
@@ -1153,7 +1163,7 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   const sub = substituted(r, prefs);
   const base = sub.items.map(it => ({ ...it, base: it.grams }));
   // Плодовете остават по брой както в ястието (един плод е една порция); мащабират се останалите.
-  const fruit = (it) => isPiece(it) && it.food !== 'egg';
+  const fruit = (it) => isPiece(it) && FOODS[it.food].cat === 'fruit';
   const starch = (it) => lowerCarb && STARCH.has(it.food);
   const fruitKcal = totals(base.filter(fruit)).kcal;
   const baseFactor = (kcal - fruitKcal) / (totals(base.filter(it => !fruit(it))).kcal || 1);
@@ -1182,16 +1192,21 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
     key: r.name, name: sub.name, items, time: r.time, flavor: r.flavor, source: r.source || null,
     // Приготвянето се попълва накрая — с окончателните грамове на порцията (renderMethod).
     template: r.method, swaps: sub.swaps, method: '',
-    kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na, fe: t.fe, ca: t.ca,
+    ...nutrientsOf(t),
   };
 }
 
 const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince', 'beef', 'beefmince', 'pork', 'hake', 'trout',
   'mackerel', 'salmon', 'sardines', 'tuna', 'shrimp', 'egg', 'cottage', 'whitecheese', 'kashkaval', 'mozzarella', 'tofu',
   'lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'yogurt', 'lfyogurt', 'greekyogurt', 'kefir', 'milk', 'lfmilk', 'soyyogurt',
-  'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk', 'cheddar', 'turkeysausage', 'edamame']);
+  'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk', 'cheddar', 'turkeysausage', 'edamame',
+  // Версия 4.15.
+  'chickenliver', 'beefliver', 'rabbit', 'lamb', 'veal', 'porkchop', 'herring', 'seabass', 'seabream', 'carp', 'catfish', 'tilapia',
+  'anchovy', 'cannedsalmon', 'squid', 'mussels', 'octopus', 'quailegg', 'tempeh', 'soybeans', 'blackbeans', 'whitebeans', 'favabeans',
+  'splitpeas', 'wholemilk', 'skimmilk', 'buttermilk', 'sheepmilk', 'goatmilk', 'wholeyogurt', 'skyr', 'skimcottage', 'ricotta',
+  'goatcheese', 'emmental', 'soymilk', 'whey']);
 
-const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'edamame']);
+const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'edamame', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas', 'soybeans']);
 
 function proteinSplit(o) {
   return o.items.reduce((acc, it) => {
@@ -1335,18 +1350,133 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
 
 function withTotals(option, items) {
   const t = totals(items);
-  return { ...option, items, kcal: t.kcal, protein: t.protein, carbs: t.carbs, fat: t.fat, fiber: t.fiber, na: t.na, fe: t.fe, ca: t.ca };
+  return { ...option, items, ...nutrientsOf(t) };
 }
 
 function dayTotals(options) {
-  const s = { kcal: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, na: 0, fe: 0, ca: 0 };
+  const s = Object.fromEntries(NUTRIENT_KEYS.map(k => [k, 0]));
   for (const o of options) {
     if (!o) continue;
     for (const k of Object.keys(s)) s[k] += o[k] || 0;
   }
-  for (const k of Object.keys(s)) s[k] = k === 'fe' ? Math.round(s[k] * 10) / 10 : Math.round(s[k]);
+  for (const k of Object.keys(s)) s[k] = ['fe', 'sfa', 'vd', 'b12', 'ala'].includes(k) ? Math.round(s[k] * 10) / 10 : Math.round(s[k]);
   return s;
 }
+
+/* ------------------------- витамини и минерали (версия 4.15) ------------------------- */
+
+/* Референтните стойности за възрастни — EFSA 2017 (обобщен доклад за DRV): калий 3500 мг (при
+ * кърмене 4000); магнезий 350 мг за мъже и 300 мг за жени; витамин C 110 мг за мъже, 95 мг за жени,
+ * 105 мг при бременност и 155 мг при кърмене; фолат 330 мкг (600 при бременност, 500 при кърмене);
+ * B12 4 мкг (4,5 и 5); витамин D 15 мкг при минимален синтез в кожата; EPA+DHA 250 мг (при
+ * бременност и кърмене още 100–200 мг DHA); ALA 0,5% от енергията. Наситените мазнини — „колкото
+ * е възможно по-малко“; целта е тази на режима (7% при ССЗ и диабет, иначе 10%). */
+const MICRO_LABELS = {
+  fiber: ['Фибри', 'г'], sfa: ['Наситени мазнини', 'г'], k: ['Калий', 'мг'], ca: ['Калций', 'мг'], mg: ['Магнезий', 'мг'],
+  fe: ['Желязо', 'мг'], vc: ['Витамин C', 'мг'], fol: ['Фолат', 'мкг'], b12: ['Витамин B12', 'мкг'], vd: ['Витамин D', 'мкг'],
+  n3: ['Омега-3 (EPA и DHA)', 'мг'], ala: ['Омега-3 (ALA)', 'г'],
+};
+
+function microRows({ avgOf, sex, target, targets, pregnancy, lactation, limitK, ckd }) {
+  const f = sex === 'f';
+  const refs = {
+    fiber: targets.fiber, sfa: targets.satFat,
+    k: limitK || ckd ? null : lactation ? 4000 : 3500,
+    ca: targets.calcium, mg: f ? 300 : 350, fe: targets.iron,
+    vc: lactation ? 155 : pregnancy ? 105 : f ? 95 : 110,
+    fol: pregnancy ? 600 : lactation ? 500 : 330,
+    b12: lactation ? 5 : pregnancy ? 4.5 : 4,
+    vd: 15, n3: 250, ala: Math.round((target * 0.005 / 9) * 10) / 10,
+  };
+  return Object.entries(MICRO_LABELS).filter(([key]) => refs[key]).map(([key, [label, unit]]) => {
+    const raw = avgOf(key) || 0;
+    const value = ['fe', 'sfa', 'vd', 'b12', 'ala'].includes(key) ? Math.round(raw * 10) / 10 : key === 'k' || key === 'ca' ? round(raw, 10) : Math.round(raw);
+    const ref = refs[key];
+    const max = key === 'sfa';
+    const pct = Math.round((raw / ref) * 100);
+    const status = max ? (raw > ref ? 'high' : 'ok') : pct >= 100 ? 'ok' : pct >= 75 ? 'near' : 'low';
+    const row = { key, label, unit, value, ref, max, pct, status };
+    if (max) row.energyPct = Math.round((raw * 9 / target) * 100);
+    return row;
+  });
+}
+
+/* Храни, които не се предлагат като източник: добавки, подправки, сладко, брашна. */
+const NOT_SUGGESTED = new Set(['whey', 'jam', 'sugar', 'honey', 'cornstarch', 'flour', 'breadcrumbs', 'phyllo', 'graham',
+  'cornflakes', 'cereal', 'cornbread', 'tortilla', 'corntortilla', 'evapmilk', 'cream', 'sourcream', 'mayo', 'butter', 'ketchup',
+  'mustard', 'soysauce', 'hoisin', 'tomatopaste', 'lemonjuice', 'cocoa', 'darkchoc', 'coconutmilk']);
+
+/** Храните с най-много от веществото на порция, които стават за човека (ограничения, „не яде“, калий…);
+ *  min — най-малко на порция, за да се брои за източник. */
+export function richIn(key, ctx, n = 5, min = 0) {
+  const seen = new Set();
+  const ids = [];
+  const list = Object.keys(FOODS)
+    .filter(id => !NOT_SUGGESTED.has(id) && FOODS[id].fdc && !['fat', 'other'].includes(FOODS[id].cat) && !FOODS[id].flags.has('sweet'))
+    .map(id => [id, (FOODS[id][key] || 0) * servingOf(id) / 100])
+    .filter(([id, v]) => v > 0 && v >= min && !(ctx && excluded([{ food: id, grams: servingOf(id) }], ctx)))
+    .sort((a, b) => b[1] - a[1]);
+  for (const [id] of list) {
+    if (seen.has(FOODS[id].fdc)) continue;
+    seen.add(FOODS[id].fdc);
+    ids.push(id);
+    if (ids.length >= n) break;
+  }
+  return ids;
+}
+
+/** Подсказки за веществата, които менюто не покрива: { key, kind, foods } — текстът е в microNoteText. */
+function microNotes(rows, { ctx, prefs, classes, pregnancy }) {
+  const out = [];
+  const row = (k) => rows.find(r => r.key === k);
+  const low = (k) => row(k)?.status === 'low';
+  // Източник е храна, която дава поне 10% от препоръката на порция.
+  const rich = (k) => richIn(k, ctx, 5, row(k).ref * 0.1);
+  if (row('sfa')?.status === 'high') out.push({ key: 'sfa', foods: [] });
+  if (low('mg')) out.push({ key: 'mg', foods: rich('mg') });
+  if (low('k') && !classes.has('MRA') && !classes.has('FINERENONE')) out.push({ key: 'k', foods: rich('k') });
+  if (low('vc')) out.push({ key: 'vc', foods: rich('vc') });
+  if (low('fol') && !pregnancy) out.push({ key: 'fol', foods: rich('fol') });
+  if (low('b12') && !prefs.has('vegan')) out.push({ key: 'b12', foods: rich('b12') });
+  if (low('n3')) out.push(prefs.has('vegetarian') || prefs.has('noFish') ? { key: 'n3', kind: 'nofish', foods: [] } : { key: 'n3', foods: rich('n3') });
+  if (low('vd')) out.push({ key: 'vd', foods: rich('vd') });
+  return out.map(n => ({ ...n, text: microNoteText(n, rows) }));
+}
+
+/** Текстът на подсказката — на български или на английски (name — името на храната на езика). */
+export function microNoteText(n, rows, { lang = 'bg', name = baseName } = {}) {
+  const r = rows.find(x => x.key === n.key);
+  const en = lang === 'en';
+  const num = (v) => (en ? String(v) : String(v).replace('.', ','));
+  const foods = n.foods.map(name).join(en ? ', ' : ', ');
+  const label = en ? MICRO_EN[n.key][0] : r.label;
+  const unit = en ? MICRO_EN[n.key][1] : r.unit;
+  const head = en ? `${label}: about ${num(r.value)} ${unit} a day; reference ${num(r.ref)} ${unit} (EFSA)`
+    : `${label}: около ${num(r.value)} ${unit} дневно при препоръка ${num(r.ref)} ${unit} (EFSA)`;
+  switch (n.key) {
+    case 'sfa': return en
+      ? `Saturated fat in the menu: about ${num(r.value)} g a day (${r.energyPct}% of energy); target below ${r.ref} g. Swap butter and full-fat cheese for olive oil, lower-fat dairy and fish.`
+      : `Наситени мазнини в менюто: около ${num(r.value)} г дневно (${r.energyPct}% от енергията) при цел под ${r.ref} г. Сменете маслото и пълномаслените сирена със зехтин, по-нискомаслени млечни продукти и риба.`;
+    case 'n3': return n.kind === 'nofish'
+      ? (en ? `${head}. Without fish the menu has almost no EPA and DHA; the body makes a little from ALA (walnuts, flaxseed, chia, rapeseed oil). An algal oil supplement is at the doctor's discretion.`
+        : `${head}. Без риба менюто почти няма EPA и DHA — организмът ги прави в малко количество от ALA (орехи, ленено семе, чиа, рапично олио); добавка (масло от водорасли) — по преценка на лекаря.`)
+      : (en ? `${head}. Oily fish once or twice a week: ${foods}.` : `${head}. Мазна риба 1–2 пъти седмично: ${foods}.`);
+    case 'vd': return en
+      ? `${head}; the reference assumes minimal sun exposure. The main source is the skin in sunlight${foods ? `; foods: ${foods}` : '; foods provide little'}. A supplement is at the doctor's discretion.`
+      : `${head} — препоръката е при минимално слънце. Основният източник е кожата на слънце${foods ? `; от храните — ${foods}` : '; храните дават малко'}. Добавка — по преценка на лекаря.`;
+    default: {
+      const what = en ? `Good sources of ${MICRO_EN[n.key][2]}` : `Богати на ${MICRO_RICH[n.key]}`;
+      return `${head}. ${what}: ${foods}.`;
+    }
+  }
+}
+const MICRO_RICH = { mg: 'магнезий', k: 'калий', vc: 'витамин C', fol: 'фолат', b12: 'B12' };
+const MICRO_EN = {
+  fiber: ['Fibre', 'g'], sfa: ['Saturated fat', 'g'], k: ['Potassium', 'mg', 'potassium'], ca: ['Calcium', 'mg'],
+  mg: ['Magnesium', 'mg', 'magnesium'], fe: ['Iron', 'mg'], vc: ['Vitamin C', 'mg', 'vitamin C'], fol: ['Folate', 'µg', 'folate'],
+  b12: ['Vitamin B12', 'µg', 'B12'], vd: ['Vitamin D', 'µg'], n3: ['Omega-3 (EPA and DHA)', 'mg'], ala: ['Omega-3 (ALA)', 'g'],
+};
+export { MICRO_EN };
 
 /* ------------------------------ списък за пазаруване ------------------------------ */
 

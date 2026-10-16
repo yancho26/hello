@@ -11,6 +11,7 @@
 import { FOODS, YIELDS } from '../recipes.js';
 import { renderMethod } from '../recipe-method.js';
 import { EN_CATS, EN_FLAVOR, enBaseName, enFoodName } from './en-foods.js';
+import { MICRO_EN, microNoteText } from '../nutrition.js';
 import { EN_RECIPES } from './en-recipes.js';
 import { EN_DX } from './en-dx.js';
 import { EN_TEXT } from './en-text.js';
@@ -193,5 +194,13 @@ export function translatePlan(plan) {
   })) : null;
   out.shopping = shoppingEn(plan.shopping);
   out.shoppingWeeks = plan.shoppingWeeks ? plan.shoppingWeeks.map(shoppingEn) : null;
+  // Витамините и минералите (версия 4.15): имената и подсказките се изграждат наново на английски.
+  if (plan.micro) {
+    const rows = plan.micro.rows.map(r => ({ ...r, label: MICRO_EN[r.key][0], unit: MICRO_EN[r.key][1] }));
+    out.micro = {
+      ...plan.micro, rows,
+      notes: plan.micro.notes.map(n => ({ ...n, text: microNoteText(n, plan.micro.rows, { lang: 'en', name: enBaseName }) })),
+    };
+  }
   return out;
 }
