@@ -5,8 +5,11 @@
 
 import { api } from '../api.js';
 import { badge, card, decimalFields, empty, field, h, numberInput, select, toast, mount } from '../ui/components.js';
-import { formatDate } from '../shared/dates.js';
-import { ACTIVITY, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, weekChunks } from '../shared/nutrition.js';
+import { trendChart } from '../ui/trend-chart.js';
+import { addDays, daysBetween, formatDate, today } from '../shared/dates.js';
+import { ACTIVITY, FOODS, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, expectedWeight, planProgress, weekChunks } from '../shared/nutrition.js';
+import { shopName } from '../shared/recipes.js';
+import { enBaseName } from '../shared/i18n/en-foods.js';
 import { dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../shared/diet-icd.js';
 import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
@@ -25,6 +28,8 @@ export function nutritionTab(ctx) {
   const ls = p.lifestyle || {};
   const preview = h('div');
   let variant = 0;
+  // „Друго ястие“: колко пъти е сменено всяко място в менюто — до ново изготвяне или „Друго меню“.
+  let swaps = {};
   const draft = drafts.get(p.id);
   const last = draft?.form || {};
 
@@ -44,18 +49,22 @@ export function nutritionTab(ctx) {
   const allergy = allergyPreferences(p.allergies || []);
 
   const show = (plan) => mount(preview, planView(plan, {
-    onVariant: () => { variant++; form.generate(); },
+    onVariant: () => { variant++; swaps = {}; form.generate(); },
+    onSwap: (key) => { swaps = { ...swaps, [key]: (swaps[key] || 0) + 1 }; form.generate(); },
     onSave: () => form.generate(true),
     saveLabel: 'Запази в досието',
     onPdf: () => downloadNutritionPdf(p, plan),
     onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
   }));
 
+  const saved = [...(p.nutritionPlans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
   const form = planForm({
     last,
+    dislikes: saved[0]?.plan.input.dislikes || [],
     weight: { value: v.weight ? dec(v.weight.value) : '', hint: v.weight ? `последно ${formatDate(v.weight.date)}` : 'няма измерване' },
     height: { value: v.height ? dec(v.height.value) : '', hint: v.bmi ? `ИТМ ${dec(v.bmi)} — ${v.bmiClass?.label || ''}` : '' },
     activity: ls.activity,
+    pulse: lastPulse(p),
     defaultGoal: v.bmi >= 25 ? 'lose' : v.bmi && v.bmi < 18.5 ? 'gain' : 'maintain',
     defaultPattern: conds.has('htn') ? 'dash' : 'mediterranean',
     prefs: [...(ls.diet || []), ...allergy.prefs],
@@ -69,8 +78,8 @@ export function nutritionTab(ctx) {
     footer: 'Съобразява се с диагнозите, бъбречната функция, калия, лекарствата и алергиите от досието.',
     onGenerate: async (body, save) => {
       try {
-        const res = await api.nutrition(p.id, { ...body, variant, save });
-        drafts.set(p.id, { plan: res.plan, variant, form: body });
+        const res = await api.nutrition(p.id, { ...body, variant, swaps, save });
+        drafts.set(p.id, { plan: res.plan, variant, swaps, form: body });
         if (save) {
           toast('Режимът е запазен в досието.', 'ok');
           await reload();
@@ -80,17 +89,29 @@ export function nutritionTab(ctx) {
         preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (err) { toast(err.message, 'error'); }
     },
-    onSubmit: () => { variant = 0; },
+    onSubmit: () => { variant = 0; swaps = {}; },
   });
 
-  const saved = [...(p.nutritionPlans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
   if (draft) {
     variant = draft.variant;
+    swaps = draft.swaps || {};
     show(draft.plan);
   }
+  // Напредък по последния запазен режим — по измерванията на теглото в досието.
+  const progress = saved.length ? progressCard(saved[0], (p.measurements || []).filter(m => m.weight > 0).map(m => ({ date: m.date, weight: m.weight })), {
+    onWeight: async (m) => {
+      try {
+        await api.addMeasurement(p.id, m);
+        toast('Теглото е записано в измерванията.', 'ok');
+        await reload();
+      } catch (err) { toast(err.message, 'error'); }
+    },
+    onApply: (x) => form.apply(x),
+  }) : null;
 
   return h('div.stack', null,
     lifestyle,
+    progress,
     card('Личен хранителен режим', { icon: '🥗' }, form.el),
     preview,
     savedPlans(saved, {
@@ -98,6 +119,73 @@ export function nutritionTab(ctx) {
       pdf: (n) => downloadNutritionPdf(p, n.plan),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
     }));
+}
+
+/* ------------------------- напредък (версия 4.14) ------------------------- */
+
+const PROGRESS_STRIP = { ok: 'ok', done: 'ok', slow: 'warn', fast: 'warn', up: 'warn', down: 'warn', early: 'info', none: 'info' };
+
+/**
+ * Напредък по последния запазен режим: теглото по прогнозата и измереното след режима, какво да
+ * се промени. weights: [{ date, weight }]; onWeight({ date, weight }) — записва ново тегло;
+ * onApply({ weight, kcalAdjust }) — нов режим с последното тегло и корекцията на енергията.
+ */
+export function progressCard(saved, weights, { onWeight, onApply } = {}) {
+  const pr = planProgress(saved, weights);
+  if (!pr) return null;
+  const plan = saved.plan;
+  const from = saved.date;
+  const lastDate = pr.points.length ? pr.points[pr.points.length - 1].date : from;
+  const span = Math.max(56, daysBetween(from, lastDate) + 28);
+  const expected = [];
+  for (let d = 0; d <= span; d += 7) expected.push({ date: addDays(from, d), value: expectedWeight(plan, d) });
+  const chart = trendChart({
+    series: [
+      { label: 'по прогнозата', points: expected, cls: 'proj', dots: false },
+      { label: 'измерено', points: [{ date: from, value: pr.start }, ...pr.points.map(p => ({ date: p.date, value: p.weight }))], cls: 'a' },
+    ],
+    unit: 'кг', decimals: 1,
+    lines: pr.targetWeight ? [{ value: pr.targetWeight, label: `цел ${dec(pr.targetWeight)} кг` }] : [],
+  });
+  const facts = [`начало ${dec(pr.start)} кг на ${formatDate(from)}`];
+  if (pr.points.length) {
+    facts.push(`последно ${dec(pr.last)} кг на ${formatDate(pr.to)}`,
+      `${pr.change > 0 ? '+' : pr.change < 0 ? '−' : ''}${dec(Math.abs(pr.change))} кг за ${dec(pr.weeks)} седм.`,
+      `средно ${pr.rate > 0 ? '+' : pr.rate < 0 ? '−' : ''}${dec(Math.abs(pr.rate))} кг седмично`,
+      `по прогнозата ${pr.expected > 0 ? '+' : pr.expected < 0 ? '−' : ''}${dec(Math.abs(pr.expected))} кг`);
+  }
+  const date = h('input', { type: 'date', value: today(), max: today() });
+  const weight = numberInput({ min: 30, max: 350, placeholder: 'кг' });
+  const save = () => {
+    const w = Number(String(weight.value).replace(',', '.'));
+    if (!(w >= 30 && w <= 350)) { toast('Въведете тегло между 30 и 350 кг.', 'error'); return; }
+    onWeight({ date: date.value || today(), weight: w });
+  };
+  return card(`Напредък по режима от ${formatDate(from)}`, { icon: '📉' },
+    h(`div.alert-strip.${PROGRESS_STRIP[pr.status] || 'info'}`, { style: { marginBottom: '10px' } }, pr.text),
+    h('div.small.muted', null, facts.join(' · ')),
+    chart ? h('div.proj-chart', null, chart,
+      h('div.tiny.muted', null, 'Пунктир — очакваното тегло по прогнозата на режима; точките — измереното тегло.')) : null,
+    h('div.row.tight.no-print.progress-row', { style: { flexWrap: 'wrap', marginTop: '10px', gap: '8px' } },
+      onWeight ? [h('span.small', null, 'Тегло днес:'), date, weight, h('button.btn.sm', { type: 'button', onclick: save }, '💾 Запиши теглото')] : null,
+      onApply && pr.kcalNew ? h('button.btn.sm.primary', {
+        type: 'button', onclick: () => onApply({ weight: pr.last, kcalAdjust: pr.adjust }),
+        title: 'Изготвя режима отново с последното тегло и с корекцията на енергията',
+      }, `↻ Нов режим с около ${pr.kcalNew} kcal`) : null,
+      onApply && pr.points.length && !pr.kcalNew ? h('button.btn.sm', {
+        type: 'button', onclick: () => onApply({ weight: pr.last }),
+        title: 'Изготвя режима отново с последното тегло',
+      }, '↻ Нов режим с последното тегло') : null),
+    h('p.tiny.muted', { style: { margin: '8px 0 0' } },
+      'Правилата: при отслабване — спад под 0,25 кг седмично за 3 седмици: с 150–200 kcal по-малко; над 1 кг седмично: с 200 kcal повече. '
+      + 'При покачване — без покачване за 3 седмици: с 200–300 kcal повече; над 1 кг седмично: с 200 kcal по-малко.'));
+}
+
+/** Пулсът в покой от последното измерване през последната година — за пулса по резерва. */
+function lastPulse(p) {
+  const since = addDays(today(), -365);
+  const m = (p.measurements || []).filter(x => x.pulse > 0 && x.date >= since).sort((a, b) => (a.date < b.date ? -1 : 1)).pop();
+  return m ? Math.round(m.pulse) : null;
 }
 
 /** Таблица със запазените режими. */
@@ -122,8 +210,9 @@ const menuKind = (plan) => (!plan.week ? '' : plan.week.length > 7 ? ' · мес
 /**
  * Изборът за режима. cfg: last (предишният избор), weight/height ({ value, hint }), activity,
  * defaultGoal, defaultPattern, prefs, prefsHint, diagnoses, diagnosesHint, top (полета отгоре),
- * cycle ({ stored, age, hint, hidden } — менструалният цикъл за жени), footer, onGenerate(body, save), onSubmit.
- * Връща { el, read, generate, cycleEl }.
+ * cycle ({ stored, age, hint, hidden } — менструалният цикъл за жени), footer, onGenerate(body, save), onSubmit,
+ * pulse (пулс в покой за тренировките), dislikes (храните, които човекът не яде — от последния режим).
+ * Връща { el, read, generate, apply, cycleEl, trainingCycleEl }.
  */
 export function planForm(cfg) {
   const last = cfg.last || {};
@@ -139,6 +228,7 @@ export function planForm(cfg) {
   const pace = select(Object.entries(PACES).map(([k, x]) => ({ value: k, label: x.label, selected: (last.pace || 'standard') === k })), { name: 'pace' });
   const paceHint = h('div.field-hint');
   const target = numberInput({ name: 'targetWeight', min: 30, max: 350, value: last.targetWeight ?? '', placeholder: 'по желание' });
+  const adjust = numberInput({ name: 'kcalAdjust', min: -600, max: 600, value: last.kcalAdjust || '', placeholder: 'напр. −150' });
   const targetHelp = h('div.row.tight', { style: { flexWrap: 'wrap', marginTop: '4px' } });
   const pattern = select(Object.entries(PATTERNS).map(([k, x]) => ({ value: k, label: x.label, selected: k === (last.pattern || cfg.defaultPattern || 'mediterranean') })), { name: 'pattern' });
   const patternHint = h('div.field-hint');
@@ -158,7 +248,8 @@ export function planForm(cfg) {
   const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || [], { week: last.pregnancyWeek });
   const cyc = cfg.cycle ? cycleFields({ cycle: cfg.cycle.stored, last, age: cfg.cycle.age, hint: cfg.cycle.hint }) : null;
   if (cyc && cfg.cycle.hidden) cyc.el.style.display = 'none';
-  const tr = trainingFields({ last, activity: last.activity || cfg.activity, goal: last.goal || cfg.defaultGoal, female: !!cfg.cycle && !cfg.cycle.hidden });
+  const tr = trainingFields({ last, activity: last.activity || cfg.activity, goal: last.goal || cfg.defaultGoal, female: !!cfg.cycle && !cfg.cycle.hidden, pulse: cfg.pulse });
+  const dislikes = dislikesEditor(last.dislikes || cfg.dislikes || []);
 
   const goalValue = () => goalRadios.map(l => l.querySelector('input')).find(i => i.checked)?.value || 'maintain';
   const refresh = () => {
@@ -190,18 +281,29 @@ export function planForm(cfg) {
   const read = () => {
     const fd = new FormData(el);
     const d = decimalFields(Object.fromEntries(fd), ['weight', 'height', 'targetWeight']);
+    const kcalAdjust = Number(String(d.kcalAdjust || '').replace(/[−–]/g, '-').replace(',', '.').replace(/\s/g, ''));
     return {
       weight: d.weight, height: d.height, activity: d.activity, goal: goalValue(),
       pace: d.pace || 'standard', targetWeight: goalValue() === 'maintain' ? '' : d.targetWeight,
+      kcalAdjust: Number.isFinite(kcalAdjust) ? Math.max(-600, Math.min(600, Math.round(kcalAdjust))) : 0,
       pattern: d.pattern, mealsPerDay: Number(d.mealsPerDay), days: Number(d.days),
       quick: quick.checked, strength: strength.checked, sourcedOnly: sourced.checked,
-      preferences: fd.getAll('pref'), diagnoses: dx.value(), pregnancyWeek: dx.week(),
+      preferences: fd.getAll('pref'), dislikes: dislikes.value(), diagnoses: dx.value(), pregnancyWeek: dx.week(),
       ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
       training: tr.read(),
       lang: d.lang || 'bg',
     };
   };
   const generate = (save = false) => cfg.onGenerate(read(), save);
+  /* Нов режим по напредъка: последното тегло и корекция на енергията. */
+  const apply = ({ weight: w, kcalAdjust } = {}) => {
+    if (w) weight.value = dec(w);
+    if (kcalAdjust !== undefined) adjust.value = kcalAdjust ? String(kcalAdjust).replace('-', '−') : '';
+    refresh();
+    cfg.onSubmit?.();
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    generate();
+  };
 
   el = h('form.stack', { onsubmit: (e) => { e.preventDefault(); cfg.onSubmit?.(); generate(); } },
     cfg.top || null,
@@ -219,7 +321,8 @@ export function planForm(cfg) {
       h('div.q-opts', null, goalRadios),
       h('div.form-grid', { style: { marginTop: '10px' } },
         h('div', null, field('Темпо', pace, paceHint)),
-        h('div', null, field('Целево тегло (кг)', target, targetHelp)))),
+        h('div', null, field('Целево тегло (кг)', target, targetHelp)),
+        h('div', null, field('Корекция на енергията (kcal)', adjust, 'по проследяването на теглото — от −600 до +600')))),
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Хранене'),
       h('div.form-grid', null,
@@ -235,11 +338,48 @@ export function planForm(cfg) {
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Ограничения и предпочитания'),
       h('div.q-opts', null, prefBoxes),
-      cfg.prefsHint ? h('div.field-hint', null, cfg.prefsHint) : null),
+      cfg.prefsHint ? h('div.field-hint', null, cfg.prefsHint) : null,
+      h('div.nut-sec-sub', null, 'Не яде'),
+      dislikes.el,
+      h('div.field-hint', null, 'Ястията с тези храни не влизат в менюто, ако има с какво да се заменят.')),
     h('div', null, h('button.btn.primary', { type: 'submit' }, '🍽 Изготви режим'),
       cfg.footer ? h('span.small.muted', { style: { marginLeft: '10px' } }, cfg.footer) : null));
   refresh();
-  return { el, read, generate, cycleEl: cyc?.el || null, trainingCycleEl: tr.cycleEl };
+  return { el, read, generate, apply, cycleEl: cyc?.el || null, trainingCycleEl: tr.cycleEl };
+}
+
+/* ------------------------- храни, които не яде ------------------------- */
+
+const FOOD_LIST = Object.keys(FOODS).map(id => ({ id, name: shopName(id) })).sort((a, b) => a.name.localeCompare(b.name, 'bg'));
+let dislikeSeq = 0;
+
+/** Храните, които човекът не яде (версия 4.14): търсене по име в каталога на рецептите. */
+export function dislikesEditor(initial = []) {
+  const items = initial.filter(id => FOODS[id]);
+  const chips = h('div.q-opts.dislike-chips');
+  const listId = 'food-options-' + (++dislikeSeq);
+  const datalist = h('datalist', { id: listId }, FOOD_LIST.map(f => h('option', { value: f.name })));
+  const inp = h('input', { type: 'text', placeholder: 'храна, напр. гъби или патладжан', autocomplete: 'off', list: listId });
+  const render = () => mount(chips, items.length
+    ? items.map((id, i) => h('span.dislike-chip', null, shopName(id),
+      h('button.btn.xs.ghost', { type: 'button', title: 'Махни', onclick: () => { items.splice(i, 1); render(); } }, '✕')))
+    : h('span.small.dim', null, 'Няма.'));
+  const add = () => {
+    const q = inp.value.trim().toLowerCase();
+    if (!q) return;
+    const hit = FOOD_LIST.find(f => f.name.toLowerCase() === q) || FOOD_LIST.find(f => f.name.toLowerCase().includes(q));
+    if (!hit) { toast('Няма такава храна в рецептите на програмата.', 'error'); return; }
+    if (!items.includes(hit.id)) items.push(hit.id);
+    inp.value = '';
+    render();
+  };
+  inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  inp.addEventListener('change', () => { if (FOOD_LIST.some(f => f.name === inp.value)) add(); });
+  render();
+  return {
+    el: h('div', null, chips, h('div.row.tight', { style: { marginTop: '6px' } }, inp, datalist, h('button.btn.sm', { type: 'button', onclick: add }, '+ Добави'))),
+    value: () => [...items],
+  };
 }
 
 /* ------------------------- диагнози по МКБ-10 ------------------------- */
@@ -321,14 +461,15 @@ export function sourceText(src) {
   return src.map(s => `${s.org}, „${s.title}“${s.page && !s.url.includes('healthy-eating-recipes') ? `, стр. ${s.page}` : ''}`).join('; ');
 }
 
-/** Рецепта: състав, приготвяне, подправки, време, стойности и източник. */
-function recipeCard(o, { label = null, open = false } = {}) {
+/** Рецепта: състав, приготвяне, подправки, време, стойности и източник. swap — „Друго ястие“. */
+function recipeCard(o, { label = null, open = false, swap = null } = {}) {
   if (!o) return h('div.small.muted', null, L('Няма подходящо ястие при избраните ограничения.'));
   return h('div.recipe', null,
     h('div.recipe-head', null,
       label ? badge('', label) : null,
       h('strong', null, o.name),
-      o.time ? h('span.tiny.dim', null, L(`⏱ ${o.time} мин`)) : null),
+      o.time ? h('span.tiny.dim', null, L(`⏱ ${o.time} мин`)) : null,
+      swap ? h('button.btn.xs.ghost.recipe-swap.no-print', { type: 'button', title: 'Друго ястие на това място — останалото меню не се променя', onclick: swap }, '↻ Друго') : null),
     h('div.small.muted', null, o.items.map(x => x.text).join(' · ')),
     o.method ? h('details.recipe-how', { open }, h('summary', null, L('Приготвяне')),
       h('p.small', null, o.method),
@@ -376,10 +517,26 @@ export function planView(plan, opts = {}) {
   return withPlanLang(plan, () => planBody(plan, opts));
 }
 
-function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = 'Запази' } = {}) {
+/** Очакваното тегло по седмици — графика с целта (версия 4.14). */
+function projectionChart(plan) {
+  const pr = plan.projection;
+  if (!pr?.curve?.length) return null;
+  const from = pr.from || plan.input.startDate || today();
+  const chart = trendChart({
+    series: [{ label: L('очаквано тегло'), points: pr.curve.map(c => ({ date: addDays(from, c.week * 7), value: c.weight })), cls: 'proj', dots: false }],
+    unit: L('кг'), decimals: 1,
+    lines: pr.targetWeight ? [{ value: pr.targetWeight, label: L(`цел ${dec(pr.targetWeight)} кг`) }] : [],
+  });
+  return h('div.proj-chart', null, chart,
+    h('div.tiny.muted', null, L('Прогнозата отчита, че с теглото се променя и разходът на енергия — промяната се забавя с времето (Hall 2011).')));
+}
+
+function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, onSwap, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
+  const swapAt = (key) => (onSwap ? () => onSwap(key) : null);
+  const dislikes = (plan.input.dislikes || []).filter(id => FOODS[id]).map(id => (plan.lang === 'en' ? enBaseName(id) : shopName(id)));
 
   const dayView = (d, open) => h('details.week-day', { open },
     h('summary', null, h('strong', null, d.label), h('span.small.dim', null, ` ${fd(d.date)}`),
@@ -388,9 +545,9 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = '
       h('span.grow'), h('span.small.muted', null, L(`${d.totals.kcal} kcal · Б ${d.totals.protein} г · фибри ${d.totals.fiber} г`)
         + (d.totals.fe !== undefined ? L(` · желязо ${Math.round(d.totals.fe)} мг · калций ${Math.round(d.totals.ca / 10) * 10} мг`) : ''))),
     trainingTips(d.training),
-    h('div.meals', null, d.meals.map(m => h('div.meal', null,
+    h('div.meals', null, d.meals.map((m, i) => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time || ''} · ≈${m.kcal} kcal`)),
-      recipeCard(m.option)))));
+      recipeCard(m.option, { swap: swapAt(`${d.day - 1}.${i}.0`) })))));
   const month = plan.week && plan.week.length > 7;
   const menu = month
     // Месец: по седмици, всяка със своя списък за пазаруване.
@@ -405,9 +562,9 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = '
     }))
     : plan.week
       ? h('div.stack', null, plan.week.map((d, i) => dayView(d, i === 0)))
-      : h('div.meals', null, plan.meals.map(m => h('div.meal', null,
+      : h('div.meals', null, plan.meals.map((m, si) => h('div.meal', null,
       h('div.meal-head', null, h('strong', null, m.label), h('span.tiny.dim', null, `${m.time ? m.time + ' · ' : ''}≈${m.kcal} kcal`)),
-      m.options.length ? m.options.map((o, i) => recipeCard(o, { label: L(`вариант ${i + 1}`) })) : h('div.small.muted', null, L('Няма подходящо ястие.')))));
+      m.options.length ? m.options.map((o, i) => recipeCard(o, { label: L(`вариант ${i + 1}`), swap: swapAt(`0.${si}.${i}`) })) : h('div.small.muted', null, L('Няма подходящо ястие.')))));
 
   const shopping = plan.shopping ? card(L('Списък за пазаруване за седмицата'), { icon: '🛒', tight: true }, shopGrid(plan.shopping)) : null;
 
@@ -432,6 +589,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = '
     plan.warnings.length ? h('div.stack', { style: { gap: '6px', marginBottom: '12px' } }, plan.warnings.map(w => h('div.alert-strip.warn', null, w))) : null,
     h('div.alert-strip.info', { style: { marginBottom: '12px' } }, projectionText(plan),
       plan.projection?.note ? h('div.small', { style: { fontWeight: 400 } }, plan.projection.note) : null),
+    projectionChart(plan),
     h('div.tiles', null,
       tile(L('Енергия'), t.kcal, 'kcal', L(`покой ${plan.energy.bmr} · разход ${plan.energy.tdee}`)),
       tile(L('Белтък'), t.protein, L('г'), L(`${dec(t.proteinPerKg)} г/кг`) + (t.proteinMax ? L(` · до ${t.proteinMax} г`) : '')),
@@ -444,6 +602,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, saveLabel = '
       t.calcium ? tile(L('Калций'), t.calcium, L('мг'), L(`в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`)) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,
     plan.pattern ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, L(`Модел: ${plan.pattern.label}. `)), plan.pattern.about) : null,
+    dislikes.length ? h('p.small', { style: { margin: '6px 0 0' } }, h('strong', null, L('Не яде: ')), dislikes.join(', ') + '.') : null,
     diagnosesBlock(plan),
     cyclePlanBlock(plan),
     plan.portions ? h('div.nut-cols', null,

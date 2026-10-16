@@ -30,7 +30,7 @@
 
 import { bmi as bmiOf } from './clinical.js';
 import { table } from './table.js';
-import { addDays, today } from './dates.js';
+import { addDays, daysBetween, today } from './dates.js';
 import { FOODS, FOOD_CATS, LIQUIDS, RECIPES, YIELDS, mainProtein, mealsOf, rawOf, recipeTags, shopName, totals } from './recipes.js';
 import { renderMethod } from './recipe-method.js';
 import { dietProfiles } from './diet-icd.js';
@@ -197,6 +197,8 @@ const round = (v, step = 1) => Math.round(v / step) * step;
 const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const dec = (v) => String(v).replace('.', ',');
 const KCAL_PER_KG = 7700;
+/** Колко kcal дневно разлика в приема променят теглото в крайна сметка с 1 кг (Hall 2011: 100 kJ). */
+const KCAL_PER_KG_DAY = 24;
 
 /* --------------------------------- основен план --------------------------------- */
 
@@ -227,6 +229,9 @@ export function nutritionPlan(input) {
   const fromAllergies = allergyPreferences(input.allergies);
   const prefs = new Set([...(input.preferences || []), ...fromAllergies.prefs, ...dx.prefs].filter(x => PREFERENCES[x]));
   if (prefs.has('vegan')) prefs.add('vegetarian');
+  // Храните, които човекът не яде, и смените на отделни ястия (версия 4.14).
+  const dislikes = new Set((input.dislikes || []).filter(f => FOODS[f]));
+  const swaps = cleanSwaps(input.swaps);
   const b = bmiOf(weight, height);
   let activityId = ACTIVITY[input.activity] ? input.activity : 'sedentary';
   const patternId = PATTERNS[input.pattern] ? input.pattern : (cond.has('htn') ? 'dash' : 'mediterranean');
@@ -255,6 +260,7 @@ export function nutritionPlan(input) {
   const training = input.training ? trainingPlan({
     ...input.training, start, sex, age, weight, bmi: b, cond, classes,
     codes: dx.considered.map(c => c.code), pregnancy: dx.pregnancy, pregnancyWeek: Number(input.pregnancyWeek) || null,
+    postpartum: dx.lactation, goal,
     inactive: activityId === 'sedentary', bp: input.bp || null, amenorrhea,
     phases: cycleOk ? phasesFrom(cycleIn, start, 28) : [],
   }) : null;
@@ -315,6 +321,12 @@ export function nutritionPlan(input) {
     target = 27 * weight;
     notes0.push('След 70 г. енергията е поне 27 kcal/кг (ESPEN: около 30 kcal/кг) — формулата често подценява нуждите.');
   }
+  // Корекция по проследяването на теглото (версия 4.14) — например −150 kcal при бавен спад.
+  const kcalAdjust = Math.max(-600, Math.min(600, Math.round((Number(input.kcalAdjust) || 0) / 10) * 10));
+  if (kcalAdjust) {
+    target += kcalAdjust;
+    notes0.push(`Енергията е коригирана с ${kcalAdjust > 0 ? '+' : '−'}${Math.abs(kcalAdjust)} kcal дневно по проследяването на теглото.`);
+  }
   const floor = Math.max(sex === 'f' ? 1200 : 1500, bmr * 0.95);
   if (target < floor) {
     target = floor;
@@ -335,6 +347,12 @@ export function nutritionPlan(input) {
   if (goal === 'gain') { proteinPerKg = Math.max(proteinPerKg, 1.2); proteinNote = 'ESPEN: 1,2–1,5 г/кг при покачване на теглото и недохранване.'; }
   if (strength) { proteinPerKg = Math.max(proteinPerKg, goal === 'maintain' ? 1.4 : 1.6); proteinNote = 'ACSM/ISSN: 1,2–2,0 г/кг при силови тренировки; повече при енергиен дефицит.'; }
   if (pattern.proteinBoost) proteinPerKg = Math.min(1.8, proteinPerKg + pattern.proteinBoost);
+  // GLP-1 агонист при отслабване: 1,2–1,6 г/кг — мускулите се губят заедно с мазнините (ACLM/ASN/OMA/TOS 2025).
+  const glp1 = classes.has('GLP1');
+  if (glp1 && goal === 'lose' && proteinPerKg < 1.2) {
+    proteinPerKg = 1.2;
+    proteinNote = 'ACLM/ASN/OMA/TOS 2025: 1,2–1,6 г/кг при отслабване с GLP-1 агонист — заедно със силови упражнения.';
+  }
   if (ckd) { proteinPerKg = 0.8; proteinNote = 'KDIGO 2024: 0,8 г/кг при ХБЗ G3–G5 без диализа; да не се превишава 1,3 г/кг.'; }
   if (dialysis) { proteinPerKg = 1.1; proteinNote = 'KDOQI 2020: 1,0–1,2 г/кг при хемодиализа.'; }
   if (dx.proteinMin && !ckd && !dialysis && proteinPerKg < dx.proteinMin) {
@@ -391,9 +409,16 @@ export function nutritionPlan(input) {
     warnings.push(`SGLT2-инхибитор и под 130 г въглехидрати дневно (${carbs} г) — риск от кетоацидоза с нормална кръвна захар; обсъдете модела.`);
   }
 
-  // Прогноза и целево тегло.
-  const weeklyKg = Math.round(((target - tdee) * 7 / KCAL_PER_KG) * 100) / 100;
-  const projection = { weeklyKg, targetWeight: null, weeks: null, eta: null, suggestions: [] };
+  // Прогноза и целево тегло (версия 4.14): разходът намалява с теглото — всеки 24 kcal (100 kJ)
+  // дневно разлика в приема променят теглото в крайна сметка с около 1 кг (Hall 2011). Началната
+  // скорост е по 7700 kcal/кг, после се забавя: w(t) = w0 + Δ/24 × (1 − e^(−t × 24/7700)).
+  // Енергията за бременност и кърмене не се брои — тя отива за бебето и за млякото.
+  const gap = target - (dx.energyAdd || 0) - tdee;
+  const weeklyKg = Math.round((gap * 7 / KCAL_PER_KG) * 100) / 100;
+  const eventual = gap / KCAL_PER_KG_DAY;
+  const tau = KCAL_PER_KG / KCAL_PER_KG_DAY;
+  const weightAt = (days) => weight + eventual * (1 - Math.exp(-days / tau));
+  const projection = { weeklyKg, targetWeight: null, weeks: null, eta: null, suggestions: [], curve: null, plateau: null, from: asOf };
   if (goal === 'lose') projection.suggestions = [0.95, 0.9].map(k => Math.round(weight * k));
   if (goal === 'gain') projection.suggestions = [Math.round(20 * (height / 100) ** 2)].filter(x => x > weight);
   const tw = Number(input.targetWeight);
@@ -403,13 +428,28 @@ export function nutritionPlan(input) {
       warnings.push(`Целевото тегло ${dec(tw)} кг не съответства на целта „${GOALS[goal]}“.`);
     } else if (Math.abs(weeklyKg) > 0.05) {
       projection.targetWeight = tw;
-      projection.weeks = Math.ceil(Math.abs(tw - weight) / Math.abs(weeklyKg));
-      projection.eta = addDays(asOf, projection.weeks * 7);
+      const share = (tw - weight) / eventual;
+      const weeks = share > 0 && share < 1 ? Math.ceil(-tau * Math.log(1 - share) / 7) : Infinity;
+      if (weeks <= 104) {
+        projection.weeks = weeks;
+        projection.eta = addDays(asOf, weeks * 7);
+      } else {
+        // Целта не се достига за 2 години при този прием — теглото се установява по-рано.
+        projection.plateau = Math.round((weight + eventual) * 10) / 10;
+        notes0.push(share >= 1
+          ? `С ${target} kcal дневно теглото постепенно се установява около ${dec(projection.plateau)} кг и не стига до целта ${dec(tw)} кг. Преоценявайте енергията по правилата за контрол на теглото.`
+          : `С ${target} kcal дневно до целта ${dec(tw)} кг са нужни над 2 години — отслабването се забавя с времето. Поставете междинна цел и преоценявайте енергията по правилата за контрол на теглото.`);
+      }
       if (twBmi < 18.5) warnings.push(`Целевото тегло ${dec(tw)} кг е под нормалното (ИТМ ${dec(Math.round(twBmi * 10) / 10)}).`);
       if (goal === 'lose' && (weight - tw) / weight > 0.15) {
         projection.note = 'Целта е над 15% от теглото — поставете междинна цел от 5–10% за първите 6 месеца.';
       }
     }
+  }
+  // Очакваното тегло по седмици — до целта (най-много 2 години) или за 6 месеца.
+  if (goal !== 'maintain' && Math.abs(weeklyKg) > 0.05) {
+    const span = Math.min(104, Math.max(8, projection.weeks || 26));
+    projection.curve = Array.from({ length: span + 1 }, (_, k) => ({ week: k, weight: Math.round(weightAt(k * 7) * 10) / 10 }));
   }
 
   // Принципи и правила.
@@ -439,6 +479,13 @@ export function nutritionPlan(input) {
     if (goal === 'lose' && (classes.has('INSULIN') || classes.has('SU'))) {
       warnings.push('Инсулин или сулфанилурейно лекарство и по-малко храна: дозите може да се нуждаят от намаляване — риск от хипогликемия.');
     }
+  }
+  if (glp1) {
+    prefer.push('GLP-1 агонист: по-малки и по-чести хранения — малка закуска, после на всеки 3–4 часа; бавно и до приятно засищане. На всяко хранене — белтък; зеленчуци, плодове, пълнозърнести, бобови, ядки и семена (ACLM/ASN/OMA/TOS 2025).');
+    limit.push('GLP-1 агонист: големи и мазни хранения — засилват гаденето и повръщането; алкохол — засилва гаденето и рефлукса. Рафинирани въглехидрати, подсладени напитки, червено и преработено месо и пакетирани закуски — по-рядко.');
+    notes.push('GLP-1 агонист: достатъчно течности — гаденето, повръщането и диарията могат да обезводнят и да увредят бъбреците; срещу запек — течности и фибри от храната. В първите дни след започване или увеличаване на дозата — без много мазни и много богати на фибри храни; при гадене — джинджифилов или ментов чай.');
+    notes.push('GLP-1 агонист: само белтъкът не пази мускулите — нужни са и силови упражнения поне 3 пъти седмично. Витамин D, калций и B12 — проследяване и добавка при нужда.');
+    if (mealsPerDay === 3) notes.push('GLP-1 агонист: при гадене или бързо засищане — 4 или 5 по-малки хранения вместо 3.');
   }
   if (cardio || cond.has('dyslip') || cond.has('masld')) {
     limit.push(`Наситени мазнини под ${satFat} г дневно (${satFatPct}% от енергията): тлъсто месо, масло, сметана, пълномаслени сирена.`);
@@ -505,7 +552,7 @@ export function nutritionPlan(input) {
   const ctx = {
     prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
     sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
-    exclude: dx.exclude, penalize: dx.penalize,
+    exclude: dx.exclude, penalize: dx.penalize, dislikes,
   };
   const lowerCarb = diabetes || patternId === 'lowcarb';
   // При модела с малко въглехидрати нишестето не расте; при диабет расте умерено.
@@ -519,6 +566,9 @@ export function nutritionPlan(input) {
   }
   if (Object.values(pools).some(p => p.relaxed)) {
     notes.push('При тези ограничения за някои хранения няма ястие, което да пасва на всичко — там порциите на солените, сладките и богатите на калий храни са малки. Обсъдете менюто с диетолог.');
+  }
+  if (Object.values(pools).some(p => p.disliked)) {
+    notes.push('За някои хранения няма подходящо ястие без храните, които човекът не яде — там те остават; заменете ги с подобна храна.');
   }
 
   // Менструален цикъл: фазите за дните на менюто — енергия и акцент (желязо, калций) за всеки ден.
@@ -555,21 +605,31 @@ export function nutritionPlan(input) {
   // Ден с по два варианта за всяко хранене (при цикъла — по фазата на първия ден).
   const usedToday = new Set();
   const focus0 = dayFocus(0);
-  const meals = slots.map((slot) => {
+  const meals = slots.map((slot, si) => {
     const pool = pools[slot.meal];
     const kcal = round(dayKcal(0) * slot.share, 10);
     if (!pool.length) return { ...slot, kcal, options: [] };
-    let fresh = pool.filter(x => !usedToday.has(x.r.name));
-    if (focus0.length) fresh = [...fresh].sort((a, b2) => (b2.s + focusBonus(b2, focus0)) - (a.s + focusBonus(a, focus0)));
-    const picks = (fresh.length >= 2 ? fresh : pool).slice(0, 2);
+    const ordered = focus0.length ? [...pool].sort((a, b2) => (b2.s + focusBonus(b2, focus0)) - (a.s + focusBonus(a, focus0))) : pool;
+    const fresh = ordered.filter(x => !usedToday.has(x.r.name));
+    const picks = (fresh.length >= 2 ? fresh : ordered).slice(0, 2);
     for (const p of picks) usedToday.add(p.r.name);
+    // „Друго ястие“ (версия 4.14): n-тото следващо подходящо, което още не е в деня.
+    picks.forEach((p, v) => {
+      const n = swaps[`0.${si}.${v}`];
+      const alt = n ? ordered.filter(x => !usedToday.has(x.r.name)) : [];
+      if (!alt.length) return;
+      picks[v] = alt[(n - 1) % alt.length];
+      usedToday.add(picks[v].r.name);
+    });
     return { ...slot, kcal, options: picks.map(p => buildMeal(p.r, kcal, prefs, { lowerCarb, strict: strictLowCarb })) };
   });
 
   // Седмично меню — по едно ястие за всяко хранене, с ритъм за седмицата.
   let week = null;
   if (days > 1) {
-    week = planDays(slots, pools, variant, days, dayFocus).map((picks, d) => {
+    const plannedDays = planDays(slots, pools, variant, days, dayFocus);
+    swapPicks(plannedDays, slots, pools, swaps, dayFocus);
+    week = plannedDays.map((picks, d) => {
       const date = addDays(start, d);
       return {
         day: d + 1, label: weekdayOf(date), date, kcal: dayKcal(d),
@@ -647,6 +707,7 @@ export function nutritionPlan(input) {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
       goal, pace, targetWeight: projection.targetWeight, pattern: patternId, mealsPerDay, days,
       quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
+      dislikes: [...dislikes], swaps, kcalAdjust,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
       startDate: start, cycleSync: !!input.cycleSync, training: training ? training.input : null,
       cycle: sync?.stats ? { lastPeriod: sync.stats.lastStart, length: sync.stats.length, bleed: sync.stats.bleed, contraception: sync.stats.contraception } : null,
@@ -677,7 +738,7 @@ export function nutritionPlan(input) {
     cycle: sync,
     training,
     trainingToday: days === 1 ? dayTraining(0) : null,
-    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied, training: !!training },
+    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied, training: !!training, glp1 },
   };
 }
 
@@ -812,10 +873,16 @@ function poolFor(kind, ctx, variant) {
   let scored = collect(ctx);
   let relaxed = false;
   let unsourced = false;
+  let disliked = false;
   // „Само рецепти с източник“: ако за това хранене няма такава, се връщат всички.
   if (!scored.length && ctx.sourcedOnly) {
     scored = collect({ ...ctx, sourcedOnly: false });
     unsourced = scored.length > 0;
+  }
+  // Храните, които човекът не яде, отстъпват първи — преди здравните ограничения.
+  if (!scored.length && ctx.dislikes?.size) {
+    scored = collect({ ...ctx, dislikes: null });
+    disliked = scored.length > 0;
   }
   for (const soft of [{ limitK: false, lowSalt: false }, { limitK: false, lowSalt: false, diabetes: false }]) {
     if (scored.length) break;
@@ -831,7 +898,39 @@ function poolFor(kind, ctx, variant) {
   pool.sort((a, b) => b.s - a.s || hash(a.r.name, variant) - hash(b.r.name, variant));
   pool.relaxed = relaxed;
   pool.unsourced = unsourced;
+  pool.disliked = disliked;
   return pool;
+}
+
+/** Смените на ястия от формата: { 'ден.хранене.вариант': колко пъти } — само валидните. */
+export function cleanSwaps(value) {
+  const out = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return out;
+  for (const key of Object.keys(value).sort().slice(0, 200)) {
+    const n = Math.floor(Number(value[key]));
+    if (/^\d{1,2}\.\d\.[01]$/.test(key) && Number(key.split('.')[0]) < 28 && n >= 1 && n <= 100) out[key] = n;
+  }
+  return out;
+}
+
+/**
+ * „Друго ястие“ в седмичното и месечното меню: на мястото на избраното — n-тото следващо
+ * подходящо, което не е в същата седмица (ако няма такова — просто друго). Останалите дни не се променят.
+ */
+function swapPicks(days, slots, pools, swaps, focusOf) {
+  for (const [key, n] of Object.entries(swaps)) {
+    const [d, s] = key.split('.').map(Number);
+    const picks = days[d];
+    if (!picks?.[s]) continue;
+    const focus = focusOf(d);
+    const weight = (x) => x.s + (focus.length ? focusBonus(x, focus) : 0);
+    const ordered = [...pools[slots[s].meal]].sort((a, b) => weight(b) - weight(a));
+    const from = d - (d % 7);
+    const inWeek = new Set(days.slice(from, from + 7).flatMap(p => p.filter(Boolean).map(x => x.r.name)));
+    let alt = ordered.filter(x => !inWeek.has(x.r.name));
+    if (!alt.length) alt = ordered.filter(x => x.r.name !== picks[s].r.name);
+    if (alt.length) picks[s] = alt[(n - 1) % alt.length];
+  }
 }
 
 function hash(text, seed) {
@@ -868,6 +967,7 @@ function excluded(items, ctx) {
   const { prefs, cond } = ctx;
   const has = (flag) => items.some(it => FOODS[it.food].flags.has(flag));
   if (ctx.exclude?.size && items.some(it => ctx.exclude.has(it.food))) return true;
+  if (ctx.dislikes?.size && items.some(it => ctx.dislikes.has(it.food) || ctx.dislikes.has(it.orig))) return true;
   if (prefs.has('vegetarian') && (has('meat') || has('fish') || has('seafood'))) return true;
   if (prefs.has('vegan') && (has('egg') || has('dairy') || has('honey'))) return true;
   if (prefs.has('noFish') && (has('fish') || has('seafood'))) return true;
@@ -1358,4 +1458,93 @@ function monitoringFor(goal) {
     ];
   }
   return ['Претегляне веднъж седмично; колебанията до ±1 кг са нормални.'];
+}
+
+/* ------------------------------ напредък по режима ------------------------------ */
+
+const r1 = (v) => Math.round(v * 10) / 10;
+
+/** Очакваното тегло след толкова дни по прогнозата на режима (по седмиците; за стари режими — по права линия). */
+export function expectedWeight(plan, days) {
+  const pr = plan.projection || {};
+  const w0 = plan.input.weight;
+  const curve = pr.curve;
+  if (!curve?.length) return r1(w0 + (pr.weeklyKg || 0) * days / 7);
+  const wk = days / 7;
+  const last = curve[curve.length - 1];
+  if (wk >= last.week) return last.weight;
+  const i = Math.floor(wk);
+  const a = curve[i];
+  const b = curve[i + 1] || a;
+  return r1(a.weight + (b.weight - a.weight) * (wk - i));
+}
+
+/**
+ * Напредък по запазен режим (версия 4.14): теглото след режима спрямо прогнозата и какво да
+ * се промени — по правилата за контрол на теглото в самия режим.
+ * saved: { date, plan }; weights: [{ date, weight }] — измерванията (по-старите от режима се пропускат).
+ * Връща { from, to, start, last, weeks, change, rate, expected, status, text, kcal, kcalNew, targetWeight, points }.
+ * status: none (няма измерване), early (под 3 седмици), ok, slow, fast, done, up, down.
+ */
+export function planProgress(saved, weights = [], asOf = today()) {
+  const plan = saved?.plan;
+  if (!plan?.input?.weight || !saved.date) return null;
+  const from = saved.date;
+  const goal = plan.input.goal;
+  const w0 = plan.input.weight;
+  const tw = plan.projection?.targetWeight || null;
+  const kcal = plan.targets.kcal;
+  // Едно измерване за ден — последното.
+  const byDate = new Map();
+  for (const m of weights || []) if (m && m.weight > 0 && m.date > from && m.date <= asOf) byDate.set(m.date, Number(m.weight));
+  const points = [...byDate].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([date, weight]) => ({ date, weight }));
+  const base = { from, start: w0, goal, kcal, targetWeight: tw, points, kcalNew: null };
+  if (!points.length) {
+    return { ...base, status: 'none', text: 'Няма измерване на теглото след режима — претегляйте се веднъж седмично, сутрин, на гладно.' };
+  }
+  const last = points[points.length - 1];
+  const days = daysBetween(from, last.date);
+  const weeks = days / 7;
+  const change = r1(last.weight - w0);
+  // Скорост — наклонът по всички измервания заедно с началното (кг седмично).
+  const xy = [[0, w0], ...points.map(p => [daysBetween(from, p.date) / 7, p.weight])];
+  const mx = xy.reduce((s, [x]) => s + x, 0) / xy.length;
+  const my = xy.reduce((s, [, y]) => s + y, 0) / xy.length;
+  const sxx = xy.reduce((s, [x]) => s + (x - mx) ** 2, 0);
+  const rate = sxx ? Math.round((xy.reduce((s, [x, y]) => s + (x - mx) * (y - my), 0) / sxx) * 100) / 100 : 0;
+  const expected = r1(expectedWeight(plan, days) - w0);
+  const floor = Math.max(plan.input.sex === 'f' ? 1200 : 1500, Math.round((plan.energy?.bmr || 0) * 0.95));
+  const out = { ...base, to: last.date, last: last.weight, weeks: r1(weeks), change, rate, expected };
+  const kg = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${dec(Math.abs(v))} кг`;
+  // kcalNew — енергията по правилата; adjust — колко да се добави към корекцията в новия режим.
+  const result = (status, text, kcalNew = null) => ({
+    ...out, status, text, kcalNew, adjust: kcalNew ? (plan.input.kcalAdjust || 0) + kcalNew - kcal : 0,
+  });
+  if (goal === 'lose' && tw && last.weight <= tw) {
+    return result('done', 'Целевото тегло е достигнато — постепенно към енергията за поддържане: с 100–200 kcal повече всяка седмица.');
+  }
+  if (goal === 'gain' && tw && last.weight >= tw) {
+    return result('done', 'Целевото тегло е достигнато — постепенно към енергията за поддържане.');
+  }
+  if (weeks < 3) {
+    return result('early', `${kg(change)} за ${Math.round(days)} дни (очаквано ${kg(expected)}). Оценката е след поне 3 седмици — колебанията до ±1 кг са нормални.`);
+  }
+  if (goal === 'lose') {
+    if (rate > -0.25) {
+      const next = Math.max(round(floor, 50), round(kcal - 175, 50));
+      return next < kcal
+        ? result('slow', `Спадът е под 0,25 кг седмично — с 150–200 kcal по-малко (около ${next} kcal дневно) или повече движение.`, next)
+        : result('slow', 'Спадът е под 0,25 кг седмично, а енергията е на долната граница — повече движение вместо по-малко храна.');
+    }
+    if (rate < -1) return result('fast', `Спадът е над 1 кг седмично — с 200 kcal повече (около ${round(kcal + 200, 50)} kcal дневно).`, round(kcal + 200, 50));
+    return result('ok', `Теглото намалява по плана: ${kg(change)} за ${Math.round(weeks)} седмици (очаквано ${kg(expected)}) — продължете.`);
+  }
+  if (goal === 'gain') {
+    if (rate < 0.1) return result('slow', `Няма покачване — с 200–300 kcal повече (около ${round(kcal + 250, 50)} kcal дневно).`, round(kcal + 250, 50));
+    if (rate > 1) return result('fast', `Покачването е над 1 кг седмично — с 200 kcal по-малко (около ${round(kcal - 200, 50)} kcal дневно).`, round(kcal - 200, 50));
+    return result('ok', `Теглото се покачва по плана: ${kg(change)} за ${Math.round(weeks)} седмици (очаквано ${kg(expected)}) — продължете.`);
+  }
+  if (change >= 2) return result('up', `Теглото е ${kg(change)} — намалете порциите от хляб, ориз и мазнини.`);
+  if (change <= -2) return result('down', `Теглото е ${kg(change)} — ако загубата не е желана, добавете порция пълнозърнести храни или ядки.`);
+  return result('ok', `Теглото е стабилно (${kg(change)}) — колебанията до ±1 кг са нормални.`);
 }

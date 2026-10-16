@@ -8,7 +8,7 @@ import { card, empty, field, h, input, mount, numberInput, select, toast } from 
 import { formatDate } from '../shared/dates.js';
 import { GOALS } from '../shared/nutrition.js';
 import { searchDrugs, drugName } from '../shared/drugs.js';
-import { planForm, planView, savedPlans } from './nutrition-view.js';
+import { planForm, planView, progressCard, savedPlans } from './nutrition-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
 import { downloadNutritionPdf } from './pdf-export.js';
 
@@ -68,6 +68,7 @@ function clientEditor(client, { onSaved, onClose }) {
   const c = client || { name: '', sex: '', birthDate: '', age: '', phone: '', weight: '', height: '', waist: '', activity: 'sedentary', diagnoses: [], allergies: [], meds: [], egfr: '', potassium: '', note: '', plans: [] };
   const preview = h('div');
   let variant = 0;
+  let swaps = {};   // „Друго ястие“ — до ново изготвяне или „Друго меню“
   let clientId = client?.id || null;
 
   /* --------------------------- данни на човека --------------------------- */
@@ -114,7 +115,8 @@ function clientEditor(client, { onSaved, onClose }) {
 
   const person = (p) => ({ name: p.name || 'Без име', birthDate: p.birthDate, age: p.age, sex: p.sex });
   const show = (plan, who) => mount(preview, planView(plan, {
-    onVariant: () => { variant++; form.generate(); },
+    onVariant: () => { variant++; swaps = {}; form.generate(); },
+    onSwap: (key) => { swaps = { ...swaps, [key]: (swaps[key] || 0) + 1 }; form.generate(); },
     onSave: () => form.generate(true),
     saveLabel: clientId ? 'Запази режима' : 'Запази човека и режима',
     onPdf: () => downloadNutritionPdf(person(who), plan),
@@ -123,17 +125,17 @@ function clientEditor(client, { onSaved, onClose }) {
 
   const last = c.plans?.length ? c.plans[c.plans.length - 1].plan.input : {};
   const form = planForm({
-    last: { ...last, diagnoses: c.diagnoses, weight: dec(c.weight) || last.weight, height: dec(c.height) || last.height, activity: c.activity || last.activity },
+    last: { ...last, diagnoses: c.diagnoses, weight: dec(c.weight) || last.weight, height: dec(c.height) || last.height, activity: c.activity || last.activity, swaps: undefined },
     top,
     diagnoses: c.diagnoses,
     diagnosesHint: 'Въведете всички заболявания на човека — всеки код се взема предвид при изготвянето.',
     cycle: { stored: c.cycle, age: c.age || null, hidden: c.sex !== 'f', hint: 'Новата дата се записва, когато запазите режима.' },
     footer: 'Съобразява се с диагнозите, бъбречната функция, калия, лекарствата и алергиите.',
-    onSubmit: () => { variant = 0; },
+    onSubmit: () => { variant = 0; swaps = {}; },
     onGenerate: async (body, save) => {
       const p = readPerson(body);
       try {
-        const res = await api.nutritionPlanFor({ ...body, person: p, clientId, variant, save });
+        const res = await api.nutritionPlanFor({ ...body, person: p, clientId, variant, swaps, save });
         if (save) {
           clientId = res.client.id;
           toast('Записано в „Хранене“.', 'ok');
@@ -162,6 +164,17 @@ function clientEditor(client, { onSaved, onClose }) {
   };
 
   const saved = [...(c.plans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
+  // Напредък по последния режим — по теглата, записани след него (версия 4.14).
+  const progress = client && saved.length ? progressCard(saved[0], c.weights || [], {
+    onWeight: async (m) => {
+      try {
+        await api.addNutritionClientWeight(client.id, m);
+        toast('Теглото е записано.', 'ok');
+        onSaved(client);
+      } catch (err) { toast(err.message, 'error'); }
+    },
+    onApply: (x) => form.apply(x),
+  }) : null;
   return h('div.stack', null,
     card(client ? (client.name || 'Без име') : 'Нов човек', {
       icon: '🥗',
@@ -174,6 +187,7 @@ function clientEditor(client, { onSaved, onClose }) {
         h('button.btn.sm.ghost', { onclick: onClose }, 'Затвори'),
       ],
     }, form.el),
+    progress,
     preview,
     savedPlans(saved, {
       show: (plan) => show(plan, c),

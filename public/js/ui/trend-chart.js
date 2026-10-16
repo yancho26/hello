@@ -22,7 +22,8 @@ function niceStep(range, target = 5) {
 
 /**
  * @param {object} o
- *   series  [{ label, points: [{ date, value }], cls }] — cls: a | b (цвят)
+ *   series  [{ label, points: [{ date, value }], cls, dots }] — cls: a | b | proj (цвят; proj — пунктир за прогноза);
+ *           dots: false — само линия
  *   unit    мерна единица за оста
  *   band    { lo, hi } — целева зона
  *   lines   [{ value, label }] — гранични стойности
@@ -103,6 +104,8 @@ export function trendChart({ series, unit = '', band = null, lines = [], decimal
         d: pts.map((p, i) => `${i ? 'L' : 'M'}${x(toDay(p.date)).toFixed(1)},${y(p.value).toFixed(1)}`).join(' '),
       }));
     }
+    // Прогнозна линия — без точки.
+    if (s.dots === false) continue;
     for (const p of pts) {
       kids.push(svg('circle', {
         class: 'pt ' + (s.cls || 'a') + (p.flag ? ' flag' : ''), cx: x(toDay(p.date)).toFixed(1), cy: y(p.value).toFixed(1), r: 4.3,

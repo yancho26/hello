@@ -1,7 +1,7 @@
 /* Тренировки в хранителния режим: полетата във формата и тренировъчният план за 4 седмици,
  * синхронизиран с менюто и с менструалния цикъл (версия 4.7). */
 
-import { card, field, h, mount, select } from '../ui/components.js';
+import { card, field, h, mount, numberInput, select } from '../ui/components.js';
 import { formatDate } from '../shared/dates.js';
 import {
   ACTIVITIES, INTENSITY, SESSION_MINUTES, TRAINING_FOCUS, TRAINING_LEVELS, TRAINING_TIMES,
@@ -31,6 +31,7 @@ export function trainingFields(cfg = {}) {
   const focus = select(Object.entries(TRAINING_FOCUS).map(([k, label]) => ({
     value: k, label, selected: (last?.focus || FOCUS_BY_GOAL[cfg.goal] || 'health') === k,
   })));
+  const pulse = numberInput({ name: 'restingHr', min: 35, max: 120, value: last?.restingHr ?? cfg.pulse ?? '', placeholder: 'по желание' });
   const periodize = h('input', { type: 'checkbox', checked: !!last?.cyclePeriodize });
   const cycleEl = h('div.q-opts', { style: { marginTop: '8px' } }, h('label.opt', null, periodize,
     h('span', null, 'по-интензивните тренировки — във фоликуларната фаза (ограничени и противоречиви доказателства; само ако менюто следва цикъла)')));
@@ -44,7 +45,8 @@ export function trainingFields(cfg = {}) {
       h('div', null, field('Колко дни', days)),
       h('div', null, field('Една тренировка', minutes)),
       h('div', null, field('Кога', time)),
-      h('div', null, field('Цел на тренировките', focus))),
+      h('div', null, field('Цел на тренировките', focus)),
+      h('div', null, field('Пулс в покой (/мин)', pulse, 'сутрин, седнал — пулсът за тренировките се смята по резерва'))),
     cycleEl);
   const toggle = () => { box.style.display = on.checked ? '' : 'none'; };
   on.addEventListener('change', toggle);
@@ -60,6 +62,7 @@ export function trainingFields(cfg = {}) {
       activities: boxes.map(l => l.querySelector('input')).filter(i => i.checked).map(i => i.value),
       level: level.value, daysPerWeek: Number(days.value), minutes: Number(minutes.value), time: time.value, focus: focus.value,
       cyclePeriodize: cycleEl.style.display !== 'none' && periodize.checked,
+      restingHr: Math.round(Number(String(pulse.value).replace(',', '.'))) || null,
     } : null),
   };
 }
@@ -74,6 +77,7 @@ export function trainingChip(t) {
   const parts = t.sessions.map(s => `${s.icon} ` + ui(`${s.minutes} мин`));
   if (t.addOns.includes('strength')) parts.push(ui('сила 15 мин'));
   if (t.addOns.includes('balance')) parts.push(ui('баланс 10 мин'));
+  if (t.addOns.includes('pelvic')) parts.push(ui('тазово дъно'));
   return h('span.train-chip', { title: t.sessions.map(s => `${s.label}, ${ui(INTENSITY[s.intensity].label)}`).join('; ') }, parts.join(' · '));
 }
 
@@ -84,6 +88,7 @@ export function trainingTips(t) {
 }
 
 const upper1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const thousands = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
 
 const sessionLine = (s, hr, rpeOnly) => {
   const it = INTENSITY[s.intensity];
@@ -116,22 +121,31 @@ export function trainingCard(plan) {
         d.addOns.length ? h('ul.small.train-addons', null, d.addOns.map(a => h('li', null, a.text))) : null,
         d.cycle ? h('div.tiny.muted', null, d.cycle.text) : null))));
   };
+  const steps = t.steps ? `${thousands(t.steps.from)}–${thousands(t.steps.to)}` : null;
   return card(ui('Тренировъчен план за 4 седмици'), { icon: '🏃' },
     t.warnings.length ? h('div.stack', { style: { gap: '6px', marginBottom: '12px' } }, t.warnings.map(w => h('div.alert-strip.warn', null, w))) : null,
     h('div.tiles', null,
       tile(ui('Аеробни'), w1.aerobic, ui('мин/седм.'), ui(`цел ${t.targets.aerobic}${t.targets.aerobic < t.targets.aerobicMax ? `–${t.targets.aerobicMax}` : ''} (СЗО); интензивните се броят двойно`)),
-      tile(ui('Силови'), w1.strength, ui('дни/седм.'), ui(`цел поне ${t.targets.strengthDays} (СЗО)`)),
+      tile(ui('Силови'), w1.strength, ui('дни/седм.'), t.targets.strengthDays > 2 ? ui(`цел поне ${t.targets.strengthDays} (GLP-1 агонист)`) : ui(`цел поне ${t.targets.strengthDays} (СЗО)`)),
       t.targets.balanceDays ? tile(ui('Баланс'), t.targets.balanceDays === 7 ? ui('всеки ден') : `${t.targets.balanceDays}`, t.targets.balanceDays === 7 ? '' : ui('дни/седм.'), ui('СЗО, Too Fit To Fracture')) : null,
+      t.targets.pelvicFloor ? tile(ui('Тазово дъно'), ui('всеки ден'), '', ui('3 × поне 8 стягания (NICE)')) : null,
       tile(ui('Тренировки'), t.input.daysPerWeek, ui('× седм.'), ui(`по ${t.input.minutes} мин · ${TRAINING_LEVELS[t.input.level].split(' — ')[0]}`)),
+      steps ? tile(ui('Крачки'), h('span.tile-v-sm', null, steps), ui('/ден'), ui('Paluch 2022, Ding 2025')) : null,
       tile(ui('Разход'), w1.kcal, ui('kcal/седм.'), ui('над покоя, по Compendium 2024')),
-      t.hr ? tile(ui('Пулс'), `${t.hr.moderate[0]}–${t.hr.moderate[1]}`, ui('/мин'), ui(`умерено; интензивно ${t.hr.vigorous[0]}–${t.hr.vigorous[1]}; макс. ≈${t.hr.max}`))
+      t.hr ? tile(ui('Пулс'), `${t.hr.moderate[0]}–${t.hr.moderate[1]}`, ui('/мин'), t.hr.method === 'reserve'
+        ? ui(`умерено; интензивно ${t.hr.vigorous[0]}–${t.hr.vigorous[1]}; по резерва, в покой ${t.hr.rest}`)
+        : ui(`умерено; интензивно ${t.hr.vigorous[0]}–${t.hr.vigorous[1]}; макс. ≈${t.hr.max}`))
         : tile(ui('Пулс'), '—', '', ui('бета-блокер: водете се по RPE'))),
     h('p.small.muted', { style: { margin: '8px 0 0' } },
       Object.values(INTENSITY).map(i => `${upper1(ui(i.label))}: ` + ui(`RPE ${i.rpe} от 10, ${i.talk}`)).join('. ') + '.'),
+    t.steps ? h('p.small', { style: { margin: '6px 0 0' } }, t.steps.text) : null,
     h('div.nut-cols', null,
       list(ui('Кога да тренирате'), t.timeAdvice),
       list(ui('Цикъл и тренировки'), t.cycle),
       list(ui('Бележки'), t.notes)),
+    t.exercises?.length ? h('details.train-howto', null,
+      h('summary', null, ui('Как се правят упражненията'), h('span.small.dim', null, ` · ${t.exercises.length}`)),
+      h('ul.small', null, t.exercises.map(x => h('li', null, h('strong', null, upper1(x.name) + ': '), x.how)))) : null,
     h('div.stack', { style: { marginTop: '10px' } }, t.weeks.map(weekView)),
     h('p.tiny.muted', { style: { margin: '10px 0 0' } },
       ui('Цели по СЗО 2020; интензивност по 2024 Adult Compendium of Physical Activities; силови по ACSM; при заболявания — по насоката, посочена до всяка бележка. ')

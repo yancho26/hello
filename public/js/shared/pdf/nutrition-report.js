@@ -5,8 +5,10 @@
 import { PDFDocument } from './pdf.js';
 import { C, Flow, bullets, card, checkbox, chip, chipRow, chipWidth, columns, drawLines, textBlock, wrap } from './kit.js';
 import { formatAge, formatDate, today } from '../dates.js';
-import { GOALS, PACES, weekChunks } from '../nutrition.js';
+import { FOODS, GOALS, PACES, weekChunks } from '../nutrition.js';
+import { shopName } from '../recipes.js';
 import { INTENSITY, TRAINING_LEVELS } from '../training.js';
+import { enBaseName } from '../i18n/en-foods.js';
 import { ui, withPlanLang } from '../i18n/plan-en.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
@@ -185,6 +187,55 @@ function projectionRuns(plan) {
   return [head, { text: parts.join(' · ') + '.' }, ...(pr.note ? [{ text: ' ' + pr.note, color: C.ink2 }] : [])];
 }
 
+/** Очакваното тегло по седмици (версия 4.14): разходът намалява с теглото — промяната се забавя (Hall 2011). */
+function projectionChart(ctx) {
+  const { doc, flow, plan } = ctx;
+  const pr = plan.projection;
+  const curve = pr?.curve;
+  if (!curve?.length) return;
+  const H = 128;
+  const tw = pr.targetWeight;
+  const ws = curve.map(c => c.weight);
+  let lo = Math.min(...ws, tw || Infinity);
+  let hi = Math.max(...ws, tw || -Infinity);
+  const pad = Math.max(0.5, (hi - lo) * 0.12);
+  lo -= pad; hi += pad;
+  const note = textBlock(doc, ui('Прогнозата отчита, че с теглото се променя и разходът на енергия — промяната се забавя с времето (Hall 2011).'), flow.width - 24, { size: 7, color: C.ink3 });
+  flow.add({
+    h: H + note.h + 4,
+    draw: (page, x, y) => {
+      page.rect(x, y, flow.width, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 10 });
+      page.text(ui('Очаквано тегло по седмици'), x + 12, y + 17, { font: 'bold', size: 9, color: C.ink });
+      const px = x + 40;
+      const pw = flow.width - 56;
+      const py = y + 28;
+      const ph = H - 50;
+      const last = curve[curve.length - 1].week || 1;
+      const X = (wk) => px + (wk / last) * pw;
+      const Y = (v) => py + ph - ((v - lo) / (hi - lo)) * ph;
+      const step = hi - lo > 20 ? 5 : hi - lo > 8 ? 2 : 1;
+      for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) {
+        page.line(px, Y(v), px + pw, Y(v), { color: C.line, width: 0.5 });
+        page.text(dec(v), px - 5, Y(v) + 2.5, { size: 6.5, color: C.ink3, align: 'right' });
+      }
+      const every = last > 52 ? 13 : last > 26 ? 8 : last > 12 ? 4 : 2;
+      for (let wk = 0; wk <= last; wk += every) page.text(ui(`${wk} седм.`), X(wk), py + ph + 11, { size: 6.5, color: C.ink3, align: 'center' });
+      if (tw) {
+        page.line(px, Y(tw), px + pw, Y(tw), { color: C.green, width: 1, dash: [3, 2] });
+        page.text(ui(`цел ${dec(tw)} кг`), px + 4, Y(tw) - 3, { font: 'semibold', size: 6.8, color: C.green });
+      }
+      for (let i = 1; i < curve.length; i++) {
+        page.line(X(curve[i - 1].week), Y(curve[i - 1].weight), X(curve[i].week), Y(curve[i].weight), { color: C.brand, width: 1.8 });
+      }
+      const endW = curve[curve.length - 1].weight;
+      page.circle(X(0), Y(curve[0].weight), 2.6, { fill: C.brand });
+      page.circle(X(last), Y(endW), 2.6, { fill: C.brand });
+      page.text(ui(`${dec(endW)} кг`), X(last) - 4, Y(endW) + (endW > curve[0].weight ? -5 : 11), { font: 'bold', size: 7, color: C.brandDark, align: 'right' });
+      note.draw(page, x + 2, y + H + 4);
+    },
+  }, { gap: 6 });
+}
+
 function minerals(plan) {
   if (plan.week) {
     const n = plan.week.length;
@@ -198,6 +249,7 @@ function targets(ctx) {
   const t = plan.targets;
   noteBox(ctx, projectionRuns(plan), { bg: C.brandSoft, bar: C.brand });
   for (const w of plan.warnings || []) noteBox(ctx, [{ text: '! ', font: 'bold', color: C.red }, { text: w }], { bg: C.redSoft, bar: C.red });
+  projectionChart(ctx);
   flow.space(4);
   heading(ctx, 'goals', ui('Дневни цели'), ui('Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.'));
 
@@ -276,6 +328,8 @@ function guidance(ctx) {
     const about = textBlock(doc, plan.pattern.about, flow.width, { size: 8.5, color: C.ink2 });
     flow.add({ h: 18 + about.h, draw: (page, x, y) => { chip(page, doc, plan.pattern.label, x, y, { size: 8, fg: C.green, bg: C.greenSoft }); about.draw(page, x, y + 18); } }, { gap: 8 });
   }
+  const dislikes = (plan.input?.dislikes || []).filter(id => FOODS[id]).map(id => (plan.lang === 'en' ? enBaseName(id) : shopName(id)));
+  if (dislikes.length) flow.text([{ text: ui('Не яде: '), font: 'semibold', color: C.ink }, { text: dislikes.join(', ') + '.', color: C.ink2 }], { size: 8.5, after: 6 });
   const dx = plan.diagnoses || [];
   if (dx.length) {
     subheading(ctx, ui('Заболявания, взети предвид'));
@@ -368,19 +422,29 @@ function trainingSection(ctx, tp) {
     [ui('Аеробни'), w1.aerobic, ui('мин/седм.'), ui(`цел ${tp.targets.aerobic}${tp.targets.aerobic < tp.targets.aerobicMax ? `–${tp.targets.aerobicMax}` : ''} (СЗО)`), C.coral],
     [ui('Силови'), w1.strength, ui('дни/седм.'), ui(`цел поне ${tp.targets.strengthDays}`), C.brand],
     [ui('Разход'), thousands(w1.kcal), ui('kcal/седм.'), ui('над покоя'), C.teal],
-    tp.hr ? [ui('Пулс умерено'), `${tp.hr.moderate[0]}–${tp.hr.moderate[1]}`, ui('/мин'), ui(`интензивно ${tp.hr.vigorous[0]}–${tp.hr.vigorous[1]}`), C.rose]
+    tp.hr ? [ui('Пулс умерено'), `${tp.hr.moderate[0]}–${tp.hr.moderate[1]}`, ui('/мин'), tp.hr.method === 'reserve'
+      ? ui(`интензивно ${tp.hr.vigorous[0]}–${tp.hr.vigorous[1]}; пулс в покой ${tp.hr.rest}`)
+      : ui(`интензивно ${tp.hr.vigorous[0]}–${tp.hr.vigorous[1]}`), C.rose]
       : [ui('Пулс'), ui('по RPE'), '', ui('бета-блокер: по усещането'), C.rose],
   ];
+  if (tp.steps) tiles.push([ui('Крачки'), `${thousands(tp.steps.from)}–${thousands(tp.steps.to)}`, ui('/ден'), ui('Paluch 2022, Ding 2025'), C.sky]);
   if (tp.targets.balanceDays) tiles.push([ui('Баланс'), tp.targets.balanceDays === 7 ? ui('всеки ден') : tp.targets.balanceDays, tp.targets.balanceDays === 7 ? '' : ui('дни/седм.'), ui('СЗО'), C.green]);
-  const tw = (flow.width - 8 * (tiles.length - 1)) / tiles.length;
+  if (tp.targets.pelvicFloor) tiles.push([ui('Тазово дъно'), ui('всеки ден'), '', ui('3 × поне 8 стягания (NICE)'), C.slate]);
+  // До 5 плочки на ред; при повече — на два реда.
+  const perRow = tiles.length > 5 ? Math.ceil(tiles.length / 2) : tiles.length;
+  const tw = (flow.width - 8 * (perRow - 1)) / perRow;
+  const rows = Math.ceil(tiles.length / perRow);
   flow.add({
-    h: 54,
-    draw: (page, x, y) => tiles.forEach(([label, value, unit, sub, color], i) => {
-      const tx = x + i * (tw + 8);
+    h: rows * 54 + (rows - 1) * 8,
+    draw: (page, x, y0) => tiles.forEach(([label, value, unit, sub, color], i) => {
+      const tx = x + (i % perRow) * (tw + 8);
+      const y = y0 + Math.floor(i / perRow) * 62;
       page.rect(tx, y, tw, 54, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 8 });
       page.rect(tx, y, 4, 54, { fill: color, radius: [8, 0, 0, 8] });
       page.text(label, tx + 12, y + 14, { font: 'semibold', size: 7.4, color: C.ink2 });
-      const vw = page.text(String(value), tx + 12, y + 33, { font: 'bold', size: 14, color });
+      const unitW = unit ? doc.width(unit, 'regular', 7) + 3 : 0;
+      const size = doc.width(String(value), 'bold', 14) + unitW > tw - 18 ? 10.5 : 14;
+      const vw = page.text(String(value), tx + 12, y + 33, { font: 'bold', size, color });
       page.text(unit, tx + 15 + vw, y + 33, { size: 7, color: C.ink2 });
       const ln = wrap(doc, sub, tw - 18, 6.5)[0];
       if (ln) drawLines(page, [ln], tx + 12, y + 40, 6.5);
@@ -402,8 +466,32 @@ function trainingSection(ctx, tp) {
   }, { gap: 10 });
 
   listCards(ctx, [[ui('Кога да тренирате'), tp.timeAdvice, C.coral, C.coralSoft], [ui('Цикъл и тренировки'), tp.cycle, C.rose, C.roseSoft]]);
+  if (tp.steps) noteBox(ctx, tp.steps.text, { bg: C.skySoft, bar: C.sky, size: 8.2 });
   if (tp.notes?.length) listCards(ctx, [[ui('Бележки'), tp.notes, C.brand, C.brandSoft]]);
+  exercisesHowTo(ctx, tp);
   trainingDetails(ctx, tp);
+}
+
+/** Как се правят упражненията от плана (версия 4.14) — в две колони. */
+function exercisesHowTo(ctx, tp) {
+  const { doc, flow } = ctx;
+  if (!tp.exercises?.length) return;
+  subheading(ctx, ui('Как се правят упражненията'), C.coral, { bookmark: true });
+  const gap = 12;
+  const cw = (flow.width - gap) / 2;
+  const items = tp.exercises.map(x => textBlock(doc, [{ text: `${cap(x.name)}: `, font: 'semibold', color: C.ink }, { text: x.how, color: C.ink2 }], cw - 10, { size: 7.6 }));
+  for (let i = 0; i < items.length; i += 2) {
+    const pair = items.slice(i, i + 2);
+    const h = Math.max(...pair.map(b => b.h));
+    flow.add({
+      h,
+      draw: (page, x, y) => pair.forEach((b, j) => {
+        page.circle(x + j * (cw + gap) + 3, y + 4.5, 2, { fill: C.coral });
+        b.draw(page, x + j * (cw + gap) + 10, y);
+      }),
+    }, { gap: 5 });
+  }
+  flow.space(6);
 }
 
 /** Минутите по седмици (по интензивност) и видовете тренировки. */
@@ -492,13 +580,15 @@ function trainingCalendar(ctx, tp) {
   const chipH = 13;
   tp.weeks.forEach((w, wi) => {
     const days = tp.days.filter(d => d.week === wi);
-    const rows = Math.max(1, ...days.map(d => d.sessions.length + (d.addOns.length ? 1 : 0)));
+    // Упражненията за тазовото дъно са всеки ден — те са в плочките, не в календара.
+    const extras = (d) => d.addOns.filter(a => a.kind !== 'pelvic');
+    const rows = Math.max(1, ...days.map(d => d.sessions.length + (extras(d).length ? 1 : 0)));
     const H = 20 + rows * (chipH + 3) + 6;
     flow.add({
       h: H,
       draw: (page, x, y) => days.forEach((d, col) => {
         const cx = x + col * (cw + gap);
-        const rest = !d.sessions.length && !d.addOns.length;
+        const rest = !d.sessions.length && !extras(d).length;
         page.rect(cx, y, cw, H, { fill: rest ? C.bg : C.white, stroke: C.line, lineWidth: 0.6, radius: 6 });
         if (d.cycle) page.rect(cx, y + H - 3, cw, 3, { fill: PHASE[d.cycle.phase][0], radius: [0, 0, 6, 6] });
         page.text(`${d.label.slice(0, ctx.plan.lang === 'en' ? 3 : 2)} ${formatDate(d.date).slice(0, 5)}`, cx + 5, y + 11, { font: 'semibold', size: 6.6, color: C.ink2 });
@@ -513,8 +603,8 @@ function trainingCalendar(ctx, tp) {
           if (ln) drawLines(page, [ln], cx + 9, yy + 2.2, 6.5);
           yy += chipH + 3;
         }
-        if (d.addOns.length) {
-          const label = d.addOns.map(a => ui(a.kind === 'balance' ? 'баланс' : a.kind === 'strength' ? 'сила' : 'добавка')).join(', ');
+        if (extras(d).length) {
+          const label = extras(d).map(a => ui(a.kind === 'balance' ? 'баланс' : a.kind === 'strength' ? 'сила' : 'добавка')).join(', ');
           page.text(`+ ${label}`, cx + 6, yy + 9, { size: 6.2, color: C.ink2 });
         }
       }),
@@ -796,7 +886,8 @@ function sources(ctx) {
   }
   flow.text(ui('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
     + (plan.cycle?.applied ? ui('Фазите на цикъла — по FIGO 2018 и ASRM 2024. ') : '')
-    + (plan.training ? ui('Тренировките — по СЗО 2020, 2024 Adult Compendium of Physical Activities и ACSM. ') : '')
+    + (plan.projection?.curve ? ui('Прогнозата за теглото — по Hall 2011. ') : '')
+    + (plan.training ? ui('Тренировките — по СЗО 2020, 2024 Adult Compendium of Physical Activities и ACSM; крачките — по Paluch 2022 и Ding 2025. ') : '')
     + ui('Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата.'),
   { size: 7.6, color: C.ink2, after: 6 });
   noteBox(ctx, ui('Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на изготвяне. Той е ориентировъчен — при напреднало хронично бъбречно заболяване, диализа, бременност или хранителни разстройства е нужен диетолог.'),

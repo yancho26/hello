@@ -114,6 +114,8 @@ export const api = {
   deleteNutritionClient: (id) => request('DELETE', `/api/nutrition/clients/${id}`),
   nutritionPlanFor: (data) => request('POST', '/api/nutrition/plan', data),
   deleteNutritionClientPlan: (id, pid) => request('DELETE', `/api/nutrition/clients/${id}/plans/${pid}`),
+  addNutritionClientWeight: (id, data) => request('POST', `/api/nutrition/clients/${id}/weights`, data),
+  deleteNutritionClientWeight: (id, date) => request('DELETE', `/api/nutrition/clients/${id}/weights/${date}`),
 
   addStudy: (id, data) => request('POST', `/api/patients/${id}/studies`, data),
   deleteStudy: (id, sid) => request('DELETE', `/api/patients/${id}/studies/${sid}`),
