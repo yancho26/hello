@@ -1048,3 +1048,8 @@ table.food-timeline th.c, table.food-timeline td.c { text-align: center; width: 
 .food-dot.brand { background: var(--brand); }
 ul.rules-list { margin: 0; padding-left: 18px; }
 ul.rules-list li { margin-bottom: 6px; }
+/* Развитие до 1 година — чеклист за родителя (версия 4.13). */
+.dev-domains { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 18px; margin-top: 8px; }
+ul.dev-check { list-style: none; margin: 4px 0 0; padding: 0; }
+ul.dev-check li { position: relative; padding-left: 22px; margin-bottom: 4px; }
+ul.dev-check li::before { content: ''; position: absolute; left: 2px; top: 3px; width: 11px; height: 11px; border: 1.5px solid var(--ink-3); border-radius: 3px; }

@@ -262,7 +262,7 @@ test('PDF за родителя: всички раздели, 12 месеца и
     const bytes = await infantReport({ plan: p, person, practice: { name: 'П', phone: '' }, doctor: { name: 'д-р Т' }, fonts, version: '4.10.0', date: AS_OF });
     const { all, content } = pdfParts(bytes);
     const pages = (all.match(/\/Type \/Page /g) || []).length;
-    assert.ok(pages >= 6 && pages <= 12, `${feeding}: ${pages} страници`);
+    assert.ok(pages >= 8 && pages <= 16, `${feeding}: ${pages} страници`);
     const b = parseTTF(fonts.bold);
     for (const title of ['Очакван растеж до 1 година', 'План по месеци', 'Кога се въвежда всяка храна', 'Правила']) assert.ok(content.includes(hexOf(b, title)), `${feeding}: ${title}`);
     const sb = parseTTF(fonts.semibold);

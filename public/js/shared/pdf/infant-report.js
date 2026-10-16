@@ -1,9 +1,9 @@
 /* Цветен PDF за родителя: хранене на кърмачето до 1 година — какво сега, примерен ден,
- * очакван растеж (графики по стандартите на СЗО), план по месеци, кога се въвежда всяка храна
- * и правилата с източниците. */
+ * очакван растеж (графики по стандартите на СЗО), план по месеци, кога се въвежда всяка храна,
+ * чеклист за нервно-психическото развитие (версия 4.13) и правилата с източниците. */
 
 import { PDFDocument } from './pdf.js';
-import { C, Flow, bullets, chip, drawLines, textBlock, wrap } from './kit.js';
+import { C, Flow, bullets, checkbox, chip, drawLines, textBlock, wrap } from './kit.js';
 import { formatAge, formatDate, today } from '../dates.js';
 import { FEEDING_TYPES, PLAN_MONTHS, SOLIDS_START, feedingFlags, monthDate } from '../infant-feeding.js';
 
@@ -40,6 +40,7 @@ export async function infantReport({ plan, person = {}, practice = {}, doctor = 
   growthSection(ctx);
   monthsSection(ctx);
   foodsSection(ctx);
+  developmentSection(ctx);
   rulesSection(ctx);
   footers(ctx);
   return doc.bytes();
@@ -325,6 +326,76 @@ function foodsSection(ctx) {
   flow.add(bullets(doc, plan.readiness, flow.width, { color: C.green, size: 8.3 }), { gap: 8 });
 }
 
+/* --------------------------- развитие: чеклист за родителя --------------------------- */
+
+const AGE_COLOR = { 2: [C.teal, C.tealSoft], 4: [C.sky, C.skySoft], 6: [C.green, C.greenSoft], 9: [C.amber, C.amberSoft], 12: [C.coral, C.coralSoft] };
+const DEV_STATUS = { now: 'сега', next: 'следва', past: 'минала възраст', later: '' };
+
+/** Етапите по възраст с квадратчета, какво да правят родителите и кога да не чакат (версия 4.13). */
+function developmentSection(ctx) {
+  const { doc, flow, plan } = ctx;
+  const dev = plan.development;
+  if (!dev) return;
+  heading(ctx, 'Развитие — чеклист за родителя',
+    'Какво правят повечето бебета (3 от 4) до 2, 4, 6, 9 и 12 месеца — по контролните листове на CDC и Американската академия по педиатрия (2022). Отбележете какво вече прави вашето бебе.'
+    + (dev.corrected ? ' Възрастта е коригирана за недоносеност.' : ''),
+    { icon: '✓', color: C.rose, newPage: true });
+  const gap = 14;
+  const w = flow.width - 24;
+  const colW = (w - gap) / 2;
+  const domainBlock = (d, color) => {
+    const title = textBlock(doc, [{ text: d.label, font: 'semibold', color }], colW, { size: 8 });
+    const items = d.items.map(it => textBlock(doc, it.text, colW - 13, { size: 7.9 }));
+    return {
+      h: title.h + 3 + items.reduce((n, b) => n + b.h + 2.5, 0),
+      draw: (page, x, y) => {
+        title.draw(page, x, y);
+        let yy = y + title.h + 3;
+        for (const b of items) { checkbox(page, x + 1, yy + 1.6, 7, C.ink3); b.draw(page, x + 13, yy); yy += b.h + 2.5; }
+      },
+    };
+  };
+  const stack = (blocks) => ({
+    h: blocks.reduce((n, b) => n + b.h + 6, 0),
+    draw: (page, x, y) => { let yy = y; for (const b of blocks) { b.draw(page, x, yy); yy += b.h + 6; } },
+  });
+  for (const a of dev.ages) {
+    const [color, soft] = AGE_COLOR[a.month] || [C.teal, C.tealSoft];
+    const doms = a.domains.map(d => domainBlock(d, color));
+    const half = Math.ceil(doms.length / 2);
+    const left = stack(doms.slice(0, half));
+    const right = stack(doms.slice(half));
+    const headH = 24;
+    const H = headH + 8 + Math.max(left.h, right.h) + 2;
+    const status = DEV_STATUS[a.status];
+    flow.add({
+      h: H,
+      draw: (page, x, y) => {
+        page.rect(x, y, flow.width, H, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 8 });
+        page.rect(x, y, flow.width, headH, { fill: soft, radius: [8, 8, 0, 0] });
+        page.rect(x, y, 4, H, { fill: color, radius: [8, 0, 0, 8] });
+        page.text(a.label, x + 14, y + 16, { font: 'bold', size: 10.5, color: C.ink });
+        const lw = doc.width(a.label, 'bold', 10.5);
+        if (status) chip(page, doc, status, x + 22 + lw, y + 5, { size: 7, fg: color, bg: C.white });
+        if (a.date) page.text(`около ${formatDate(a.date)}`, x + flow.width - 12, y + 16, { font: 'semibold', size: 7.8, color, align: 'right' });
+        left.draw(page, x + 14, y + headH + 8);
+        right.draw(page, x + 14 + colW + gap, y + headH + 8);
+      },
+    }, { gap: 4 });
+    const tips = bullets(doc, a.tips, w - 4, { size: 7.8, color, gap: 2 });
+    const tipsHead = textBlock(doc, [{ text: 'Какво да правите', font: 'bold', color }], w, { size: 8.2 });
+    flow.add({ h: tipsHead.h + 3 + tips.h, draw: (page, x, y) => { tipsHead.draw(page, x + 14, y); tips.draw(page, x + 14, y + tipsHead.h + 3); } }, { gap: 10 });
+  }
+  noteBox(ctx, [{ text: 'Не чакайте. ', font: 'bold', color: C.coral }, { text: dev.actEarly }], { bg: C.amberSoft, bar: C.amber, size: 8.4 });
+  flow.space(4);
+  flow.text([{ text: 'За всички месеци', font: 'bold', color: C.rose }], { size: 10, after: 4 });
+  for (const r of dev.rules) {
+    const b = textBlock(doc, [{ text: r.text }, { text: `  ${r.src}`, font: 'semibold', color: C.rose }], flow.width - 14, { size: 8.2 });
+    flow.add({ h: Math.max(14, b.h + 3), draw: (page, x, y) => { page.circle(x + 5, y + 6.3, 3, { fill: C.rose }); b.draw(page, x + 14, y); } }, { gap: 3 });
+  }
+  flow.space(8);
+}
+
 /* ----------------------------------- правила ----------------------------------- */
 
 function rulesSection(ctx) {
@@ -347,7 +418,10 @@ function rulesSection(ctx) {
     + 'ESPGHAN 2024 — WHO guideline on complementary feeding 2023: a multisociety response; ESPGHAN 2024 — Early diet and the risk of coeliac disease; ESPGHAN 2025 — Vegan diet in infants, children and adolescents; '
     + 'EAACI 2020 — Preventing the development of food allergy in infants and young children; AAP 2022 — Breastfeeding and the use of human milk; AAP 2019 — Early nutritional interventions and atopic disease; '
     + 'AAP 2017 — Fruit juice in infants, children, and adolescents; AAP — Healthy Beverage Quick Reference Guide; AAAAI/ACAAI/CSACI 2021 — Primary prevention of food allergy through nutrition; '
-    + 'NIAID 2017 — Addendum guidelines for the prevention of peanut allergy; Dietary Guidelines for Americans 2025–2030; CDC — When, what, and how to introduce solid foods; NICE NG75 — Faltering growth; растежни стандарти на СЗО.',
+    + 'NIAID 2017 — Addendum guidelines for the prevention of peanut allergy; Dietary Guidelines for Americans 2025–2030; CDC — When, what, and how to introduce solid foods; NICE NG75 — Faltering growth; растежни стандарти на СЗО. '
+    + 'Развитие: CDC/AAP 2022 — Evidence-informed milestones for developmental surveillance tools и листовете „Learn the Signs. Act Early.“; AAP 2020 — Promoting optimal development: developmental surveillance and screening; '
+    + 'JCIH 2019 — Principles and guidelines for early hearing detection and intervention programs; СЗО 2019 — Physical activity, sedentary behaviour and sleep for children under 5; AAP 2022 — Sleep-related infant deaths; '
+    + 'AAP 2026 — Digital ecosystems, children, and adolescents; СЗО 2020 — Improving early childhood development.',
   { size: 7.4, color: C.ink2, after: 8 });
   noteBox(ctx, 'Планът е ориентировъчен и е изготвен от лекаря по данните в досието. При недоносено дете, заболяване, алергия или слабо наддаване храненето се определя индивидуално.', { bg: C.amberSoft, bar: C.amber, size: 8 });
   flow.need(50);

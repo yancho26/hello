@@ -136,7 +136,7 @@ function planView(p, plan) {
   const rules = card('Правила', { icon: '✓' },
     h('ul.rules-list', null, plan.rules.map(r => h('li.small', null, r.text, h('span.tiny.dim', null, ` (${r.src})`)))));
 
-  return [now, growth, months, foods, rules,
+  return [now, growth, months, foods, rules, developmentCard(plan.development),
     h('p.tiny.muted', null, 'Източници: НЦОЗА 2013 — „Основи на здравословното хранене на деца до 3-годишна възраст“; FAO/WHO/UNU 2004 — Human energy requirements; СЗО 2009 — Infant and young child feeding; ESPGHAN 2013 (витамин D), 2015 (арсен в ориза), 2017 (захранване), 2024 (отговор на 11 дружества на ръководството на СЗО; глутен и цьолиакия) и 2025 (веганско хранене); EAACI 2020 (алергии); AAP 2022 (кърмене), 2019 (алергии), 2017 (сокове) и препоръките за напитките; AAAAI/ACAAI/CSACI 2021; NIAID 2017 (фъстъци); DGA 2025–2030 и CDC (САЩ); NICE NG75; растежни стандарти на СЗО. Количествата са ориентировъчни — бебето се храни според апетита си.')];
 }
 
@@ -144,6 +144,38 @@ function monthsAt(p, date, plan) {
   const days = (new Date(date) - new Date(p.birthDate)) / 86400000;
   const shift = plan.age.corrected ? (40 - plan.input.gestWeeks) * 7 : 0;
   return (days - shift) / 30.4375;
+}
+
+/* --------------------------- развитие: чеклист за родителя --------------------------- */
+
+const DEV_STATUS = { now: ['сега', 'ph-luteal'], next: ['следва', 'ph-follicular'], past: ['минала възраст', 'ph-premenstrual'], later: ['', ''] };
+
+/** Картата „Развитие — чеклист за родителя“ (версия 4.13). */
+function developmentCard(dev) {
+  if (!dev) return null;
+  const ageView = (a) => {
+    const [label, cls] = DEV_STATUS[a.status];
+    return h('details.week-day.infant-month', { open: a.status === 'now' || (a.status === 'next' && !dev.current) },
+      h('summary', null, h('strong', null, a.label), h('span.small.dim', null, a.date ? ` · около ${formatDate(a.date)}` : ''),
+        label ? h(`span.cycle-chip.${cls}`, null, label) : null,
+        h('span.grow'), h('span.small.muted', null, `${a.domains.reduce((n, d) => n + d.items.length, 0)} умения`)),
+      h('div.dev-domains', null, a.domains.map(d => h('div.dev-domain', null,
+        h('div.small', null, h('strong', null, `${d.icon} ${d.label}`)),
+        h('ul.dev-check', null, d.items.map(it => h('li.small', null, it.text)))))),
+      h('div.nut-list', { style: { marginTop: '8px' } }, h('h3', null, 'Какво да правите'),
+        h('ul', null, a.tips.map(t => h('li.small', null, t)))),
+      h('div.alert-strip.warn', { style: { marginTop: '8px' } }, dev.actEarly));
+  };
+  return card('Развитие — чеклист за родителя', { icon: '🧸' },
+    h('p.small.muted', { style: { marginTop: 0 } },
+      'Нервно-психическо развитие до 1 година по контролните листове на CDC и Американската академия по педиатрия (2022): какво правят повечето бебета (3 от 4) до 2, 4, 6, 9 и 12 месеца и какво могат да правят родителите. '
+      + (dev.corrected ? 'Възрастта е коригирана за недоносеност. ' : '')
+      + 'Отметките са за родителя — в PDF за родителя са с квадратчета.'),
+    h('div.stack', null, dev.ages.map(ageView)),
+    h('div.nut-list', { style: { marginTop: '10px' } }, h('h3', null, 'За всички месеци'),
+      h('ul.rules-list', null, dev.rules.map(r => h('li.small', null, r.text, h('span.tiny.dim', null, ` (${r.src})`))))),
+    h('p.tiny.muted', { style: { margin: '8px 0 0' } }, 'Източници: CDC/AAP 2022 — Evidence-Informed Milestones for Developmental Surveillance Tools и листовете „Learn the Signs. Act Early.“; AAP 2020 — наблюдение и скрининг на развитието; '
+      + 'JCIH 2019 — слух; СЗО 2019 — движение, седене и сън под 5 години; AAP 2022 — безопасен сън; AAP 2026 — дигиталната среда и децата; СЗО 2020 — ранно детско развитие.'));
 }
 
 function dayList(day) {

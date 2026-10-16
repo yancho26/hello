@@ -35,6 +35,7 @@
 import { addDays, ageInMonthsExact, daysBetween, today } from './dates.js';
 import { growthAge, isPreterm, lmsAt, percentileFromZ, valueAtZ, zScore } from './growth.js';
 import { table } from './table.js';
+import { parentChecklist } from './infant-development.js';
 
 export const FEEDING_TYPES = table({
   breast: { label: 'кърмене', short: 'кърма' },
@@ -230,6 +231,8 @@ export function infantFeedingPlan(input) {
     months: plan,
     foods: foodsFor(solidsStart),
     rules: rules(feeding, !!input.allergyRisk),
+    // Нервно-психическото развитие — чеклист за родителя (версия 4.13).
+    development: parentChecklist({ birthDate: input.birthDate, gestWeeks, chronological: chrono }),
     readiness: READINESS,
     adequacy: adequacy(feeding, firstMonth),
     warnings,
