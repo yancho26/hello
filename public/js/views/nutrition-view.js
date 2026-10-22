@@ -16,6 +16,7 @@ import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-di
 import { busy, downloadNutritionPdf } from './pdf-export.js';
 import { cycleFields, cyclePlanBlock, phaseChip } from './cycle-view.js';
 import { trainingCard, trainingChip, trainingFields, trainingTips } from './training-view.js';
+import { movementCard } from './movement-view.js';
 import { ui as L, withPlanLang } from '../shared/i18n/plan-en.js';
 
 const dec = (v) => String(v ?? '').replace('.', ',');
@@ -196,8 +197,8 @@ export function savedPlans(saved, { show, pdf, pdfEn, remove }) {
   return card('Запазени режими', { icon: '📁', tight: true }, h('div.table-wrap', null, h('table', null,
     h('tbody', null, saved.map(n => h('tr', null,
       h('td.small.nowrap', null, formatDate(n.date)),
-      h('td', null, `${n.plan.targets.kcal} kcal · белтък ${n.plan.targets.protein} г · ${GOALS[n.plan.input.goal] || ''}`,
-        n.plan.pattern ? h('div.tiny.dim', null, `${n.plan.pattern.label}${menuKind(n.plan)}`
+      h('td', null, `${n.plan.targets.kcal} kcal · белтък ${n.plan.targets.protein} г · ${n.plan.child ? `${n.plan.input.weight} кг, ${n.plan.input.height} см` : GOALS[n.plan.input.goal] || ''}`,
+        n.plan.pattern || n.plan.child ? h('div.tiny.dim', null, `${n.plan.child ? `хранене и движение за ${ageLabel(n.plan.child.years)}` : n.plan.pattern.label}${menuKind(n.plan)}`
           + (n.plan.input.diagnoses?.length ? ` · ${n.plan.input.diagnoses.map(d => d.code).join(', ')}` : '')) : null),
       h('td.actions', null,
         h('button.btn.xs', { onclick: () => show(n.plan) }, 'Покажи'), ' ',
@@ -207,6 +208,8 @@ export function savedPlans(saved, { show, pdf, pdfEn, remove }) {
 }
 
 const menuKind = (plan) => (!plan.week ? '' : plan.week.length > 7 ? ' · месечно меню' : ' · седмично меню');
+/** „2 г.“, „9 г.“ — възрастта в запазения режим на дете. */
+const ageLabel = (years) => `${Math.floor(years)} г.`;
 
 /* ------------------------------- форма ------------------------------- */
 
@@ -468,7 +471,9 @@ function microBlock(plan) {
       h('td.bar', null, h('div.micro-bar' + (r.max ? '.max' : ''), { title: `${r.pct}%` }, h('span', { style: { width: Math.min(100, r.pct) + '%' } }))),
       h('td.num.dim', null, `${r.max ? '< ' : ''}${num(r.ref)} ${r.unit}`))))),
     m.notes.length ? h('ul', null, m.notes.map(n => h('li', null, n.text))) : null,
-    h('p.tiny.dim', { style: { margin: '6px 0 0' } }, L('Препоръки за възрастни по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.')));
+    h('p.tiny.dim', { style: { margin: '6px 0 0' } }, plan.child
+      ? L('Препоръки за възрастта по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.')
+      : L('Препоръки за възрастни по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.')));
 }
 
 const list = (title, items, cls = '') => (items && items.length ? h('div.nut-list' + (cls ? '.' + cls : ''), null, h('h3', null, title),
@@ -488,7 +493,7 @@ function recipeCard(o, { label = null, open = false, swap = null } = {}) {
       label ? badge('', label) : null,
       h('strong', null, o.name),
       o.time ? h('span.tiny.dim', null, L(`⏱ ${o.time} мин`)) : null,
-      swap ? h('button.btn.xs.ghost.recipe-swap.no-print', { type: 'button', title: 'Друго ястие на това място — останалото меню не се променя', onclick: swap }, '↻ Друго') : null),
+      swap && !o.fixed ? h('button.btn.xs.ghost.recipe-swap.no-print', { type: 'button', title: 'Друго ястие на това място — останалото меню не се променя', onclick: swap }, '↻ Друго') : null),
     h('div.small.muted', null, o.items.map(x => x.text).join(' · ')),
     o.method ? h('details.recipe-how', { open }, h('summary', null, L('Приготвяне')),
       h('p.small', null, o.method),
@@ -499,7 +504,19 @@ function recipeCard(o, { label = null, open = false, swap = null } = {}) {
         s.page && !s.url.includes('healthy-eating-recipes') ? L(`, стр. ${s.page}`) : ''])) : null);
 }
 
+/** Дете: ИТМ за възрастта по СЗО — вместо целта за теглото (версия 4.16). */
+function childStatus(plan) {
+  const num1 = (v) => (plan.lang === 'en' ? v.toFixed(1) : dec(v.toFixed(1)));
+  const c = plan.child;
+  const b = c.bmi;
+  const z = b.z === null ? '' : `, z ${Math.abs(b.z) < 0.05 ? '0' : `${b.z > 0 ? '+' : '−'}${num1(Math.abs(b.z))}`}`;
+  const pct = c.percentile ? L(` — ${c.percentile} перцентил`) : '';
+  return L(`ИТМ за възрастта: ${plan.lang === 'en' ? b.value : dec(b.value)} кг/м²`) + pct + z + L(`, ${b.label} (СЗО).`) + ' '
+    + L(`Активност: ${c.activityLabel} (PAL ${dec(c.pal)}).`);
+}
+
 function projectionText(plan) {
+  if (plan.child) return childStatus(plan);
   const pr = plan.projection;
   const goal = plan.input.goal;
   if (goal === 'maintain') return L('Цел: поддържане на теглото.');
@@ -552,6 +569,7 @@ function projectionChart(plan) {
 
 function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSwap, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
+  const num = (v) => (plan.lang === 'en' ? String(v) : dec(v));
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
   const swapAt = (key) => (onSwap ? () => onSwap(key) : null);
@@ -608,17 +626,17 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
       ],
     },
     plan.warnings.length ? h('div.stack', { style: { gap: '6px', marginBottom: '12px' } }, plan.warnings.map(w => h('div.alert-strip.warn', null, w))) : null,
-    h('div.alert-strip.info', { style: { marginBottom: '12px' } }, projectionText(plan),
+    h(`div.alert-strip.${plan.child && plan.child.bmi.status !== 'normal' ? 'warn' : 'info'}`, { style: { marginBottom: '12px' } }, projectionText(plan),
       plan.projection?.note ? h('div.small', { style: { fontWeight: 400 } }, plan.projection.note) : null),
     projectionChart(plan),
     h('div.tiles', null,
       tile(L('Енергия'), t.kcal, 'kcal', L(`покой ${plan.energy.bmr} · разход ${plan.energy.tdee}`)),
       tile(L('Белтък'), t.protein, L('г'), L(`${dec(t.proteinPerKg)} г/кг`) + (t.proteinMax ? L(` · до ${t.proteinMax} г`) : '')),
-      tile(L('Въглехидрати'), t.carbs, L('г'), L(`${t.carbPct}% · захари <${t.sugarMax} г`)),
-      tile(L('Мазнини'), t.fat, L('г'), L(`${t.fatPct}% · наситени <${t.satFat} г`)),
+      tile(L('Въглехидрати'), t.carbs, L('г'), L(`${t.carbPct}%`) + (t.sugarMax ? L(` · захари <${t.sugarMax} г`) : plan.child ? L(' · без добавена захар') : '')),
+      tile(L('Мазнини'), t.fat, L('г'), L(`${t.fatPct}%`) + (t.satFat ? L(` · наситени <${t.satFat} г`) : '')),
       tile(L('Фибри'), t.fiber, L('г')),
-      tile(L('Сол'), '<' + t.salt, L('г')),
-      tile(L('Течности'), L(dec(Math.round(t.fluids / 100) / 10)), L('л')),
+      tile(L('Сол'), '<' + num(t.salt), L('г')),
+      tile(L('Течности'), num(Math.round(t.fluids / 100) / 10), L('л'), plan.child ? L(`общо с храната ${num(plan.child.water)} л`) : null),
       t.iron ? tile(L('Желязо'), t.iron, L('мг'), L(`в менюто ≈${Math.round(minerals.fe)} мг`)) : null,
       t.calcium ? tile(L('Калций'), t.calcium, L('мг'), L(`в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`)) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,
@@ -632,6 +650,13 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
         h('table.portions', null, h('tbody', null, plan.portions.map(x => h('tr', null,
           h('td', null, h('strong', null, x.count)), h('td', null, x.group, h('div.tiny.dim', null, x.unit))))))),
       list(L('Седмичен ритъм'), plan.weekly)) : null,
+    // Дете: напитките за деня до 5 г. (HER 2019) и седмичният ритъм.
+    plan.child ? h('div.nut-cols', null,
+      plan.child.drinks ? h('div.nut-list', null, h('h3', null, L('Напитки за деня')),
+        h('table.portions', null, h('tbody', null, plan.child.drinks.map(x => h('tr', null,
+          h('td', null, h('strong', null, x.what)), h('td', null, x.amount))))),
+        h('div.tiny.dim', null, L('Healthy Eating Research 2019 (AAP, AND, AHA, AAPD).'))) : null,
+      list(L('Седмичен ритъм'), plan.weekly)) : null,
     h('div.nut-cols', null,
       list(L('Предпочитайте'), plan.prefer, 'good'),
       list(L('Ограничете'), plan.limit, 'limit'),
@@ -641,10 +666,10 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
     h('div.nut-cols', null,
       list(L('Навици'), plan.habits),
       list(L('Вкус без много сол'), plan.flavor),
-      list(L('Контрол на теглото'), plan.monitoring)),
+      list(plan.child ? L('Растеж') : L('Контрол на теглото'), plan.monitoring)),
     list(L('Бележки'), plan.notes)),
 
-    trainingCard(plan),
+    plan.child ? movementCard(plan) : trainingCard(plan),
 
     card(month ? L('Меню за месеца') : plan.week ? L('Меню за седмицата') : L('Примерно меню за деня'), {
       icon: '🍽',
@@ -660,10 +685,13 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
     menu),
     shopping,
     h('p.tiny.muted', null,
-      L('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
+      plan.child
+        ? L('Енергия по EFSA 2013 (покой по Henry 2005 × PAL); белтък, фибри, вода, витамини и минерали — по EFSA; натрий — EFSA 2019; захари — ESPGHAN 2017; напитки до 5 г. — HER 2019; ИТМ за възрастта — СЗО; задавяне — AAP 2010. ')
+        : L('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
       + (plan.cycle?.applied ? L('Фазите на цикъла — по FIGO 2018 и ASRM 2024; промените по фази — по Tucker 2024, Benton 2020, EFSA 2015, ACOG 2023. ') : '')
       + L('Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата. ')
-      + L('Режимът е ориентировъчен — при напреднало ХБЗ, диализа, бременност или хранителни разстройства е нужен диетолог.')));
+      + (plan.child ? L('Режимът е ориентировъчен — при хронично заболяване, изоставане в растежа или хранително разстройство е нужен педиатър и диетолог.')
+        : L('Режимът е ориентировъчен — при напреднало ХБЗ, диализа, бременност или хранителни разстройства е нужен диетолог.'))));
 }
 
 export { empty };

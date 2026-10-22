@@ -167,10 +167,10 @@ function shell() {
     h('button.btn.primary.sm.no-print', {
       onclick: () => import('./views/patients.js').then(m => m.openPatientForm()),
       title: 'Нов пациент (N)',
-    }, '＋ Нов пациент'),
-    h('button.user-chip', { onclick: userMenu },
+    }, '＋', h('span.lbl', null, ' Нов пациент')),
+    h('button.user-chip', { onclick: userMenu, title: state.doctor ? state.doctor.name : 'Вход' },
       avatar(state.doctor ? state.doctor.name : '?'),
-      h('span', null, state.doctor ? state.doctor.name : 'Вход')),
+      h('span.uname', null, state.doctor ? state.doctor.name : 'Вход')),
     canStopHere()
       ? h('button.btn.icon.power.no-print', {
         onclick: stopProgram,

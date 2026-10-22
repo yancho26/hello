@@ -38,8 +38,8 @@ export async function downloadNutritionPdf(person, source, { only = null, lang =
       version: state.server?.version || '', date: today(),
     });
     const kind = plan.lang === 'en'
-      ? (only === 'shopping' ? 'Shopping' : plan.training ? 'Nutrition and training' : 'Nutrition plan')
-      : (only === 'shopping' ? 'Пазаруване' : plan.training ? 'Хранене и тренировки' : 'Хранителен режим');
+      ? (only === 'shopping' ? 'Shopping' : plan.training ? 'Nutrition and training' : plan.child ? 'Nutrition and activity' : 'Nutrition plan')
+      : (only === 'shopping' ? 'Пазаруване' : plan.training ? 'Хранене и тренировки' : plan.child ? 'Хранене и движение' : 'Хранителен режим');
     const name = `${safeName(`${kind} - ${person.name || ''} - ${formatDate(today()).replace(/ г\.$/, '')}`)}.pdf`;
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a');

@@ -193,6 +193,17 @@ export function deepTr(x) {
   return x;
 }
 
+/** Перцентилът на английски: „72nd“, „below 1st“, „above 99th“. */
+export function percentileEn(p) {
+  if (p === null || p === undefined) return '';
+  if (p < 1) return 'below 1st';
+  if (p > 99) return 'above 99th';
+  const n = Math.round(p);
+  const t = n % 100;
+  const end = t >= 11 && t <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+  return `${n}${end}`;
+}
+
 /** Режимът на английски. Входът не се променя. */
 export function translatePlan(plan) {
   const dx = (d) => ({ ...deepTr(d), code: d.code, name: dxNameEn(d.code, d.name) });
@@ -208,6 +219,8 @@ export function translatePlan(plan) {
     ...deepTr({ ...d, meals: null }),
     meals: d.meals.map(m => ({ ...deepTr({ ...m, option: null }), option: optionEn(m.option) })),
   })) : null;
+  // Дете (версия 4.16): перцентилът — английско поредно число.
+  if (plan.child) out.child = { ...out.child, percentile: percentileEn(plan.child.bmi?.percentile) };
   out.shopping = shoppingEn(plan.shopping);
   out.shoppingWeeks = plan.shoppingWeeks ? plan.shoppingWeeks.map(shoppingEn) : null;
   // Витамините и минералите (версия 4.15): имената и подсказките се изграждат наново на английски.

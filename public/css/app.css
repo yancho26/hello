@@ -92,7 +92,7 @@ nav.main a {
 nav.main a:hover { background: var(--surface-2); color: var(--ink); }
 nav.main a.active { background: var(--brand-soft); color: var(--brand-dark); }
 
-.search-wrap { position: relative; flex: 1; max-width: 420px; }
+.search-wrap { position: relative; flex: 1 1 160px; min-width: 120px; max-width: 420px; }
 .search-wrap input[type="search"] {
   width: 100%; padding: 8px 34px 8px 34px;
   border: 1px solid var(--line); border-radius: 20px; background: var(--surface-2);
@@ -331,7 +331,7 @@ input.invalid, select.invalid { border-color: var(--danger); }
 .fact .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); }
 .fact .v { font-size: 14.5px; font-weight: 600; }
 
-.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 18px 0 16px; overflow-x: auto; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--line); margin: 18px 0 16px; }
 .tabs button {
   border: 0; background: transparent; padding: 9px 14px; cursor: pointer;
   font: inherit; font-size: 14px; font-weight: 600; color: var(--ink-2);
@@ -480,8 +480,28 @@ svg.growth .track { fill: none; stroke: var(--ok); stroke-width: 2; stroke-dasha
 
 /* --------------------------------- телефон ----------------------------------- */
 
+/* По-тесен екран на компютър (версия 4.16): менюто и търсенето се свиват, вместо да излизат извън екрана. */
+@media (max-width: 1400px) and (min-width: 861px) {
+  header.app { gap: 10px; }
+  nav.main a { padding: 7px 9px; }
+  .brand .sub { max-width: 130px; }
+  .search-wrap kbd { display: none; }
+  .user-chip .uname { display: none; }
+  .user-chip { padding: 4px; }
+}
+@media (max-width: 1180px) and (min-width: 861px) {
+  .brand .sub { display: none; }
+  header.app .btn.primary .lbl { display: none; }
+  nav.main a { padding: 7px 7px; font-size: 13.5px; }
+}
+@media (max-width: 1000px) and (min-width: 861px) {
+  nav.main a { padding: 6px 5px; font-size: 13px; }
+  .search-wrap { min-width: 90px; }
+}
+
 @media (max-width: 860px) {
   header.app { gap: 10px; padding: 0 12px; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; }
   .brand .sub { display: none; }
   nav.main { order: 3; width: 100%; overflow-x: auto; }
   header.app { height: auto; flex-wrap: wrap; padding-bottom: 6px; position: static; }
@@ -628,6 +648,7 @@ select.chip-select {
 .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
 .tile { padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
 .tile-v { font-size: 19px; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.tile-v.txt { font-size: 15.5px; }
 
 .list-plain.compact li { padding: 5px 0; font-size: 14px; }
 .list-plain.pad { padding: 4px 16px; }
@@ -721,6 +742,21 @@ svg.trend .pt.flag { fill: var(--danger); }
 .nut-list.good h3 { color: var(--ok); }
 .nut-list.limit h3 { color: var(--warn); }
 .nut-list.avoid h3 { color: var(--danger); }
+/* Движение, сън и екрани при дете (версия 4.16). */
+.move-facts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 10px 0 14px; }
+.move-fact { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
+.move-fact-icon { font-size: 20px; line-height: 1.2; }
+.move-week { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.move-day { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 10px; }
+.move-day-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.move-day ul { margin: 0; padding: 0; list-style: none; font-size: 13px; }
+.move-day li { padding: 3px 0 3px 9px; border-left: 3px solid var(--line-strong); margin-bottom: 4px; }
+.move-day li.k-mvpa, .move-legend .k-mvpa { border-color: #3b8fd4; }
+.move-day li.k-vig, .move-legend .k-vig { border-color: #e0663a; }
+.move-day li.k-str, .move-legend .k-str { border-color: var(--ok); }
+.move-day li.k-play, .move-legend .k-play { border-color: #c9a227; }
+.move-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 8px; }
+.move-legend span { border-left: 3px solid; padding-left: 6px; }
 .meals { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 .meal { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 10px 12px; }
 .meal-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }

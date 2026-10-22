@@ -14,11 +14,15 @@ import { ui, withPlanLang } from '../i18n/plan-en.js';
 const dec = (v) => String(v ?? '').replace('.', ',');
 const thousands = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 const cap = (s) => (s ? s[0].toUpperCase() + s.slice(1) : '');
+/** z със знак и един знак след запетаята: „+1,5“, „−0,7“, „0,0“. */
+const signed = (z) => (Math.abs(z) < 0.05 ? '0' : `${z > 0 ? '+' : '−'}${dec(Math.abs(z).toFixed(1))}`);
 /* Датата и текстовете около режима — на езика на режима (версия 4.11). */
 const fd = (iso) => ui(formatDate(iso));
 
 const MACRO = { protein: C.teal, carbs: '#d39b12', fat: C.rose };
-const MEAL_COLOR = { breakfast: C.amber, snack: C.teal, lunch: C.brand, dinner: C.sky };
+const MEAL_COLOR = { breakfast: C.amber, snack: C.teal, lunch: C.brand, dinner: C.sky, milk: C.slate };
+/* Движението на детето (версия 4.16): игра, умерено до интензивно, интензивно, мускули и кости. */
+const KIND_COLOR = { play: '#c9a227', mvpa: C.sky, vigorous: C.coral, strength: C.green };
 const PHASE = {
   menstrual: [C.rose, C.roseSoft], follicular: [C.green, C.greenSoft], ovulation: [C.amber, C.amberSoft],
   luteal: [C.brand, C.brandSoft], premenstrual: [C.slate, C.slateSoft],
@@ -56,7 +60,7 @@ export async function nutritionReport(args) {
 
 function report({ plan, person = {}, practice = {}, doctor = null, fonts, version = '', date = today(), only = null }) {
   const training = only ? null : plan.training;
-  const title = only === 'shopping' ? ui('Списък за пазаруване') : training ? ui('Хранене и тренировки') : ui('Личен хранителен режим');
+  const title = only === 'shopping' ? ui('Списък за пазаруване') : training ? ui('Хранене и тренировки') : plan.child ? ui('Хранене и движение') : ui('Личен хранителен режим');
   const doc = new PDFDocument({
     title: `${title} — ${person.name || ''}`.trim(), author: doctor?.name || practice.name || 'DocUp', subject: title,
     creator: 'DocUp', producer: `DocUp ${version}`.trim(), lang: plan.lang === 'en' ? 'en-GB' : 'bg-BG',
@@ -85,6 +89,7 @@ function report({ plan, person = {}, practice = {}, doctor = null, fonts, versio
     guidance(ctx);
     if (plan.cycle) cycleBlock(ctx);
     if (training) trainingSection(ctx, training);
+    if (plan.child?.movement) movementSection(ctx, plan.child.movement);
     menu(ctx);
     sources(ctx);
   }
@@ -142,7 +147,8 @@ function personFacts(ctx) {
   else if (person.age || i.age) facts.push(ui(`${person.age || i.age} г.`));
   if (i.weight) facts.push(ui(`${dec(i.weight)} кг`));
   if (i.height) facts.push(ui(`${i.height} см`));
-  if (plan.bmi) facts.push(ui(`ИТМ ${dec(plan.bmi)}`));
+  if (plan.child) facts.push(ui(`ИТМ ${dec(plan.child.bmi.value)}`) + (plan.child.percentile ? ui(` (${plan.child.percentile} перцентил)`) : ''));
+  else if (plan.bmi) facts.push(ui(`ИТМ ${dec(plan.bmi)}`));
   return facts;
 }
 
@@ -163,7 +169,8 @@ function cover(ctx, { compact = false } = {}) {
   page.circle(page.w - 70, 18, 86, { fill: C.white, opacity: 0.07 });
   page.circle(page.w - 190, H - 6, 40, { fill: C.white, opacity: 0.06 });
   page.circle(64, H + 6, 26, { fill: C.white, opacity: 0.05 });
-  const kicker = compact ? ui('ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ') : plan.training ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ') : ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ');
+  const kicker = compact ? ui('ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ') : plan.training ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ')
+    : plan.child ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ДВИЖЕНИЕ') : ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ');
   page.text(kicker, 40, 40, { font: 'semibold', size: 7.5, color: C.white, opacity: 0.85, spacing: 1.1 });
   page.text(title, 40, compact ? 70 : 76, { font: 'bold', size: compact ? 22 : 27, color: C.white });
   page.text(person.name || '', 40, compact ? 92 : 104, { font: 'semibold', size: 14, color: C.white });
@@ -181,6 +188,15 @@ function cover(ctx, { compact = false } = {}) {
 /* ------------------------------------ цели ------------------------------------ */
 
 function projectionRuns(plan) {
+  if (plan.child) {
+    // Дете: ИТМ за възрастта по СЗО — вместо цел за теглото.
+    const c = plan.child;
+    const b = c.bmi;
+    const z = b.z === null ? '' : `, z ${signed(b.z)}`;
+    return [{ text: ui('ИТМ за възрастта: '), font: 'bold', color: C.brandDark },
+      { text: ui(`${dec(b.value)} кг/м²`) + (c.percentile ? ui(` — ${c.percentile} перцентил`) : '') + z + ui(`, ${b.label} (СЗО).`) + ' ' },
+      { text: ui(`Активност: ${c.activityLabel} (PAL ${dec(c.pal)}).`), color: C.ink2 }];
+  }
   const pr = plan.projection;
   const goal = plan.input?.goal;
   const head = { text: ui('Цел: '), font: 'bold', color: C.brandDark };
@@ -255,7 +271,9 @@ function targets(ctx) {
   for (const w of plan.warnings || []) noteBox(ctx, [{ text: '! ', font: 'bold', color: C.red }, { text: w }], { bg: C.redSoft, bar: C.red });
   projectionChart(ctx);
   flow.space(4);
-  heading(ctx, 'goals', ui('Дневни цели'), ui('Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.'));
+  heading(ctx, 'goals', ui('Дневни цели'), plan.child
+    ? ui('Енергия по EFSA 2013 (покой по Henry 2005 × PAL × 1,01 за растежа); белтък, фибри, вода, витамини и минерали — по EFSA за възрастта; сол — EFSA 2019; захари — ESPGHAN 2017.')
+    : ui('Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.'));
 
   const H = 168;
   const leftW = 206;
@@ -268,11 +286,11 @@ function targets(ctx) {
   const share = [[ui('Белтък'), pk / sum, MACRO.protein], [ui('Въглехидрати'), ck / sum, MACRO.carbs], [ui('Мазнини'), fk / sum, MACRO.fat]];
   const tiles = [
     [ui('Белтък'), t.protein, ui('г'), ui(`${dec(t.proteinPerKg)} г/кг`) + (t.proteinMax ? ui(` · до ${t.proteinMax} г`) : ''), MACRO.protein],
-    [ui('Въглехидрати'), t.carbs, ui('г'), ui(`${t.carbPct}% · захари <${t.sugarMax} г`), MACRO.carbs],
-    [ui('Мазнини'), t.fat, ui('г'), ui(`${t.fatPct}% · наситени <${t.satFat} г`), MACRO.fat],
+    [ui('Въглехидрати'), t.carbs, ui('г'), ui(`${t.carbPct}%`) + (t.sugarMax ? ui(` · захари <${t.sugarMax} г`) : plan.child ? ui(' · без добавена захар') : ''), MACRO.carbs],
+    [ui('Мазнини'), t.fat, ui('г'), ui(`${t.fatPct}%`) + (t.satFat ? ui(` · наситени <${t.satFat} г`) : ''), MACRO.fat],
     [ui('Фибри'), t.fiber, ui('г'), ui('поне толкова'), C.green],
     [ui('Сол'), ui(`<${dec(t.salt)}`), ui('г'), ui('заедно с хляба'), C.slate],
-    [ui('Течности'), ui(dec(Math.round(t.fluids / 100) / 10)), ui('л'), ui('вода, чай, супи'), C.sky],
+    [ui('Течности'), ui(dec(Math.round(t.fluids / 100) / 10)), ui('л'), plan.child ? ui(`общо с храната ${dec(plan.child.water)} л`) : ui('вода, чай, супи'), C.sky],
   ];
   if (t.iron) tiles.push([ui('Желязо'), t.iron, ui('мг'), ui(`в менюто ≈${Math.round(m.fe)} мг`), C.rose]);
   if (t.calcium) tiles.push([ui('Калций'), t.calcium, ui('мг'), ui(`в менюто ≈${Math.round(m.ca / 10) * 10} мг`), C.teal]);
@@ -361,7 +379,8 @@ function microTable(ctx) {
 
 function guidance(ctx) {
   const { doc, flow, plan } = ctx;
-  heading(ctx, 'guide', ui('Как да се храните'));
+  // Заглавието не остава само в края на страницата — първата карта след него е висока.
+  heading(ctx, 'guide', ui('Как да се храните'), null, { newPage: flow.room < 200 });
   if (plan.pattern) {
     const about = textBlock(doc, plan.pattern.about, flow.width, { size: 8.5, color: C.ink2 });
     flow.add({ h: 18 + about.h, draw: (page, x, y) => { chip(page, doc, plan.pattern.label, x, y, { size: 8, fg: C.green, bg: C.greenSoft }); about.draw(page, x, y + 18); } }, { gap: 8 });
@@ -398,13 +417,23 @@ function guidance(ctx) {
       card(doc, ui('Седмичен ритъм'), cw, (w) => bullets(doc, plan.weekly || [], w, { color: C.green, size: 8.3 }), { color: C.green, soft: C.greenSoft }),
     ], flow.width), { gap: 10 });
   }
+  // Дете: напитките за деня до 5 г. (HER 2019) и седмичният ритъм.
+  if (plan.child) {
+    const cw = (flow.width - 14) / 2;
+    const drinks = plan.child.drinks;
+    flow.add(columns([
+      drinks ? card(doc, ui('Напитки за деня'), cw, (w) => bullets(doc, [...drinks.map(x => [{ text: `${x.what}: `, font: 'semibold' }, { text: x.amount }]),
+        [{ text: ui('Healthy Eating Research 2019 (AAP, AND, AHA, AAPD).'), color: C.ink3 }]], w, { color: C.sky, size: 8.2 }), { color: C.sky, soft: C.skySoft }) : null,
+      card(doc, ui('Седмичен ритъм'), drinks ? cw : flow.width, (w) => bullets(doc, plan.weekly || [], w, { color: C.green, size: 8.3 }), { color: C.green, soft: C.greenSoft }),
+    ], flow.width), { gap: 10 });
+  }
   const three = [[ui('Предпочитайте'), plan.prefer, C.green, C.greenSoft, '✓'], [ui('Ограничете'), plan.limit, C.amber, C.amberSoft, '!'], [ui('Избягвайте'), plan.avoid, C.red, C.redSoft, '✗']];
   listCards(ctx, three);
   if (plan.medNotes?.length) {
     subheading(ctx, ui('Лекарства и храна'), C.sky);
     flow.add(bullets(doc, plan.medNotes.map(n => [{ text: `${n.med}: `, font: 'semibold' }, { text: n.text }]), flow.width, { color: C.sky }), { gap: 6 });
   }
-  if (plan.habits) listCards(ctx, [[ui('Навици'), plan.habits, C.brand, C.brandSoft], [ui('Вкус без много сол'), plan.flavor, C.teal, C.tealSoft], [ui('Контрол на теглото'), plan.monitoring, C.sky, C.skySoft]]);
+  if (plan.habits) listCards(ctx, [[ui('Навици'), plan.habits, C.brand, C.brandSoft], [ui('Вкус без много сол'), plan.flavor, C.teal, C.tealSoft], [plan.child ? ui('Растеж') : ui('Контрол на теглото'), plan.monitoring, C.sky, C.skySoft]]);
   if (plan.notes?.length) {
     subheading(ctx, ui('Бележки'));
     flow.add(bullets(doc, plan.notes, flow.width, { color: C.brand }), { gap: 6 });
@@ -508,6 +537,55 @@ function trainingSection(ctx, tp) {
   if (tp.notes?.length) listCards(ctx, [[ui('Бележки'), tp.notes, C.brand, C.brandSoft]]);
   exercisesHowTo(ctx, tp);
   trainingDetails(ctx, tp);
+}
+
+/* ----------------------------- движение при дете ----------------------------- */
+
+/** Движение, сън и екрани за детето (версия 4.16): целта, сън и екрани, седмицата по дни, съвети. */
+function movementSection(ctx, m) {
+  const { doc, flow } = ctx;
+  heading(ctx, 'training', ui('Движение, сън и екрани'), m.goal.text, { newPage: true });
+  listCards(ctx, [
+    [ui('Сън'), [ui(`${m.sleep.hours} часа`) + ` — ${m.sleep.note}`], C.brand, C.brandSoft],
+    [ui('Екрани'), [m.screens], C.rose, C.roseSoft],
+    [ui('Седене'), [m.restraint], C.slate, C.slateSoft],
+  ]);
+  const per = 4;
+  const gap = 8;
+  const cw = (flow.width - gap * (per - 1)) / per;
+  const dayCard = (d) => card(doc, `${d.label} · ${ui(`${d.minutes} мин`)}`, cw, (w) => {
+    const blocks = d.items.map(x => ({ x, b: textBlock(doc, [{ text: x.label }, { text: ui(` · ${x.minutes} мин`), color: C.ink3 }], w - 8, { size: 7.6 }) }));
+    return {
+      h: blocks.reduce((s, { b }) => s + b.h + 4, 0),
+      draw: (page, x, y) => {
+        let yy = y;
+        for (const { x: it, b } of blocks) {
+          page.rect(x, yy, 2.6, b.h, { fill: KIND_COLOR[it.kind] || C.coral });
+          b.draw(page, x + 7, yy);
+          yy += b.h + 4;
+        }
+      },
+    };
+  }, { color: C.coral, soft: C.coralSoft });
+  const blank = { h: 0, draw: () => {} };
+  for (let i = 0; i < m.days.length; i += per) {
+    const row = m.days.slice(i, i + per).map(dayCard);
+    while (row.length < per) row.push(blank);
+    flow.add(columns(row, flow.width, gap), { gap: 8 });
+  }
+  const legend = [['play', 'игра'], ['mvpa', 'умерено до интензивно'], ['vigorous', 'интензивно'], ['strength', 'мускули и кости']];
+  flow.add({
+    h: 10,
+    draw: (page, x, y) => {
+      let xx = x;
+      for (const [k, label] of legend) {
+        page.rect(xx, y + 1, 8, 8, { fill: KIND_COLOR[k], radius: 2 });
+        xx += 12 + page.text(ui(label), xx + 12, y + 8, { size: 7, color: C.ink2 }) + 12;
+      }
+    },
+  }, { gap: 8 });
+  listCards(ctx, [[ui('Съвети'), m.tips, C.green, C.greenSoft]]);
+  flow.text(ui('Движение и екрани — по СЗО 2019 (деца под 5 г.) и СЗО 2020 (5–17 г.); сън — по СЗО 2019 и AASM 2016. Седмицата е пример — дейностите се сменят по желание на детето.'), { size: 7.4, color: C.ink3, after: 8 });
 }
 
 /** Как се правят упражненията от плана (версия 4.14) — в две колони. */
@@ -728,7 +806,9 @@ function overview(ctx, days) {
   const size = 6.8;
   const rows = days.map(d => ({ d, cells: d.meals.map(m => wrap(doc, m.option?.name || '—', mw - 8, size)) }));
   const rowH = (r) => Math.max(24, Math.max(...r.cells.map(c => c.length)) * size * 1.3 + 9);
-  const headH = 18;
+  // Имената на храненията — на два реда, ако не се побират в колоната („Междинно хранене“).
+  const heads = meals.map(m => wrap(doc, m.label, mw - 18, 7.4, { font: 'bold', color: C.ink }));
+  const headH = Math.max(1, ...heads.map(l => l.length)) > 1 ? 26 : 18;
   const H = headH + rows.reduce((s, r) => s + rowH(r), 0);
   flow.need(Math.min(H, flow.limit - flow.top));
   flow.add({
@@ -740,7 +820,7 @@ function overview(ctx, days) {
       meals.forEach((m, i) => {
         const mx = x + dayW + i * mw;
         page.circle(mx + 8, y + 9, 3, { fill: MEAL_COLOR[m.meal] || C.brand });
-        page.text(m.label, mx + 14, y + 12, { font: 'bold', size: 7.4, color: C.ink });
+        drawLines(page, heads[i], mx + 14, y + 4.6, 7.4, { lh: 1.15 });
       });
       page.text('kcal', x + flow.width - 8, y + 12, { font: 'bold', size: 7.4, color: C.teal, align: 'right' });
       let yy = y + headH;
@@ -922,13 +1002,17 @@ function sources(ctx) {
       ]), flow.width, { size: 7.6, color: C.slate, gap: 1.5 }), { gap: 6 });
     }
   }
-  flow.text(ui('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. ')
+  flow.text((plan.child
+    ? ui('Енергия по EFSA 2013 (покой по Henry 2005 × PAL); белтък, фибри, вода, витамини и минерали — по EFSA; натрий — EFSA 2019; захари — ESPGHAN 2017; напитки до 5 г. — HER 2019; ИТМ за възрастта — СЗО; задавяне — AAP 2010; движение — СЗО 2019 и 2020; сън — AASM 2016. ')
+    : ui('Енергия по Mifflin–St Jeor с коефициент за активност; препоръки по EFSA, СЗО, NICE NG246, ESPEN, ACSM, ESC, ADA 2026, KDIGO 2024; правилата по диагнози — по насоката, посочена до всяка. '))
     + (plan.cycle?.applied ? ui('Фазите на цикъла — по FIGO 2018 и ASRM 2024. ') : '')
     + (plan.projection?.curve ? ui('Прогнозата за теглото — по Hall 2011. ') : '')
     + (plan.training ? ui('Тренировките — по СЗО 2020, 2024 Adult Compendium of Physical Activities и ACSM; крачките — по Paluch 2022 и Ding 2025. ') : '')
     + ui('Рецептите с източник са на NHLBI (National Heart, Lung, and Blood Institute, NIH) — обществено достояние; съставките са пренесени за порция и порциите са пресметнати по каталога на програмата.'),
   { size: 7.6, color: C.ink2, after: 6 });
-  noteBox(ctx, ui('Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на изготвяне. Той е ориентировъчен — при напреднало хронично бъбречно заболяване, диализа, бременност или хранителни разстройства е нужен диетолог.'),
+  noteBox(ctx, plan.child
+    ? ui('Режимът е съставен от лекаря по възрастта, теглото, ръста и заболяванията на детето към датата на изготвяне. Той е ориентировъчен — при хронично заболяване, изоставане в растежа или хранително разстройство са нужни педиатър и диетолог.')
+    : ui('Режимът е съставен от лекаря въз основа на заболяванията, теглото и лекарствата към датата на изготвяне. Той е ориентировъчен — при напреднало хронично бъбречно заболяване, диализа, бременност или хранителни разстройства е нужен диетолог.'),
     { bg: C.amberSoft, bar: C.amber, size: 8 });
   flow.need(50);
   flow.space(24);

@@ -7,11 +7,13 @@ import { growthChart } from '../ui/charts.js';
 import { formatAge, formatDate } from '../shared/dates.js';
 import { FEEDING_TYPES, PLAN_MONTHS, SOLIDS_START, feedingFlags, infantFeedingPlan, monthDate } from '../shared/infant-feeding.js';
 import { busy, downloadInfantPdf } from './pdf-export.js';
+import { percentileText } from '../shared/child-nutrition.js';
 
 const dec = (v, d = 1) => (v === null || v === undefined ? '—' : Number(v).toFixed(d).replace('.', ','));
 const kg = (v) => `${dec(v, 2)} кг`;
 const range = (a, b, unit) => (a === b ? `${a} ${unit}` : `${a}–${b} ${unit}`);
-const pct = (p) => (p === null || p === undefined ? '' : p < 1 ? 'под 1-ви' : p > 99 ? 'над 99-и' : `${Math.round(p)}-и`);
+/* „38‑ми“ — с правилното окончание и неразделящо тире (версия 4.16). */
+const pct = percentileText;
 
 /** Планът по данните от досието. */
 export function planFor(p, settings = p.feeding) {
@@ -64,8 +66,9 @@ function planView(p, plan) {
   const next = plan.months[Math.min(PLAN_MONTHS - 1, plan.age.currentMonth + 1)];
   const breast = plan.input.feeding === 'breast';
   const flags = feedingFlags(plan);
+  // Текстова стойност („при поискване“) — по-дребно, за да не се пренася на три реда.
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
-    h('div.tile-v', null, value, unit ? h('span.small.dim', null, ' ' + unit) : null), sub ? h('div.tiny.dim', null, sub) : null);
+    h('div.tile-v' + (/^[^\d≈<]/.test(String(value)) ? '.txt' : ''), null, value, unit ? h('span.small.dim', null, ' ' + unit) : null), sub ? h('div.tiny.dim', null, sub) : null);
   const ageText = plan.age.corrected
     ? `${formatAge(p.birthDate)} (коригирана възраст ${dec(plan.age.months)} мес.)` : formatAge(p.birthDate);
   const g = plan.growth;

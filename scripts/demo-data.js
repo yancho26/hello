@@ -80,14 +80,17 @@ function birthData() {
   };
 }
 
-function measurementFor(sex, ageMonths, zShift) {
+function measurementFor(sex, ageMonths, zShift, bmiShift = 0) {
   const w = lmsAt('weight', sex, ageMonths);
-  const hKey = ageMonths <= 60 ? 'height' : 'height';
-  const hLms = lmsAt(hKey, sex, ageMonths);
+  const hLms = lmsAt('height', sex, ageMonths);
   const head = ageMonths <= 60 ? lmsAt('head', sex, ageMonths) : null;
+  const height = hLms ? +valueAtZ(hLms, zShift + between(-0.25, 0.25)).toFixed(1) : null;
+  // След 5 г. стандартът на СЗО е за ИТМ, не за тегло — теглото следва от ИТМ за възрастта и ръста.
+  const b = !w && height ? lmsAt('bmi', sex, ageMonths) : null;
+  const weight = w ? +valueAtZ(w, zShift + between(-0.25, 0.25)).toFixed(2)
+    : b ? +(valueAtZ(b, zShift * 0.5 + bmiShift + between(-0.2, 0.2)) * (height / 100) ** 2).toFixed(1) : null;
   return {
-    weight: w ? +valueAtZ(w, zShift + between(-0.25, 0.25)).toFixed(2) : null,
-    height: hLms ? +valueAtZ(hLms, zShift + between(-0.25, 0.25)).toFixed(1) : null,
+    weight, height,
     head: head ? +valueAtZ(head, zShift * 0.6 + between(-0.2, 0.2)).toFixed(1) : null,
   };
 }
@@ -758,7 +761,7 @@ function main() {
       // затова примерните стойности се генерират по нея.
       const growthMonths = m <= 24
         ? Math.max(0, m - correctionMonths(patient.birth.gestWeeks)) : m;
-      const meas = measurementFor(sex, growthMonths, zShift + drift * progress);
+      const meas = measurementFor(sex, growthMonths, zShift + drift * progress, drift > 0 ? drift * progress : 0);
       // Артериално налягане се измерва от 3-годишна възраст.
       const bp = m >= 36
         ? {

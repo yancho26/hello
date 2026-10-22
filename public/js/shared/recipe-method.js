@@ -31,7 +31,7 @@ export function quantityText(it, lang = 'bg') {
   const W = WORDS[lang] || WORDS.bg;
   const f = FOODS[it.food];
   const dec = (v) => String(Math.round(v * 10) / 10).replace('.', W.comma);
-  if (f.unit?.name === 'бр.' && it.grams >= f.unit.grams * 0.5) {
+  if (!it.loose && f.unit?.name === 'бр.' && it.grams >= f.unit.grams * 0.5) {
     const n = Math.max(1, Math.round(it.grams / f.unit.grams));
     return `${n} ${n === 1 && W.pc ? W.pc : W.pcs}`;
   }

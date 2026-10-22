@@ -33,9 +33,11 @@ import { table } from './table.js';
 import { addDays, daysBetween, today } from './dates.js';
 import { FOODS, FOOD_CATS, LIQUIDS, NUTRIENT_KEYS, RECIPES, YIELDS, mainProtein, mealsOf, nutrientsOf, rawOf, recipeTags, servingOf, shopName, totals, baseName } from './recipes.js';
 import { renderMethod } from './recipe-method.js';
-import { dietProfiles } from './diet-icd.js';
+import { dietProfiles, profileFor } from './diet-icd.js';
 import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
 import { activityFromTraining, trainingNutrition, trainingPlan } from './training.js';
+import { CHILD_ACTIVITY, childDiagnoses, childEnergyNote, childFoodRules, childGuidance, childMilk, childTargets, percentileText } from './child-nutrition.js';
+import { childActivityPlan } from './child-activity.js';
 
 export { FOODS, RECIPES };
 
@@ -130,16 +132,19 @@ export const WEEKDAYS = ['Понеделник', 'Вторник', 'Сряда',
 /** За колко дни е менюто: 1 ден с два варианта, седмица, месец от 4 седмици. */
 export const MENU_DAYS = [1, 7, 28];
 
+/* Думата трябва да започва с корена — иначе „сулфонамиди“ съвпада с „миди“ (поправка във версия 4.16). */
+const wordStart = (src) => new RegExp(`(?<![а-яёa-z])(?:${src})`, 'i');
+
 /** Ограничения, които следват от алергиите в досието. */
 export function allergyPreferences(allergies = []) {
   const rules = [
-    [/ядк|орех|бадем|лешни|фъстъ|кашу|nut|peanut/i, 'noNuts'],
-    [/риб|морск|скарид|ракообраз|миди|fish|shellfish/i, 'noFish'],
-    [/яйц|egg/i, 'noEgg'],
-    [/мляко|млечн|казеин|milk/i, 'noDairy'],
-    [/лактоз|lactose/i, 'lactoseFree'],
-    [/глутен|цьолиак|пшениц|gluten/i, 'glutenFree'],
-    [/соя|соев|soy/i, 'noSoy'],
+    [wordStart('ядк|орех|бадем|лешни|фъстъ|кашу|nut|peanut|tree nut'), 'noNuts'],
+    [wordStart('риб|морск|скарид|ракообраз|миди|fish|shellfish'), 'noFish'],
+    [wordStart('яйц|egg'), 'noEgg'],
+    [wordStart('(?<!(?:соево|овесено|оризово|бадемово|кокосово) )мляко|млечн|казеин|(?<!(?:soy|oat|rice|almond|coconut) )milk'), 'noDairy'],
+    [wordStart('лактоз|lactose'), 'lactoseFree'],
+    [wordStart('глутен|цьолиак|пшениц|gluten'), 'glutenFree'],
+    [wordStart('соя|соев|soy'), 'noSoy'],
   ];
   const prefs = new Set();
   const matched = [];
@@ -163,6 +168,8 @@ const SUBSTITUTES = {
   vegan: { milk: 'oatmilk', lfmilk: 'oatmilk', ...PLANT_YOGURT, cottage: 'tofu', whitecheese: 'tofu' },
   noSoy: { soyyogurt: 'oatyogurt' },
 };
+/* До 2 г. — пълномаслено мляко и кисело мляко (HER 2019); не е избор във формата, а следва от възрастта. */
+SUBSTITUTES.wholeMilk = { milk: 'wholemilk', skimmilk: 'wholemilk', yogurt: 'wholeyogurt', skyr: 'wholeyogurt', skimcottage: 'cottage' };
 /* Имената на ястията следват замените — по двойката „от>към“. */
 const PLANT_YOGURT_NAME = [[/[Цц]едено кисело мляко/g, 'растително кисело мляко'], [/кисело мляко без лактоза/g, 'растително кисело мляко'],
   [/(?<!растително )[Кк]исело мляко/g, 'растително кисело мляко'], [/[Кк]ефир/g, 'растително кисело мляко']];
@@ -210,14 +217,29 @@ const KCAL_PER_KG_DAY = 24;
  *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly,
  *   cycle: { periods, lastPeriod, length, bleed, contraception, menopause } — менструалният цикъл,
  *   cycleSync — менюто да следва фазите му, startDate — от коя дата е менюто
+ * Дете от 1 до 17 г. (версия 4.16): ageMonths, childActivity (ключ от CHILD_ACTIVITY), breastfed,
+ *   sports — целите са по child-nutrition.js, движението — по child-activity.js; без цел за теглото,
+ *   цикъл и тренировъчен план.
  */
 export function nutritionPlan(input) {
+  // При малките деца порциите на рецептите се свиват повече, отколкото при възрастните.
+  const prev = SCALE;
+  SCALE = input.age < 4 ? { min: 0.2, floor: 0.15, looseFruit: true, small: true } : input.age < 9 ? { min: 0.35, floor: 0.3 } : SCALE_ADULT;
+  try { return planFor(input); } finally { SCALE = prev; }
+}
+
+function planFor(input) {
   const { sex, age, weight, height } = input;
   const warnings = [];
-  if (!(age >= 18)) throw new Error('Хранителният режим е предназначен за възрастни (от 18 г.).');
-  if (!(weight > 30 && weight < 350) || !(height > 120 && height < 230)) {
+  const isChild = age < 18;
+  if (isChild) {
+    if (!(age >= 1)) throw new Error('Режимът за деца е от 1 година; за кърмачета — раздел „Хранене до 1 година“.');
+    if (!(weight >= 6 && weight <= 200) || !(height >= 60 && height <= 220)) throw new Error('Нужни са актуални тегло и ръст.');
+  } else if (!(weight > 30 && weight < 350) || !(height > 120 && height < 230)) {
     throw new Error('Нужни са актуални тегло и ръст.');
   }
+  // Целите на детето — енергия по EFSA, ИТМ за възрастта по СЗО (child-nutrition.js).
+  const ct = isChild ? childTargets({ sex, ageMonths: Number(input.ageMonths) || age * 12, weight, height, activity: input.childActivity, gestWeeks: Number(input.gestWeeks) || null }) : null;
   const asOf = input.asOf || today();
   // Менюто може да започва от друга дата (до 2 месеца напред) — заради фазите на цикъла.
   const start = /^\d{4}-\d{2}-\d{2}$/.test(input.startDate || '') && input.startDate >= asOf && input.startDate <= addDays(asOf, 62)
@@ -229,25 +251,28 @@ export function nutritionPlan(input) {
   const fromAllergies = allergyPreferences(input.allergies);
   const prefs = new Set([...(input.preferences || []), ...fromAllergies.prefs, ...dx.prefs].filter(x => PREFERENCES[x]));
   if (prefs.has('vegan')) prefs.add('vegetarian');
+  // До 2 г. — пълномаслено мляко и кисело мляко, ако няма ограничение за млечните (замяна, не избор).
+  if (isChild && ct.years < 2 && !prefs.has('noDairy') && !prefs.has('vegan') && !prefs.has('lactoseFree')) prefs.add('wholeMilk');
   // Храните, които човекът не яде, и смените на отделни ястия (версия 4.14).
   const dislikes = new Set((input.dislikes || []).filter(f => FOODS[f]));
   const swaps = cleanSwaps(input.swaps);
   const b = bmiOf(weight, height);
   let activityId = ACTIVITY[input.activity] ? input.activity : 'sedentary';
-  const patternId = PATTERNS[input.pattern] ? input.pattern : (cond.has('htn') ? 'dash' : 'mediterranean');
+  const patternId = isChild ? 'balanced' : PATTERNS[input.pattern] ? input.pattern : (cond.has('htn') ? 'dash' : 'mediterranean');
   const pattern = PATTERNS[patternId];
   const mealsPerDay = [3, 4, 5].includes(Number(input.mealsPerDay)) ? Number(input.mealsPerDay) : 5;
   // Меню за 1 ден (с два варианта), за седмица или за месец от 4 седмици.
   const days = MENU_DAYS.includes(Number(input.days)) ? Number(input.days) : 1;
-  let strength = !!input.strength;
+  let strength = !isChild && !!input.strength;
 
-  let goal = GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
+  // Детето расте: без отслабване и покачване — енергията е за растежа по неговата крива.
+  let goal = isChild ? 'maintain' : GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
   if (goal === 'lose' && dx.noLose) {
     warnings.push(dx.noLose);
     goal = 'maintain';
   }
   // Менструален цикъл: липсата на менструация при нормално тегло може да е от недостиг на енергия.
-  const cycleIn = sex === 'f' ? cycleStats(input.cycle || {}, { age, asOf }) : null;
+  const cycleIn = sex === 'f' && !isChild ? cycleStats(input.cycle || {}, { age, asOf }) : null;
   const amenorrhea = dx.amenorrhea || !!cycleIn?.flags.some(f => f.code === 'amenorrhea');
   if (goal === 'lose' && amenorrhea && b < 25) {
     warnings.push('Липса на менструация при ИТМ под 25: възможен недостиг на енергия (функционална хипоталамична аменорея) — режимът е за поддържане, без дефицит. Endocrine Society 2017 препоръчва енергийният недостиг да се коригира. Изключете бременност.');
@@ -257,7 +282,7 @@ export function nutritionPlan(input) {
   // Тренировъчен план (версия 4.7) — за 4 седмици, със същите дати като менюто и с фазите на цикъла.
   const cycleOk = sex === 'f' && !!input.cycleSync && !!cycleIn?.natural && !!cycleIn.lastStart && !cycleIn.late
     && !cycleIn.menopause && !dx.pregnancy && !dx.lactation && !dx.menopause;
-  const training = input.training ? trainingPlan({
+  const training = input.training && !isChild ? trainingPlan({
     ...input.training, start, sex, age, weight, bmi: b, cond, classes,
     codes: dx.considered.map(c => c.code), pregnancy: dx.pregnancy, pregnancyWeek: Number(input.pregnancyWeek) || null,
     postpartum: dx.lactation, goal,
@@ -310,10 +335,10 @@ export function nutritionPlan(input) {
   const limitK = (egfr > 0 && egfr < 45 && onRaas) || input.potassium >= 5.0 || ckdAdvanced || dx.limitK;
   const lowSalt = cond.has('htn') || cond.has('hf') || ckd || dialysis || dx.lowSalt;
 
-  // Енергия.
-  const bmr = mifflinStJeor({ sex, age, weight, height });
-  const tdee = bmr * activity.factor;
-  let target = tdee;
+  // Енергия: при дете — по EFSA 2013 (child-nutrition.js), при възрастен — по Mifflin–St Jeor.
+  const bmr = isChild ? ct.ree : mifflinStJeor({ sex, age, weight, height });
+  const tdee = isChild ? ct.tee : bmr * activity.factor;
+  let target = isChild ? ct.kcal : tdee;
   if (goal === 'lose') target = tdee + PACES[pace].lose;
   if (goal === 'gain') target = tdee + PACES[pace].gain;
   // ESPEN: около 30 kcal/кг при възрастни хора — формулата често подценява нуждите им.
@@ -322,23 +347,24 @@ export function nutritionPlan(input) {
     notes0.push('След 70 г. енергията е поне 27 kcal/кг (ESPEN: около 30 kcal/кг) — формулата често подценява нуждите.');
   }
   // Корекция по проследяването на теглото (версия 4.14) — например −150 kcal при бавен спад.
-  const kcalAdjust = Math.max(-600, Math.min(600, Math.round((Number(input.kcalAdjust) || 0) / 10) * 10));
+  const kcalAdjust = isChild ? 0 : Math.max(-600, Math.min(600, Math.round((Number(input.kcalAdjust) || 0) / 10) * 10));
   if (kcalAdjust) {
     target += kcalAdjust;
     notes0.push(`Енергията е коригирана с ${kcalAdjust > 0 ? '+' : '−'}${Math.abs(kcalAdjust)} kcal дневно по проследяването на теглото.`);
   }
-  const floor = Math.max(sex === 'f' ? 1200 : 1500, bmr * 0.95);
+  const floor = isChild ? round(ct.kcal * 0.85, 10) : Math.max(sex === 'f' ? 1200 : 1500, bmr * 0.95);
   if (target < floor) {
     target = floor;
     if (goal === 'lose') warnings.push('Енергийният дефицит е ограничен, за да не пада приемът под основния метаболизъм.');
   }
-  target = round(target, 50);
+  target = round(target, isChild ? 10 : 50);
   // Бременност и кърмене: допълнителна енергия (EFSA).
-  if (dx.energyAdd) target = round(target + dx.energyAdd, 50);
+  if (dx.energyAdd && !isChild) target = round(target + dx.energyAdd, 50);
 
-  // Референтно тегло за белтъка: при ИТМ >25 — теглото при ИТМ 25 плюс 25% от излишъка.
+  // Референтно тегло за белтъка: при ИТМ >25 — теглото при ИТМ 25 плюс 25% от излишъка;
+  // при дете — по ИТМ за възрастта (child-nutrition.js).
   const w25 = 25 * (height / 100) ** 2;
-  const refWeight = b > 25 ? w25 + 0.25 * (weight - w25) : weight;
+  const refWeight = isChild ? ct.weightUsed : b > 25 ? w25 + 0.25 * (weight - w25) : weight;
 
   let proteinPerKg = 0.9;
   let proteinNote = 'EFSA: 0,83 г/кг за възрастни; тук с малък резерв.';
@@ -361,16 +387,22 @@ export function nutritionPlan(input) {
   }
   if (dx.proteinMin && ckd) warnings.push('Диагнозите изискват повече белтък, а ХБЗ — по-малко: режимът спазва 0,8 г/кг по KDIGO; обсъдете с нефролог.');
   proteinPerKg = Math.round(proteinPerKg * 10) / 10;
-  const protein = round(proteinPerKg * refWeight);
+  if (isChild) {
+    proteinPerKg = ct.proteinPerKg;
+    proteinNote = `EFSA 2012: ${dec(ct.proteinPerKg)} г/кг дневно за възрастта; в менюто — около 12% от енергията и до ${ct.proteinMax} г (${ct.years < 4 ? 20 : 25}% от енергията, IOM).`;
+  }
+  const protein = isChild ? ct.protein : round(proteinPerKg * refWeight);
   // Горна граница за менюто: при ХБЗ — 1,0 г/кг (0,9 при G4–G5), далеч под 1,3 г/кг по KDIGO; иначе до 1,5 пъти целта
   // или до 20% от енергията (при много енергия), но не над 2 г/кг (2,2 при силови тренировки).
-  const proteinMax = ckd ? round(refWeight * (ckdAdvanced ? 0.9 : 1.0)) : dialysis ? round(refWeight * 1.3) : round(Math.min(refWeight * (strength ? 2.2 : 2.0), Math.max(protein * 1.5, target * 0.2 / 4)));
+  const proteinMax = isChild ? ct.proteinMax : ckd ? round(refWeight * (ckdAdvanced ? 0.9 : 1.0)) : dialysis ? round(refWeight * 1.3) : round(Math.min(refWeight * (strength ? 2.2 : 2.0), Math.max(protein * 1.5, target * 0.2 / 4)));
 
   // Мазнини и въглехидрати по модела.
   let fatPct;
   let carbs;
   let fat;
-  if (pattern.carbPct && !ckdAdvanced) {
+  if (isChild) {
+    ({ fatPct, fat, carbs } = ct);
+  } else if (pattern.carbPct && !ckdAdvanced) {
     carbs = round((target * pattern.carbPct / 100) / 4);
     fat = round((target - protein * 4 - carbs * 4) / 9);
     fatPct = Math.round((fat * 9 / target) * 100);
@@ -380,28 +412,28 @@ export function nutritionPlan(input) {
     fat = round((target * fatPct / 100) / 9);
     carbs = round((target - protein * 4 - fat * 9) / 4);
   }
-  if (dx.pregnancy && carbs < 175) {
+  if (dx.pregnancy && carbs < 175 && !isChild) {
     carbs = 175;
     fat = round((target - protein * 4 - carbs * 4) / 9);
     fatPct = Math.round((fat * 9 / target) * 100);
     warnings.push('Бременност: въглехидратите са поне 175 г дневно (ADA) — разпределението е коригирано.');
   }
-  const fiber = Math.max(25, round((target / 1000) * 14), dx.fiberMin);
-  const satFatPct = (cardio || diabetes) ? 7 : 10;
-  const satFat = round((target * satFatPct / 100) / 9);
-  const sugarMax = round((target * 0.10) / 4);
-  let fluids = Math.max(Math.min(3000, Math.max(1500, round(weight * 30, 100))), dx.fluidsMin);
-  if (dialysis) fluids = Math.min(fluids, 1500);
+  const fiber = isChild ? ct.fiber : Math.max(25, round((target / 1000) * 14), dx.fiberMin);
+  const satFatPct = isChild ? 10 : (cardio || diabetes) ? 7 : 10;
+  const satFat = isChild ? ct.satFat : round((target * satFatPct / 100) / 9);
+  const sugarMax = isChild ? ct.sugarMax : round((target * 0.10) / 4);
+  let fluids = isChild ? ct.fluids : Math.max(Math.min(3000, Math.max(1500, round(weight * 30, 100))), dx.fluidsMin);
+  if (dialysis && !isChild) fluids = Math.min(fluids, 1500);
 
   // Желязо и калций (EFSA 2015): желязо 16 мг за жени преди менопаузата, 11 мг за мъже и след
   // менопаузата; калций 1000 мг до 24 г., 950 мг след това.
   const menopause = sex === 'f' && (!!input.cycle?.menopause || dx.menopause || age >= 55
     || (age >= 50 && !cycleIn?.lastStart));
-  const iron = sex === 'f' && !menopause ? 16 : 11;
-  const calcium = age < 25 ? 1000 : 950;
+  const iron = isChild ? ct.iron : sex === 'f' && !menopause ? 16 : 11;
+  const calcium = isChild ? ct.calcium : age < 25 ? 1000 : 950;
   const targets = {
     kcal: target, protein, fat, carbs, fiber, satFat, sugarMax,
-    salt: 5, fluids, iron, calcium,
+    salt: isChild ? ct.salt : 5, fluids, iron, calcium,
     proteinPerKg, proteinMax, proteinNote, fatPct, satFatPct,
     carbPct: Math.round((carbs * 4 / target) * 100),
   };
@@ -418,7 +450,8 @@ export function nutritionPlan(input) {
   const eventual = gap / KCAL_PER_KG_DAY;
   const tau = KCAL_PER_KG / KCAL_PER_KG_DAY;
   const weightAt = (days) => weight + eventual * (1 - Math.exp(-days / tau));
-  const projection = { weeklyKg, targetWeight: null, weeks: null, eta: null, suggestions: [], curve: null, plateau: null, from: asOf };
+  // Детето расте — прогноза за теглото няма; растежът се следи по кривите на СЗО.
+  const projection = isChild ? null : { weeklyKg, targetWeight: null, weeks: null, eta: null, suggestions: [], curve: null, plateau: null, from: asOf };
   if (goal === 'lose') projection.suggestions = [0.95, 0.9].map(k => Math.round(weight * k));
   if (goal === 'gain') projection.suggestions = [Math.round(20 * (height / 100) ** 2)].filter(x => x > weight);
   const tw = Number(input.targetWeight);
@@ -458,91 +491,112 @@ export function nutritionPlan(input) {
   const avoid = [];
   const notes = [...notes0];
 
-  prefer.push('Зеленчуци на всяко хранене — поне 400 г зеленчуци и плодове дневно (СЗО).');
-  prefer.push('Пълнозърнести храни, бобови, ядки, зехтин; риба 1–2 пъти седмично.');
-  limit.push('Сол под 5 г дневно (СЗО, ESC): внимание с хляба, саламурените сирена, колбасите и готовите храни.');
-  limit.push(`Свободни захари под ${sugarMax} г дневно (10% от енергията, идеално под 5%): сладкиши, подсладени напитки, сокове.`);
-  limit.push('Червено месо до 350–500 г седмично; преработеното месо — възможно най-рядко; пържени храни.');
-  notes.push('Алкохол: колкото по-малко, толкова по-добре — безопасно количество няма (СЗО).');
-  if (patternId === 'lowcarb') prefer.push('По-малко въглехидрати: хляб, ориз и картофи в по-малки порции; повече зеленчуци, бобови, яйца, риба, извара и зехтин.');
-  if (patternId === 'dash') prefer.push('DASH: 4–5 порции зеленчуци и 4–5 порции плодове дневно, 2–3 порции нискомаслени млечни, ядки и бобови 4–5 пъти седмично.');
+  // Дете: правилата по възрастта (child-nutrition.js) и само подходящите за деца текстове по диагнозите.
+  const guide = isChild ? childGuidance(ct, { sex, prefs, breastfed: !!input.breastfed }) : null;
+  if (isChild) {
+    prefer.push(...guide.prefer);
+    limit.push(...guide.limit);
+    avoid.push(...guide.avoid);
+    notes.push(childEnergyNote(ct), ...guide.notes);
+    warnings.push(...guide.warnings);
+    if (cond.has('anemia')) prefer.push('Анемия: храни, богати на желязо (постно месо, бобови, яйца, елда), заедно с витамин C (плодове, чушки); млякото — не повече от препоръчаното за възрастта.');
+    if (diabetes) avoid.push('Подсладени напитки и сокове (освен за овладяване на хипогликемия).');
+    const cdx = childDiagnoses(dx.considered.map(c => c.code), profileFor);
+    prefer.push(...cdx.prefer);
+    limit.push(...cdx.limit);
+    avoid.push(...cdx.avoid);
+    notes.push(...cdx.notes);
+    warnings.push(...cdx.warnings);
+    if (dx.egfr || dx.dialysis || dx.limitK || dx.pregnancy) warnings.push('При тези диагнози режимът за дете се изготвя от специалист — менюто е само ориентир.');
+  } else {
+    prefer.push('Зеленчуци на всяко хранене — поне 400 г зеленчуци и плодове дневно (СЗО).');
+    prefer.push('Пълнозърнести храни, бобови, ядки, зехтин; риба 1–2 пъти седмично.');
+    limit.push('Сол под 5 г дневно (СЗО, ESC): внимание с хляба, саламурените сирена, колбасите и готовите храни.');
+    limit.push(`Свободни захари под ${sugarMax} г дневно (10% от енергията, идеално под 5%): сладкиши, подсладени напитки, сокове.`);
+    limit.push('Червено месо до 350–500 г седмично; преработеното месо — възможно най-рядко; пържени храни.');
+    notes.push('Алкохол: колкото по-малко, толкова по-добре — безопасно количество няма (СЗО).');
+    if (patternId === 'lowcarb') prefer.push('По-малко въглехидрати: хляб, ориз и картофи в по-малки порции; повече зеленчуци, бобови, яйца, риба, извара и зехтин.');
+    if (patternId === 'dash') prefer.push('DASH: 4–5 порции зеленчуци и 4–5 порции плодове дневно, 2–3 порции нискомаслени млечни, ядки и бобови 4–5 пъти седмично.');
 
-  if (cond.has('htn')) {
-    prefer.push('Хипертония: DASH/средиземноморски тип — зеленчуци, плодове, нискомаслени млечни, бобови, ядки.');
-    if (!limitK) prefer.push('Храни, богати на калий (зеленчуци, бобови, плодове), понижават налягането.');
-    limit.push('Хипертония: сол под 5 г; кафе — до 3–4 чаши; алкохол — възможно най-малко.');
-  }
-  if (diabetes) {
-    prefer.push('Диабет: въглехидрати с нисък гликемичен индекс, равномерно разпределени през деня; зеленчуците — първи в чинията.');
-    limit.push('Диабет: бял хляб, бял ориз, картофено пюре, сладки плодове и сокове; плодовете — по 1 порция наведнъж.');
-    avoid.push('Подсладени напитки и сокове (освен за овладяване на хипогликемия).');
-    if (goal === 'lose' && (classes.has('INSULIN') || classes.has('SU'))) {
-      warnings.push('Инсулин или сулфанилурейно лекарство и по-малко храна: дозите може да се нуждаят от намаляване — риск от хипогликемия.');
+    if (cond.has('htn')) {
+      prefer.push('Хипертония: DASH/средиземноморски тип — зеленчуци, плодове, нискомаслени млечни, бобови, ядки.');
+      if (!limitK) prefer.push('Храни, богати на калий (зеленчуци, бобови, плодове), понижават налягането.');
+      limit.push('Хипертония: сол под 5 г; кафе — до 3–4 чаши; алкохол — възможно най-малко.');
     }
-  }
-  if (glp1) {
-    prefer.push('GLP-1 агонист: по-малки и по-чести хранения — малка закуска, после на всеки 3–4 часа; бавно и до приятно засищане. На всяко хранене — белтък; зеленчуци, плодове, пълнозърнести, бобови, ядки и семена (ACLM/ASN/OMA/TOS 2025).');
-    limit.push('GLP-1 агонист: големи и мазни хранения — засилват гаденето и повръщането; алкохол — засилва гаденето и рефлукса. Рафинирани въглехидрати, подсладени напитки, червено и преработено месо и пакетирани закуски — по-рядко.');
-    notes.push('GLP-1 агонист: достатъчно течности — гаденето, повръщането и диарията могат да обезводнят и да увредят бъбреците; срещу запек — течности и фибри от храната. В първите дни след започване или увеличаване на дозата — без много мазни и много богати на фибри храни; при гадене — джинджифилов или ментов чай.');
-    notes.push('GLP-1 агонист: само белтъкът не пази мускулите — нужни са и силови упражнения поне 3 пъти седмично. Витамин D, калций и B12 — проследяване и добавка при нужда.');
-    if (mealsPerDay === 3) notes.push('GLP-1 агонист: при гадене или бързо засищане — 4 или 5 по-малки хранения вместо 3.');
-  }
-  if (cardio || cond.has('dyslip') || cond.has('masld')) {
-    limit.push(`Наситени мазнини под ${satFat} г дневно (${satFatPct}% от енергията): тлъсто месо, масло, сметана, пълномаслени сирена.`);
-    prefer.push('Мазна риба (скумрия, пъстърва, сьомга) — омега-3; ядки и зехтин вместо масло.');
-    avoid.push('Трансмазнини — маргарини, пакетирани сладкиши, пържени закуски.');
-  }
-  if (cond.has('hf')) {
-    limit.push('Сърдечна недостатъчност: сол под 5 г; течности — по указание на лекаря (при тежка СН 1,5–2 л).');
-    notes.push('Ежедневно тегло сутрин: наддаване над 2 кг за 3 дни — обадете се на лекаря.');
-    fluids = Math.min(fluids, 2000);
-    targets.fluids = fluids;
-  }
-  if (ckd) {
-    limit.push(`ХБЗ: белтък около ${protein} г дневно (0,8 г/кг); повече растителен белтък.`);
-    if (limitK) {
-      limit.push('ХБЗ/висок калий: ограничете картофи, домати, банани, сушени плодове, бобови, ядки и спанак; картофите — нарязани и двойно сварени.');
-      avoid.push('Солеви заместители с калий.');
+    if (diabetes) {
+      prefer.push('Диабет: въглехидрати с нисък гликемичен индекс, равномерно разпределени през деня; зеленчуците — първи в чинията.');
+      limit.push('Диабет: бял хляб, бял ориз, картофено пюре, сладки плодове и сокове; плодовете — по 1 порция наведнъж.');
+      avoid.push('Подсладени напитки и сокове (освен за овладяване на хипогликемия).');
+      if (goal === 'lose' && (classes.has('INSULIN') || classes.has('SU'))) {
+        warnings.push('Инсулин или сулфанилурейно лекарство и по-малко храна: дозите може да се нуждаят от намаляване — риск от хипогликемия.');
+      }
     }
-    if (ckdAdvanced) {
-      limit.push('ХБЗ G4–G5: фосфор — избягвайте преработени храни с фосфатни добавки (Е338–Е452), колбаси, топено сирене, кола.');
+    if (glp1) {
+      prefer.push('GLP-1 агонист: по-малки и по-чести хранения — малка закуска, после на всеки 3–4 часа; бавно и до приятно засищане. На всяко хранене — белтък; зеленчуци, плодове, пълнозърнести, бобови, ядки и семена (ACLM/ASN/OMA/TOS 2025).');
+      limit.push('GLP-1 агонист: големи и мазни хранения — засилват гаденето и повръщането; алкохол — засилва гаденето и рефлукса. Рафинирани въглехидрати, подсладени напитки, червено и преработено месо и пакетирани закуски — по-рядко.');
+      notes.push('GLP-1 агонист: достатъчно течности — гаденето, повръщането и диарията могат да обезводнят и да увредят бъбреците; срещу запек — течности и фибри от храната. В първите дни след започване или увеличаване на дозата — без много мазни и много богати на фибри храни; при гадене — джинджифилов или ментов чай.');
+      notes.push('GLP-1 агонист: само белтъкът не пази мускулите — нужни са и силови упражнения поне 3 пъти седмично. Витамин D, калций и B12 — проследяване и добавка при нужда.');
+      if (mealsPerDay === 3) notes.push('GLP-1 агонист: при гадене или бързо засищане — 4 или 5 по-малки хранения вместо 3.');
     }
+    if (cardio || cond.has('dyslip') || cond.has('masld')) {
+      limit.push(`Наситени мазнини под ${satFat} г дневно (${satFatPct}% от енергията): тлъсто месо, масло, сметана, пълномаслени сирена.`);
+      prefer.push('Мазна риба (скумрия, пъстърва, сьомга) — омега-3; ядки и зехтин вместо масло.');
+      avoid.push('Трансмазнини — маргарини, пакетирани сладкиши, пържени закуски.');
+    }
+    if (cond.has('hf')) {
+      limit.push('Сърдечна недостатъчност: сол под 5 г; течности — по указание на лекаря (при тежка СН 1,5–2 л).');
+      notes.push('Ежедневно тегло сутрин: наддаване над 2 кг за 3 дни — обадете се на лекаря.');
+      fluids = Math.min(fluids, 2000);
+      targets.fluids = fluids;
+    }
+    if (ckd) {
+      limit.push(`ХБЗ: белтък около ${protein} г дневно (0,8 г/кг); повече растителен белтък.`);
+      if (limitK) {
+        limit.push('ХБЗ/висок калий: ограничете картофи, домати, банани, сушени плодове, бобови, ядки и спанак; картофите — нарязани и двойно сварени.');
+        avoid.push('Солеви заместители с калий.');
+      }
+      if (ckdAdvanced) {
+        limit.push('ХБЗ G4–G5: фосфор — избягвайте преработени храни с фосфатни добавки (Е338–Е452), колбаси, топено сирене, кола.');
+      }
+    }
+    if (cond.has('gout')) {
+      avoid.push('Подагра: карантия (черен дроб, бъбреци), бира и спиртни напитки, подсладени с фруктоза напитки.');
+      limit.push('Подагра: червено месо, морски дарове, сардини, аншоа.');
+      prefer.push('Подагра: нискомаслени млечни продукти, достатъчно течности (над 2 л, ако няма ограничение).');
+      fluids = Math.max(fluids, 2000);
+      targets.fluids = fluids;
+    }
+    if (cond.has('obesity') || goal === 'lose') {
+      prefer.push('Отслабване: чинията — половината зеленчуци, четвърт белтък, четвърт пълнозърнести; бавно хранене.');
+      notes.push('Реалистична цел: 5–10% от теглото за 6 месеца. Връщането на част от теглото не е провал — продължете (NICE).');
+    }
+    if (cond.has('osteoporosis') || age >= 65) {
+      prefer.push('Калций 1000–1200 мг дневно от храната: млечни продукти, бадеми, зелени листни зеленчуци.');
+      notes.push('Витамин D 800–1000 IU дневно при 65+ г. или остеопороза — по преценка на лекаря.');
+    }
+    if (cond.has('anemia')) {
+      prefer.push('Анемия: храни, богати на желязо (месо, бобови, елда, спанак), заедно с витамин C.');
+      limit.push('Анемия: чай и кафе — поне 1 час след хранене.');
+    }
+    if (cond.has('masld')) {
+      avoid.push('Стеатоза: алкохол и подсладени напитки (фруктоза).');
+      notes.push('Загуба на 7–10% от теглото подобрява мастния черен дроб.');
+    }
+    if (prefs.has('vegan')) notes.push('Веганско хранене: витамин B12 като добавка задължително; калций от обогатени напитки, тофу, бобови; йод и омега-3 по преценка.');
+    else if (prefs.has('vegetarian')) notes.push('Вегетарианско хранене: витамин B12 — от млечни и яйца или добавка; желязо с витамин C.');
+    if (classes.has('METFORMIN')) notes.push('Метформин: при продължителен прием — периодично изследване на витамин B12.');
   }
-  if (cond.has('gout')) {
-    avoid.push('Подагра: карантия (черен дроб, бъбреци), бира и спиртни напитки, подсладени с фруктоза напитки.');
-    limit.push('Подагра: червено месо, морски дарове, сардини, аншоа.');
-    prefer.push('Подагра: нискомаслени млечни продукти, достатъчно течности (над 2 л, ако няма ограничение).');
-    fluids = Math.max(fluids, 2000);
-    targets.fluids = fluids;
-  }
-  if (cond.has('obesity') || goal === 'lose') {
-    prefer.push('Отслабване: чинията — половината зеленчуци, четвърт белтък, четвърт пълнозърнести; бавно хранене.');
-    notes.push('Реалистична цел: 5–10% от теглото за 6 месеца. Връщането на част от теглото не е провал — продължете (NICE).');
-  }
-  if (cond.has('osteoporosis') || age >= 65) {
-    prefer.push('Калций 1000–1200 мг дневно от храната: млечни продукти, бадеми, зелени листни зеленчуци.');
-    notes.push('Витамин D 800–1000 IU дневно при 65+ г. или остеопороза — по преценка на лекаря.');
-  }
-  if (cond.has('anemia')) {
-    prefer.push('Анемия: храни, богати на желязо (месо, бобови, елда, спанак), заедно с витамин C.');
-    limit.push('Анемия: чай и кафе — поне 1 час след хранене.');
-  }
-  if (cond.has('masld')) {
-    avoid.push('Стеатоза: алкохол и подсладени напитки (фруктоза).');
-    notes.push('Загуба на 7–10% от теглото подобрява мастния черен дроб.');
-  }
-  if (prefs.has('vegan')) notes.push('Веганско хранене: витамин B12 като добавка задължително; калций от обогатени напитки, тофу, бобови; йод и омега-3 по преценка.');
-  else if (prefs.has('vegetarian')) notes.push('Вегетарианско хранене: витамин B12 — от млечни и яйца или добавка; желязо с витамин C.');
-  if (classes.has('METFORMIN')) notes.push('Метформин: при продължителен прием — периодично изследване на витамин B12.');
   if (prefs.has('glutenFree')) avoid.push('Цьолиакия: пшеница, ръж, ечемик и храни с тях; овесът — само сертифициран без глутен.');
   if (prefs.has('lactoseFree')) notes.push('Без лактоза: млечни продукти без лактоза; твърдите отлежали сирена обикновено се понасят.');
   if (fromAllergies.matched.length) notes.push(`Изключено според алергиите в досието: ${fromAllergies.matched.join(', ')}.`);
-  // Правилата от диагнозите по МКБ-10.
-  prefer.push(...dx.prefer);
-  limit.push(...dx.limit);
-  avoid.push(...dx.avoid);
-  notes.push(...dx.notes);
-  warnings.push(...dx.warnings);
+  if (!isChild) {
+    // Правилата от диагнозите по МКБ-10.
+    prefer.push(...dx.prefer);
+    limit.push(...dx.limit);
+    avoid.push(...dx.avoid);
+    notes.push(...dx.notes);
+    warnings.push(...dx.warnings);
+  }
   if (dx.dietitian) {
     const who = dx.considered.filter(c => c.dietitian).map(c => c.label);
     warnings.push(`При тези диагнози (${[...new Set(who)].join(', ')}) режимът е ориентировъчен — обсъдете го с диетолог.`);
@@ -551,18 +605,33 @@ export function nutritionPlan(input) {
   // Грейпфрутът не влиза в менюто, ако някое от лекарствата не се съчетава с него (версия 4.15).
   const exclude = new Set(dx.exclude);
   if ((input.medNotes || []).some(n => /грейпфрут/i.test(n))) exclude.add('grapefruit');
+  // Дете: без цели ядки до 4 г., без мед и захар до 2 г., без прясна риба тон (child-nutrition.js).
+  const kid = isChild ? childFoodRules(ct.years) : null;
+  for (const f of kid?.exclude || []) exclude.add(f);
+  const penalize = kid ? new Set([...dx.penalize, ...kid.penalize]) : dx.penalize;
 
   // Рецептите, които стават за човека, с оценка за подходящост.
   const ctx = {
     prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
     sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
-    exclude, penalize: dx.penalize, dislikes,
+    exclude, penalize, dislikes,
   };
   const lowerCarb = diabetes || patternId === 'lowcarb';
   // При модела с малко въглехидрати нишестето не расте; при диабет расте умерено.
   const strictLowCarb = patternId === 'lowcarb';
   const variant = Math.max(0, Math.floor(Number(input.variant) || 0));
-  const slots = MEAL_PLANS[mealsPerDay];
+  // Дете до 5 г.: млякото за деня е отделно „хранене“ с точно количество (HER 2019) — ястията са за останалата енергия.
+  const milk = isChild ? childMilk(ct.years, prefs, !!input.breastfed) : null;
+  const milkKcal = milk ? FOODS[milk.food].kcal * milk.ml / 100 : 0;
+  const slots = milk
+    ? [...MEAL_PLANS[mealsPerDay].map(s => ({ ...s, share: s.share * (1 - milkKcal / target) })),
+      { id: 'milk', meal: 'milk', label: 'Мляко', share: milkKcal / target, time: '' }]
+    : MEAL_PLANS[mealsPerDay];
+  const milkOption = () => {
+    const p = portionText(milk.food, milk.ml);
+    return withTotals({ key: 'milk', name: milk.name, time: 0, flavor: [], source: null, template: '', swaps: [], method: '', fixed: true },
+      [{ food: milk.food, grams: p.grams, base: p.grams, text: p.text }]);
+  };
   const pools = {};
   for (const kind of new Set(slots.map(s => s.meal))) pools[kind] = poolFor(kind, ctx, variant);
   if (Object.values(pools).some(p => p.unsourced)) {
@@ -612,6 +681,7 @@ export function nutritionPlan(input) {
   const meals = slots.map((slot, si) => {
     const pool = pools[slot.meal];
     const kcal = round(dayKcal(0) * slot.share, 10);
+    if (slot.meal === 'milk') return { ...slot, kcal: Math.round(milkKcal), options: [milkOption()] };
     if (!pool.length) return { ...slot, kcal, options: [] };
     const ordered = focus0.length ? [...pool].sort((a, b2) => (b2.s + focusBonus(b2, focus0)) - (a.s + focusBonus(a, focus0))) : pool;
     const fresh = ordered.filter(x => !usedToday.has(x.r.name));
@@ -639,7 +709,8 @@ export function nutritionPlan(input) {
         day: d + 1, label: weekdayOf(date), date, kcal: dayKcal(d),
         cycle: sync?.applied ? sync.days[d] : null,
         training: dayTraining(d),
-        meals: slots.map((slot, i) => ({ ...slot, ...meal(slot, picks[i], dayKcal(d)) })),
+        meals: slots.map((slot, i) => (slot.meal === 'milk' ? { ...slot, kcal: Math.round(milkKcal), option: milkOption() }
+          : { ...slot, ...meal(slot, picks[i], dayKcal(d)) })),
       };
     });
   }
@@ -648,7 +719,9 @@ export function nutritionPlan(input) {
   // белтъкът между целта и горната граница (при ХБЗ — около целта), калият под
   // границата, енергията на всяко хранене към неговата цел.
   const fitCtx = { ...ctx, lowerCarb: strictLowCarb };
-  const aim = ckd ? protein : Math.min((protein + proteinMax) / 2, refWeight * 1.8);
+  // При дете — около 12% от енергията (над PRI и под горната граница); г/кг при малките е много повече от при възрастните.
+  const aim = isChild ? Math.max(protein, Math.min(proteinMax, target * 0.12 / 4))
+    : ckd ? protein : Math.min((protein + proteinMax) / 2, refWeight * 1.8);
   const low = protein * 0.9;
   let proteinCut = false;
   const tuneDay = (options, slotKcal, kinds) => {
@@ -665,13 +738,14 @@ export function nutritionPlan(input) {
         else if (sum.rich && total < low) r = Math.min(1.6, Math.max(1, (protein * 1.02 - sum.other) / sum.rich));
         if (Math.abs(r - 1) < 0.02) break;
         if (r < 1) proteinCut = true;
-        opts = opts.map((o, i) => o && rebalance(scaleProtein(o, r), slotKcal[i]));
+        opts = opts.map((o, i) => (o && !o.fixed ? rebalance(scaleProtein(o, r), slotKcal[i]) : o));
       }
-      if (limitK) opts = opts.map(o => o && capPotassium(o));
+      if (limitK) opts = opts.map(o => (o && !o.fixed ? capPotassium(o) : o));
       const before = dayTotals(opts).protein;
       const bias = before > aim ? 'low' : before < protein ? 'high' : null;
-      opts = opts.map((o, i) => o && fitEnergy(o, slotKcal[i], kinds[i], fitCtx, bias));
-      if (limitK) opts = opts.map(o => o && capPotassium(o));
+      // Млякото на детето е с точно количество — не се нагласява (fixed).
+      opts = opts.map((o, i) => (o && !o.fixed ? fitEnergy(o, slotKcal[i], kinds[i], fitCtx, bias) : o));
+      if (limitK) opts = opts.map(o => (o && !o.fixed ? capPotassium(o) : o));
       const after = dayTotals(opts).protein;
       if (after >= low && after <= proteinMax) break;
     }
@@ -692,7 +766,7 @@ export function nutritionPlan(input) {
 
   // Приготвянето с окончателните грамове на всяка порция.
   const options = [...meals.flatMap(m => m.options), ...(week || []).flatMap(d => d.meals.map(m => m.option))].filter(Boolean);
-  for (const o of options) o.method = renderMethod(o.template, o.items, { swaps: o.swaps });
+  for (const o of options) o.method = o.fixed ? '' : renderMethod(o.template, o.items, { swaps: o.swaps });
   for (const o of options) delete o.template;
 
   const day = dayTotals(meals.map(m => m.options[0]));
@@ -706,33 +780,44 @@ export function nutritionPlan(input) {
     notes.push(`Калций в менюто: около ${round(avgOf('ca'), 10)} мг дневно при препоръка ${calcium} мг (EFSA). Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`);
   }
 
+  // Седмицата с движение, сънят и екраните за детето (child-activity.js).
+  const movement = isChild ? childActivityPlan({ years: ct.years, sports: input.sports || [] }) : null;
+
   // Витамини, минерали и мастни киселини в менюто спрямо EFSA (версия 4.15).
-  const micro = microRows({ avgOf, sex, target, targets, pregnancy: !!dx.pregnancy, lactation: !!dx.lactation, limitK, ckd });
+  const micro = microRows({ avgOf, sex, target, targets, pregnancy: !!dx.pregnancy, lactation: !!dx.lactation, limitK, ckd, child: ct?.micro });
   const microHints = microNotes(micro, { ctx, prefs, classes, pregnancy: !!dx.pregnancy });
 
   return {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
-      goal, pace, targetWeight: projection.targetWeight, pattern: patternId, mealsPerDay, days,
+      goal, pace, targetWeight: projection?.targetWeight ?? null, pattern: patternId, mealsPerDay, days,
       quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
       dislikes: [...dislikes], swaps, kcalAdjust,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
       startDate: start, cycleSync: !!input.cycleSync, training: training ? training.input : null,
       cycle: sync?.stats ? { lastPeriod: sync.stats.lastStart, length: sync.stats.length, bleed: sync.stats.bleed, contraception: sync.stats.contraception } : null,
+      ...(isChild ? { ageMonths: Math.round(ct.years * 12 * 10) / 10, childActivity: ct.activity, breastfed: !!input.breastfed, sports: movement.chosen } : {}),
     },
     bmi: Math.round(b * 10) / 10,
-    energy: { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor, activity: activityId },
+    energy: isChild ? { bmr: ct.ree, tdee: ct.tee, target, activityFactor: ct.pal, activity: ct.activity }
+      : { bmr: Math.round(bmr), tdee: Math.round(tdee), target, activityFactor: activity.factor, activity: activityId },
     refWeight: Math.round(refWeight),
     targets,
     micro: { basis: week ? 'week' : 'day', rows: micro, notes: microHints },
     projection,
-    pattern: { id: patternId, label: pattern.label, about: pattern.about },
-    portions: portionsFor(target, prefs),
-    weekly: weeklyRhythm(prefs, cond),
+    pattern: isChild ? null : { id: patternId, label: pattern.label, about: pattern.about },
+    portions: isChild ? null : portionsFor(target, prefs),
+    weekly: isChild ? guide.weekly : weeklyRhythm(prefs, cond),
     prefer, limit, avoid, notes,
-    habits: habitsFor(goal, strength),
+    habits: isChild ? guide.habits : habitsFor(goal, strength),
     flavor: FLAVOR_TIPS,
-    monitoring: monitoringFor(goal),
+    monitoring: isChild ? guide.monitoring : monitoringFor(goal),
+    // Дете (версия 4.16): ИТМ за възрастта, активността, напитките до 5 г. и седмицата с движение.
+    child: isChild ? {
+      years: Math.round(ct.years * 10) / 10, bmi: ct.bmi, percentile: ct.bmi.percentile === null ? '' : percentileText(ct.bmi.percentile),
+      activity: ct.activity, activityLabel: CHILD_ACTIVITY[ct.activity].label, pal: ct.pal,
+      weightUsed: ct.weightUsed, weightBasis: ct.weightBasis, water: ct.water, drinks: guide.drinks, movement,
+    } : null,
     medNotes: input.medNotes || [],
     warnings,
     meals,
@@ -747,7 +832,7 @@ export function nutritionPlan(input) {
     cycle: sync,
     training,
     trainingToday: days === 1 ? dayTraining(0) : null,
-    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied, training: !!training, glp1 },
+    flags: { limitK, ckd, ckdAdvanced, diabetes, dialysis, pregnancy: dx.pregnancy, cycleSync: !!sync?.applied, training: !!training, glp1, child: isChild },
   };
 }
 
@@ -1114,18 +1199,20 @@ function planDays(slots, pools, variant, n, focusOf = () => []) {
 
 /* ------------------------------------ порции ------------------------------------ */
 
-function portionText(foodId, grams, maxPieces = 3) {
+function portionText(foodId, grams, maxPieces = 3, loose = false) {
   const f = FOODS[foodId];
-  // На брой — когато е поне половин плод или яйце; по-малкото се мери в грамове.
-  if (f.unit && f.unit.name === 'бр.' && grams >= f.unit.grams * 0.5) {
+  // На брой — когато е поне половин плод или яйце; по-малкото (и плодовете при малко дете) — в грамове.
+  if (!loose && f.unit && f.unit.name === 'бр.' && grams >= f.unit.grams * 0.5) {
     const n = Math.min(maxPieces, Math.max(1, Math.round(grams / f.unit.grams)));
     return { grams: n * f.unit.grams, text: `${f.name} — ${n} ${f.unit.name} (≈${n * f.unit.grams} г)` };
   }
+  // Малките количества — през 5 г; при малко дете под 20 г — през 1 г, от 2 г (SCALE.small).
+  const fine = SCALE.small && grams < 20;
   if (f.unit && f.unit.name === 'с.л.') {
-    const g = Math.max(5, round(grams, 5));
-    return { grams: g, text: `${f.name} — ${g} г (≈${dec(g / f.unit.grams)} с.л.)` };
+    const g = fine ? Math.max(2, Math.round(grams)) : Math.max(5, round(grams, 5));
+    return { grams: g, text: `${f.name} — ${g} г (≈${dec(Math.round((g / f.unit.grams) * 10) / 10)} с.л.)` };
   }
-  const g = grams >= 100 ? round(grams, 10) : Math.max(5, round(grams, 5));
+  const g = grams >= 100 ? round(grams, 10) : fine ? Math.max(2, Math.round(grams)) : Math.max(5, round(grams, 5));
   const raw = rawOf(foodId, g);
   const note = raw ? ` (${raw.grams} г ${raw.kind === 'dry' ? 'сухо' : 'сурово'} тегло)` : '';
   return { grams: g, text: `${f.name} — ${g} ${LIQUIDS.has(foodId) ? 'мл' : 'г'}${note}` };
@@ -1142,12 +1229,17 @@ const MAX_BY_FOOD = {
 };
 const maxGrams = (food) => MAX_BY_FOOD[food] ?? MAX_BY_CAT[FOODS[food].cat] ?? 400;
 
-/** Нова порция на съставка в границите по-горе и не под 40% от порцията в рецептата. */
+/* Колко може да се свие рецептата: при възрастните — до половината (съставката — до 40%);
+ * при малките деца — повече (nutritionPlan го задава за времето на изчислението). */
+const SCALE_ADULT = { min: 0.5, floor: 0.4 };
+let SCALE = SCALE_ADULT;
+
+/** Нова порция на съставка в границите по-горе и не под 40% от порцията в рецептата (при малки деца — по-малко). */
 function resize(it, grams, maxPieces = 3) {
   const base = it.base || it.grams;
   const cap = it.extra ? maxGrams(it.food) : Math.min(maxGrams(it.food), base * 2.5);
-  const floor = it.extra ? 0 : base * 0.4;
-  const p = portionText(it.food, Math.min(Math.max(grams, floor), Math.max(cap, 5)), maxPieces);
+  const floor = it.extra ? 0 : base * SCALE.floor;
+  const p = portionText(it.food, Math.min(Math.max(grams, floor), Math.max(cap, 5)), maxPieces, it.loose);
   return { ...it, grams: p.grams, text: it.extra ? `+ ${p.text}` : p.text };
 }
 
@@ -1157,11 +1249,13 @@ const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli'
   'barley', 'millet', 'spelt', 'whitepasta', 'crispbread', 'ricecakes', 'oatbran', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas']);
 
 /* На брой се води съставка от поне половин плод или яйце; по-малкото се мащабира в грамове. */
-const isPiece = (it) => FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
+const isPiece = (it) => !it.loose && FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
 
 function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   const sub = substituted(r, prefs);
-  const base = sub.items.map(it => ({ ...it, base: it.grams }));
+  // До 4 г. плодовете се мерят в грамове — цял банан не се побира в закуска от 50 kcal.
+  const loose = (it) => SCALE.looseFruit && FOODS[it.food].cat === 'fruit' && FOODS[it.food].unit?.name === 'бр.';
+  const base = sub.items.map(it => ({ ...it, base: it.grams, ...(loose(it) ? { loose: true } : {}) }));
   // Плодовете остават по брой както в ястието (един плод е една порция); мащабират се останалите.
   const fruit = (it) => isPiece(it) && FOODS[it.food].cat === 'fruit';
   const starch = (it) => lowerCarb && STARCH.has(it.food);
@@ -1173,7 +1267,7 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   const starchFactor = strict ? 0.7 * Math.min(1, baseFactor) : 0.8 * Math.min(1.5, baseFactor);
   const starchKcal = totals(base.filter(starch).map(it => ({ ...it, grams: it.grams * starchFactor }))).kcal;
   const rest = totals(base.filter(it => !fruit(it) && !starch(it))).kcal || 1;
-  const clamp = (v) => Math.min(2.2, Math.max(0.5, v));
+  const clamp = (v) => Math.min(2.2, Math.max(SCALE.min, v));
   let factor = clamp((kcal - fruitKcal - starchKcal) / rest);
   // Месото, рибата, яйцата, млечните и тофуто растат най-много 1,3 пъти: голямото хранене
   // идва от гарнитурата и зеленчуците, а не от 250 г риба.
@@ -1377,9 +1471,13 @@ const MICRO_LABELS = {
   n3: ['Омега-3 (EPA и DHA)', 'мг'], ala: ['Омега-3 (ALA)', 'г'],
 };
 
-function microRows({ avgOf, sex, target, targets, pregnancy, lactation, limitK, ckd }) {
+function microRows({ avgOf, sex, target, targets, pregnancy, lactation, limitK, ckd, child = null }) {
   const f = sex === 'f';
-  const refs = {
+  // Дете — референтните стойности за възрастта (child-nutrition.js, EFSA 2017).
+  const refs = child ? {
+    fiber: targets.fiber, sfa: targets.satFat, ca: targets.calcium, fe: targets.iron, ...child,
+    k: limitK || ckd ? null : child.k, ala: Math.round((target * 0.005 / 9) * 10) / 10,
+  } : {
     fiber: targets.fiber, sfa: targets.satFat,
     k: limitK || ckd ? null : lactation ? 4000 : 3500,
     ca: targets.calcium, mg: f ? 300 : 350, fe: targets.iron,

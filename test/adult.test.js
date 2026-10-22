@@ -135,7 +135,9 @@ test('хранителен режим: дефицит при отслабван�
   const day = ckd.day;
   assert.ok(Math.abs(day.kcal - ckd.targets.kcal) / ckd.targets.kcal < 0.15, `денят е близо до целта: ${day.kcal} / ${ckd.targets.kcal}`);
 
-  assert.throws(() => nutritionPlan({ ...base, age: 15 }), /възрастни/);
+  // От версия 4.16 режимът е и за деца от 1 г.; до 1 г. — планът за кърмачето.
+  assert.throws(() => nutritionPlan({ ...base, age: 0.5 }), /от 1 година/);
+  assert.ok(nutritionPlan({ ...base, age: 15 }).child);
 });
 
 /* ---------------------------- календар и наблюдение ---------------------------- */
