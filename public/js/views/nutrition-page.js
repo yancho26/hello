@@ -138,6 +138,7 @@ function clientEditor(client, { onSaved, onClose }) {
     onSave: () => form.generate(true),
     saveLabel: clientId ? 'Запази режима' : 'Запази човека и режима',
     onPdf: () => downloadNutritionPdf(person(who), plan),
+    onPdfEn: () => downloadNutritionPdf(person(who), plan, { lang: 'en' }),
     onPdfShopping: () => downloadNutritionPdf(person(who), plan, { only: 'shopping' }),
   }));
 
@@ -210,6 +211,7 @@ function clientEditor(client, { onSaved, onClose }) {
     savedPlans(saved, {
       show: (plan) => show(plan, c),
       pdf: (n) => downloadNutritionPdf(person(c), n.plan),
+      pdfEn: (n) => downloadNutritionPdf(person(c), n.plan, { lang: 'en' }),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutritionClientPlan(client.id, n.id), () => onSaved(client)),
     }));
 }

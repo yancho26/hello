@@ -8,7 +8,7 @@
  *     (стойностите в шаблона също се превеждат; десетичната запетая става точка).
  * Каквото няма в речника, остава както е (напр. свободен текст от досието). */
 
-import { FOODS, YIELDS } from '../recipes.js';
+import { FOODS, RECIPES, YIELDS } from '../recipes.js';
 import { renderMethod } from '../recipe-method.js';
 import { EN_CATS, EN_FLAVOR, enBaseName, enFoodName } from './en-foods.js';
 import { MICRO_EN, microNoteText } from '../nutrition.js';
@@ -119,9 +119,25 @@ const EN_RENAME = {
   'cottage>tofu': TOFU, 'whitecheese>tofu': TOFU,
 };
 
+/* Режимите, запазени преди версия 4.11, нямат o.key: рецептата се намира по името на ястието,
+ * а ако е преименувано — по линка към източника и съставките (версия 4.15.1). */
+const BY_URL = new Map();
+for (const r of RECIPES) {
+  for (const s of [].concat(r.source || [])) if (s?.url) BY_URL.set(s.url, [...(BY_URL.get(s.url) || []), r]);
+}
+function recipeKey(o) {
+  if (o.key) return o.key;
+  if (EN_RECIPES[o.name]) return o.name;
+  const foods = new Set(o.items.filter(it => !it.extra).map(it => it.orig || it.food));
+  const overlap = (r) => (r.items || []).filter(it => foods.has(it.food)).length;
+  const found = [...new Set([].concat(o.source || []).flatMap(s => BY_URL.get(s?.url) || []))]
+    .sort((a, b) => overlap(b) - overlap(a))[0];
+  return found?.name ?? null;
+}
+
 function optionEn(o) {
   if (!o) return o;
-  const rec = EN_RECIPES[o.key];
+  const rec = EN_RECIPES[recipeKey(o)];
   let name = rec ? rec[0] : tr(o.name);
   for (const [from, to] of o.swaps || []) {
     for (const [re, rep] of EN_RENAME[`${from}>${to}`] || []) name = name.replace(re, rep);

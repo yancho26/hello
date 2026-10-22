@@ -54,6 +54,7 @@ export function nutritionTab(ctx) {
     onSave: () => form.generate(true),
     saveLabel: 'Запази в досието',
     onPdf: () => downloadNutritionPdf(p, plan),
+    onPdfEn: () => downloadNutritionPdf(p, plan, { lang: 'en' }),
     onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
   }));
 
@@ -117,6 +118,7 @@ export function nutritionTab(ctx) {
     savedPlans(saved, {
       show,
       pdf: (n) => downloadNutritionPdf(p, n.plan),
+      pdfEn: (n) => downloadNutritionPdf(p, n.plan, { lang: 'en' }),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
     }));
 }
@@ -189,7 +191,7 @@ function lastPulse(p) {
 }
 
 /** Таблица със запазените режими. */
-export function savedPlans(saved, { show, pdf, remove }) {
+export function savedPlans(saved, { show, pdf, pdfEn, remove }) {
   if (!saved.length) return null;
   return card('Запазени режими', { icon: '📁', tight: true }, h('div.table-wrap', null, h('table', null,
     h('tbody', null, saved.map(n => h('tr', null,
@@ -200,6 +202,7 @@ export function savedPlans(saved, { show, pdf, remove }) {
       h('td.actions', null,
         h('button.btn.xs', { onclick: () => show(n.plan) }, 'Покажи'), ' ',
         h('button.btn.xs', { onclick: busy(() => pdf(n)), title: 'PDF отчет' }, '📄 PDF'), ' ',
+        pdfEn && n.plan.lang !== 'en' ? [h('button.btn.xs', { onclick: busy(() => pdfEn(n)), title: 'Същият режим като PDF на английски' }, '📄 EN'), ' '] : null,
         h('button.btn.xs.danger', { onclick: () => remove(n) }, '✕'))))))));
 }
 
@@ -547,7 +550,7 @@ function projectionChart(plan) {
     h('div.tiny.muted', null, L('Прогнозата отчита, че с теглото се променя и разходът на енергия — промяната се забавя с времето (Hall 2011).')));
 }
 
-function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, onSwap, saveLabel = 'Запази' } = {}) {
+function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSwap, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
     h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
@@ -598,6 +601,8 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfShopping, onSwap, saveL
         plan.lang === 'en' ? badge('', 'English') : null,
         onVariant ? h('button.btn.sm', { onclick: onVariant }, '↻ Друго меню') : null,
         onPdf ? h('button.btn.sm', { onclick: busy(onPdf), title: 'Цветен PDF отчет: цели, насоки, тренировки, меню, пазаруване и източници' }, plan.training ? '📄 PDF с тренировките' : '📄 PDF отчет') : null,
+        // Същият режим на английски — без смяна на езика и ново изготвяне (версия 4.15.1).
+        onPdfEn && plan.lang !== 'en' ? h('button.btn.sm', { onclick: busy(onPdfEn), title: 'Същият режим като PDF на английски — менюто, рецептите, съветите, тренировките и пазаруването' }, '📄 PDF на английски') : null,
         onPdfShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: busy(onPdfShopping), title: 'Само списъците за пазаруване като PDF' }, '🛒 PDF пазаруване') : null,
         onSave ? h('button.btn.sm.primary', { onclick: onSave }, saveLabel) : null,
       ],

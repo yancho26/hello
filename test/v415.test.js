@@ -297,3 +297,47 @@ test('API: уредите у дома в тренировките', async () => 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* ------------------------- 4.15.1: PDF на английски с едно щракване ------------------------- */
+
+test('4.15.1: запазен режим на български дава PDF на английски без кирилица', async () => {
+  const { nutritionReport } = await import('../public/js/shared/pdf/nutrition-report.js');
+  const zlib = await import('node:zlib');
+  const read = (f) => new Uint8Array(fs.readFileSync(new URL(`../public/fonts/${f}`, import.meta.url)));
+  const fonts = { regular: read('NotoSans-Regular.ttf'), semibold: read('NotoSans-SemiBold.ttf'), bold: read('NotoSans-Bold.ttf'), symbols: read('DejaVuSans-Symbols.ttf') };
+  // Както бутонът „📄 EN“: режимът е запазен като JSON на български и се превежда при изтеглянето.
+  const saved = JSON.parse(JSON.stringify(nutritionPlan({ ...base, days: 7, goal: 'lose', diagnoses: [{ code: 'E11.9' }],
+    training: { activities: ['bodyweight', 'folk', 'chair'], level: 'beginner', daysPerWeek: 3, minutes: 30, equipment: ['band'] } })));
+  assert.equal(saved.lang, undefined);
+  const plan = translatePlan(saved);
+  assert.equal(plan.lang, 'en');
+  const bytes = await nutritionReport({ plan, person: { name: 'Mary Smith', age: 40, sex: 'f' }, practice: { name: 'Practice' }, doctor: { name: 'Dr Smith' },
+    fonts, version: '4.15.1', date: '2026-10-22' });
+  const s = Buffer.from(bytes).toString('latin1');
+  const codes = [];
+  for (const m of s.matchAll(/stream\n([\s\S]*?)\nendstream/g)) {
+    let txt = '';
+    try { txt = zlib.inflateSync(Buffer.from(m[1], 'latin1')).toString('latin1'); } catch { continue; }
+    if (txt.includes('beginbfchar')) codes.push(...[...txt.matchAll(/<[0-9a-fA-F]{4}> <([0-9a-fA-F]{4,})>/g)].map(x => parseInt(x[1].slice(0, 4), 16)));
+  }
+  assert.ok(codes.length > 50);
+  assert.deepEqual(codes.filter(c => c >= 0x400 && c <= 0x4ff).map(c => String.fromCodePoint(c)), []);
+  assert.match(s, /\/Lang \(en-GB\)/);
+  // Българският оригинал не се променя.
+  assert.ok(CYR.test(saved.meals[0].options[0].name));
+});
+
+test('4.15.1: режим, запазен преди 4.11 без ключ на ястието, също излиза изцяло на английски', () => {
+  const saved = JSON.parse(JSON.stringify(nutritionPlan({ ...base, days: 7 })));
+  const options = [...saved.meals.flatMap(m => m.options), ...saved.week.flatMap(d => d.meals.map(m => m.option))];
+  for (const o of options) { delete o.key; delete o.template; delete o.swaps; }
+  // Ястие, преименувано по-късно: намира се по линка към източника.
+  const renamed = options.find(o => o.source?.length);
+  assert.ok(renamed);
+  const enName = EN_RECIPES[renamed.name][0];
+  renamed.name = 'Старо име на ястието';
+  const plan = translatePlan(saved);
+  const outOpts = [...plan.meals.flatMap(m => m.options), ...plan.week.flatMap(d => d.meals.map(m => m.option))];
+  assert.deepEqual(outOpts.filter(o => CYR.test(o.name) || CYR.test(o.method)).map(o => o.name), []);
+  assert.ok(outOpts.some(o => o.name.toLowerCase() === enName.toLowerCase()));
+});

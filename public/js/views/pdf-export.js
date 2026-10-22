@@ -5,6 +5,7 @@ import { toast } from '../ui/components.js';
 import { formatDate, today } from '../shared/dates.js';
 import { nutritionReport } from '../shared/pdf/nutrition-report.js';
 import { infantReport } from '../shared/pdf/infant-report.js';
+import { translatePlan } from '../shared/i18n/plan-en.js';
 
 const FONTS = { regular: 'NotoSans-Regular.ttf', semibold: 'NotoSans-SemiBold.ttf', bold: 'NotoSans-Bold.ttf', symbols: 'DejaVuSans-Symbols.ttf' };
 let fontsPromise = null;
@@ -21,13 +22,15 @@ function loadFonts() {
 
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Изготвя и изтегля PDF. person — { name, birthDate, age, sex }; only: 'shopping' — само пазаруването. */
-export async function downloadNutritionPdf(person, plan, { only = null } = {}) {
+/** Изготвя и изтегля PDF. person — { name, birthDate, age, sex }; only: 'shopping' — само пазаруването;
+ *  lang: 'en' — същият режим на английски, без да се изготвя наново (версия 4.15.1). */
+export async function downloadNutritionPdf(person, source, { only = null, lang = null } = {}) {
   if (typeof CompressionStream === 'undefined') {
     toast('Браузърът е твърде стар за PDF. Обновете Chrome, Edge или Firefox.', 'error');
     return;
   }
   try {
+    const plan = lang === 'en' && source.lang !== 'en' ? translatePlan(source) : source;
     const bytes = await nutritionReport({
       plan, person, only, fonts: await loadFonts(),
       practice: { name: state.practice?.name || '', phone: state.practice?.phone || '' },
