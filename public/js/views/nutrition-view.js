@@ -571,7 +571,9 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
   const t = plan.targets;
   const num = (v) => (plan.lang === 'en' ? String(v) : dec(v));
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
-    h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)), sub ? h('div.tiny.dim', null, sub) : null);
+    h('div.tile-v', null, value, h('span.small.dim', null, ' ' + unit)),
+    // Числото и мярката („19 г“, „<17 г“) не се разделят на два реда.
+    sub ? h('div.tiny.dim', null, String(sub).replace(/(\d) (?=\S)/g, '$1 ')) : null);
   const swapAt = (key) => (onSwap ? () => onSwap(key) : null);
   const dislikes = (plan.input.dislikes || []).filter(id => FOODS[id]).map(id => (plan.lang === 'en' ? enBaseName(id) : shopName(id)));
 

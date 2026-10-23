@@ -34,7 +34,8 @@ export function developmentTab(ctx) {
   const dueNote = dev.dueCheckpoint && !dev.dueDone
     ? h('div.alert-strip.warn', null,
       h('div', null,
-        h('strong', null, `Предстои оценка по листа за ${labelForAge(dev.dueCheckpoint.ageMonths)}. `),
+        // „3 г.“ завършва с точка — без втора точка след нея.
+        h('strong', null, `Предстои оценка по листа за ${labelForAge(dev.dueCheckpoint.ageMonths)}`.replace(/\.?$/, '. ')),
         dev.dueCheckpoint.screening.length
           ? 'На тази възраст се препоръчва и ' + dev.dueCheckpoint.screening
             .map(s => SCREENING_LABELS[s].toLowerCase()).join(' и ') + '.'
@@ -138,7 +139,7 @@ export function developmentTab(ctx) {
 
     card('За тези списъци', { icon: 'ℹ️' },
       h('p.small.muted', { style: { marginBottom: '6px' } },
-        `Етапите са по ${DEV_SOURCE} Ревизията от 2022 г. ги постави на 75-и персентил — `
+        `Етапите са по ${DEV_SOURCE} Ревизията от 2022 г. ги постави на 75-и перцентил — `
         + 'това, което правят 75% и повече от децата на съответната възраст. Дотогава се ползваше '
         + 'медианата, при която по определение половината деца не покриват етапа и това насърчаваше изчакване.'),
       h('p.small.muted', { style: { marginBottom: '6px' } },

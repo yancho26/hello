@@ -28,28 +28,82 @@ function latest(p, key) {
 export function childNutritionTab(ctx) {
   const { p, reload } = ctx;
   const ageMonths = ageInMonthsExact(p.birthDate, today());
-  const years = ageMonths / 12;
   const draft = drafts.get(p.id);
-  const last = draft?.form || {};
   const saved = [...(p.nutritionPlans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
-  const prev = saved[0]?.plan.input || {};
   const preview = h('div');
   let variant = draft?.variant || 0;
   let swaps = draft?.swaps || {};
-
-  // Тегло и ръст — от последните измервания; при малко дете теглото остарява бързо.
   const w0 = latest(p, 'weight');
   const h0 = latest(p, 'height');
-  const stale = w0 && daysBetween(w0.date, today()) > (years < 2 ? 31 : 92);
+
+  const show = (plan) => mount(preview, planView(plan, {
+    onVariant: () => { variant++; swaps = {}; form.generate(); },
+    onSwap: (key) => { swaps = { ...swaps, [key]: (swaps[key] || 0) + 1 }; form.generate(); },
+    onSave: () => form.generate(true),
+    saveLabel: 'Запази в досието',
+    onPdf: () => downloadNutritionPdf(p, plan),
+    onPdfEn: () => downloadNutritionPdf(p, plan, { lang: 'en' }),
+    onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
+  }));
+  const form = childPlanForm({
+    ageMonths, sex: p.sex, gestWeeks: p.birth?.gestWeeks ?? null,
+    weight: w0, height: h0, last: draft?.form || {}, prev: saved[0]?.plan.input || {},
+    breastfedDefault: p.feeding?.type === 'breast',
+    allergies: p.allergies || [], diagnoses: dossierDiagnoses(p),
+    diagnosesHint: 'Попълнени са от досието. Ограниченията (без глутен, без лактоза) се прилагат; съветите за възрастни не се показват.',
+    onSubmit: () => { variant = 0; swaps = {}; },
+    onGenerate: async (body, save) => {
+      try {
+        const res = await api.nutrition(p.id, { ...body, variant, swaps, save });
+        drafts.set(p.id, { plan: res.plan, variant, swaps, form: body });
+        if (save) {
+          toast('Режимът е запазен в досието.', 'ok');
+          await reload();
+          return;
+        }
+        show(res.plan);
+        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) { toast(err.message, 'error'); }
+    },
+  });
+  if (draft) show(draft.plan);
+
+  return h('div.stack', null,
+    card(`Хранене и движение · ${Math.floor(ageMonths / 12)} г.`, { icon: '🥗' }, form.el),
+    preview,
+    savedPlans(saved, {
+      show,
+      pdf: (n) => downloadNutritionPdf(p, n.plan),
+      pdfEn: (n) => downloadNutritionPdf(p, n.plan, { lang: 'en' }),
+      remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
+    }));
+}
+
+/**
+ * Формата за режим на дете — обща за досието и за човек извън листата (nutrition-page.js).
+ * cfg: ageMonths, sex, gestWeeks, weight/height ({ date, value } — последното измерване), last (изборът
+ * при последното изготвяне), prev (входът на последния запазен режим), breastfedDefault, allergies,
+ * diagnoses, diagnosesHint, top (полета отгоре), onGenerate(body, save), onSubmit.
+ * Връща { el, read, generate }.
+ */
+export function childPlanForm(cfg) {
+  const { ageMonths, sex } = cfg;
+  const years = ageMonths / 12;
+  const last = cfg.last || {};
+  const prev = cfg.prev || {};
+  const w0 = cfg.weight || null;
+  const h0 = cfg.height || null;
+
+  // Тегло и ръст — от последните измервания; при малко дете теглото остарява бързо.
+  const stale = w0?.date && daysBetween(w0.date, today()) > (years < 2 ? 31 : 92);
   const weight = numberInput({ name: 'weight', min: 6, max: 200, value: last.weight ?? (w0 ? dec(w0.value) : '') });
   const height = numberInput({ name: 'height', min: 60, max: 220, value: last.height ?? (h0 ? dec(h0.value) : '') });
   const bmiHint = h('div.field-hint');
-  const gest = p.birth?.gestWeeks ?? null;
   const refreshBmi = () => {
     const w = Number(String(weight.value).replace(',', '.'));
     const hh = Number(String(height.value).replace(',', '.'));
-    if (!(w > 0 && hh > 0)) { bmiHint.textContent = ''; return; }
-    const b = childBmi(p.sex, growthAge(ageMonths, gest).months, w, hh);
+    if (!(w > 0 && hh > 0) || !sex) { bmiHint.textContent = ''; return; }
+    const b = childBmi(sex, growthAge(ageMonths, cfg.gestWeeks ?? null).months, w, hh);
     bmiHint.textContent = `ИТМ ${dec(b.value)} — ${b.percentile !== null ? `${percentileText(b.percentile)} перцентил, ` : ''}${b.label} (СЗО)`;
     bmiHint.className = 'field-hint' + (b.status === 'normal' ? '' : ' warn-text');
   };
@@ -77,7 +131,7 @@ export function childNutritionTab(ctx) {
       }
     });
   }
-  const breastfed = h('input', { type: 'checkbox', name: 'breastfed', checked: last.breastfed ?? prev.breastfed ?? p.feeding?.type === 'breast' });
+  const breastfed = h('input', { type: 'checkbox', name: 'breastfed', checked: last.breastfed ?? prev.breastfed ?? !!cfg.breastfedDefault });
 
   const meals = select([3, 4, 5].map(n => ({ value: n, label: `${n} хранения`, selected: Number(last.mealsPerDay || prev.mealsPerDay || 5) === n })), { name: 'mealsPerDay' });
   const days = select([
@@ -90,16 +144,16 @@ export function childNutritionTab(ctx) {
     { value: 'en', label: 'английски (English)', selected: last.lang === 'en' },
   ], { name: 'lang' });
 
-  const allergy = allergyPreferences(p.allergies || []);
+  const allergy = allergyPreferences(cfg.allergies || []);
   const prefChosen = new Set(last.preferences || [...(prev.preferences || []).filter(x => PREFERENCES[x]), ...allergy.prefs]);
   const prefBoxes = Object.entries(PREFERENCES).map(([k, label]) => h('label.opt', null,
     h('input', { type: 'checkbox', name: 'pref', value: k, checked: prefChosen.has(k) }), h('span', null, label)));
-  const dx = diagnosesEditor(last.diagnoses || dossierDiagnoses(p));
+  const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || []);
   const dislikes = dislikesEditor(last.dislikes || prev.dislikes || []);
 
-  let form;
+  let el;
   const read = () => {
-    const fd = new FormData(form);
+    const fd = new FormData(el);
     const d = decimalFields(Object.fromEntries(fd), ['weight', 'height']);
     return {
       weight: d.weight, height: d.height, childActivity: activity.value,
@@ -109,34 +163,13 @@ export function childNutritionTab(ctx) {
       preferences: fd.getAll('pref'), dislikes: dislikes.value(), diagnoses: dx.value(),
     };
   };
-  const generate = async (save = false) => {
-    const body = read();
-    try {
-      const res = await api.nutrition(p.id, { ...body, variant, swaps, save });
-      drafts.set(p.id, { plan: res.plan, variant, swaps, form: body });
-      if (save) {
-        toast('Режимът е запазен в досието.', 'ok');
-        await reload();
-        return;
-      }
-      show(res.plan);
-      preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (err) { toast(err.message, 'error'); }
-  };
-  const show = (plan) => mount(preview, planView(plan, {
-    onVariant: () => { variant++; swaps = {}; generate(); },
-    onSwap: (key) => { swaps = { ...swaps, [key]: (swaps[key] || 0) + 1 }; generate(); },
-    onSave: () => generate(true),
-    saveLabel: 'Запази в досието',
-    onPdf: () => downloadNutritionPdf(p, plan),
-    onPdfEn: () => downloadNutritionPdf(p, plan, { lang: 'en' }),
-    onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
-  }));
+  const generate = (save = false) => cfg.onGenerate(read(), save);
 
-  form = h('form.stack', { onsubmit: (e) => { e.preventDefault(); variant = 0; swaps = {}; generate(); } },
+  el = h('form.stack', { onsubmit: (e) => { e.preventDefault(); cfg.onSubmit?.(); generate(); } },
+    cfg.top || null,
     stale ? h('div.alert-strip.warn', null, `Последното тегло е от ${formatDate(w0.date)} — претеглете и измерете детето за по-точен режим (раздел „Растеж“).`) : null,
     h('div.form-grid', null,
-      h('div', null, field('Тегло (кг)', weight, w0 ? `последно ${formatDate(w0.date)}` : 'няма измерване')),
+      h('div', null, field('Тегло (кг)', weight, w0?.date ? `последно ${formatDate(w0.date)}` : w0 ? '' : 'няма измерване')),
       h('div', null, field('Ръст (см)', height, bmiHint)),
       h('div', null, field('Физическа активност', activity, years < 4 ? 'До 3 г. EFSA приема PAL 1,4 за всички деца.' : 'По EFSA 2013; при спорт всеки ден — „активно“ или повече.'))),
     sportBoxes.length ? h('div.nut-section', null,
@@ -147,7 +180,7 @@ export function childNutritionTab(ctx) {
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Заболявания по МКБ-10'),
       dx.el,
-      h('div.field-hint', null, 'Попълнени са от досието. Ограниченията (без глутен, без лактоза) се прилагат; съветите за възрастни не се показват.')),
+      cfg.diagnosesHint ? h('div.field-hint', null, cfg.diagnosesHint) : null),
     h('div.nut-section', null,
       h('div.nut-sec-title', null, 'Хранене'),
       h('div.form-grid', null,
@@ -156,22 +189,12 @@ export function childNutritionTab(ctx) {
         h('div', null, field('Език на режима', lang, 'Менюто, рецептите, съветите и PDF за родителя.'))),
       h('div.nut-sec-sub', null, 'Ограничения и предпочитания'),
       h('div.q-opts', null, prefBoxes),
-      allergy.matched.length ? h('div.field-hint', null, `Отбелязани са според алергиите в досието: ${allergy.matched.join(', ')}.`) : null,
+      allergy.matched.length ? h('div.field-hint', null, `Отбелязани са според алергиите: ${allergy.matched.join(', ')}.`) : null,
       h('div.nut-sec-sub', null, 'Не яде'),
       dislikes.el),
     h('div', null, h('button.btn.primary', { type: 'submit' }, '🍽 Изготви режим'),
       h('span.small.muted', { style: { marginLeft: '10px' } },
         years < 4 ? 'До 4 г. — без цели ядки и пуканки; до 2 г. — пълномаслено мляко и без добавена захар.' : 'Енергията е за растежа по кривата на детето — без диети.')));
   refreshBmi();
-  if (draft) show(draft.plan);
-
-  return h('div.stack', null,
-    card(`Хранене и движение · ${Math.floor(years)} г.`, { icon: '🥗' }, form),
-    preview,
-    savedPlans(saved, {
-      show,
-      pdf: (n) => downloadNutritionPdf(p, n.plan),
-      pdfEn: (n) => downloadNutritionPdf(p, n.plan, { lang: 'en' }),
-      remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
-    }));
+  return { el, read, generate };
 }

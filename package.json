@@ -1,6 +1,6 @@
 {
   "name": "docup",
-  "version": "4.15.1",
+  "version": "4.16.0",
   "description": "DocUp — платформа за общопрактикуващи лекари и специалисти (СИМП)",
   "type": "module",
   "private": true,

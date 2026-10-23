@@ -9,7 +9,7 @@ import {
 } from '../ui/components.js';
 import { growthChart } from '../ui/charts.js';
 import { ageInMonthsExact, formatAge, formatDate, formatDateShort, relativeDays, today } from '../shared/dates.js';
-import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm } from '../shared/growth.js';
+import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm, zText } from '../shared/growth.js';
 import { ACTIONABLE } from '../shared/schedule.js';
 import { OPT_IN_GROUPS } from '../shared/calendar.js';
 import { openPatientForm } from './patients.js';
@@ -519,7 +519,7 @@ function valueCell(value, unit, assessment) {
     assessment
       ? h('div.tiny', null,
         h('span.z-pill.s' + assessment.severity, null,
-          'П' + Math.round(assessment.percentile), ' · z ', assessment.z.toFixed(1)))
+          'П' + Math.round(assessment.percentile), ' · z ', zText(assessment.z)))
       : null);
 }
 

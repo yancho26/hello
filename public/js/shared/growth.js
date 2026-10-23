@@ -156,6 +156,30 @@ export function percentileFromZ(z) {
   return normalCdf(z) * 100;
 }
 
+/** „72‑ри“: българско поредно число, с неразделящо тире (U+2011) — да не се пренася (версия 4.16). */
+export function ordinalBg(n) {
+  const v = Math.round(n);
+  const t = v % 100;
+  const d = v % 10;
+  const end = t >= 11 && t <= 19 ? 'и' : d === 1 ? 'ви' : d === 2 ? 'ри' : d === 3 || d === 4 ? 'ти' : d === 7 || d === 8 ? 'ми' : 'и';
+  return `${v}‑${end}`;
+}
+
+/** Перцентилът като текст: „под 1‑ви“, „над 99‑и“, „72‑ри“. */
+export function percentileText(p) {
+  if (p === null || p === undefined) return '';
+  if (p < 1) return 'под 1‑ви';
+  if (p > 99) return 'над 99‑и';
+  return ordinalBg(p);
+}
+
+/** z със знак и запетая: „+1,5“, „−0,7“, „0“. */
+export function zText(z) {
+  if (z === null || z === undefined) return '';
+  if (Math.abs(z) < 0.05) return '0';
+  return `${z > 0 ? '+' : '−'}${Math.abs(z).toFixed(1).replace('.', ',')}`;
+}
+
 /** Пълна оценка на едно измерване. */
 export function assess(indicatorKey, sex, ageMonths, value) {
   const z = zScore(indicatorKey, sex, ageMonths, value);
@@ -259,7 +283,7 @@ export function analyseMeasurements(patient, measurements) {
       };
 
       // Преди достигане на термин стандартите на СЗО не важат — за тези
-      // измервания се показват само стойностите, без персентили.
+      // измервания се показват само стойностите, без перцентили.
       if (age.beforeTerm) return row;
 
       if (m.weight > 0) row.assessments.weight = assess('weight', sex, ageMonths, m.weight);
@@ -279,15 +303,15 @@ export function analyseMeasurements(patient, measurements) {
 /* ------------------------- изоставане в растежа ---------------------------
  *
  * Праговете следват указанието на NICE „Faltering growth: recognition and
- * management“ (NG75). Един „персентилен интервал“ на растежните карти
+ * management“ (NG75). Един „перцентилен интервал“ на растежните карти
  * съответства на две трети от стандартното отклонение (0.67 z), затова
  * спадът се измерва директно в z-единици.
  *
  * Колко интервала будят тревога зависи от теглото при раждане:
- *   под 9-и персентил      → спад с 1 интервал
+ *   под 9-и перцентил      → спад с 1 интервал
  *   между 9-и и 91-ви      → спад с 2 интервала
- *   над 91-ви персентил    → спад с 3 интервала
- * Отделен повод за оценка е тегло под 2-ри персентил за възрастта.
+ *   над 91-ви перцентил    → спад с 3 интервала
+ * Отделен повод за оценка е тегло под 2-ри перцентил за възрастта.
  */
 
 export const CENTILE_SPACE_Z = 2 / 3;
@@ -295,7 +319,7 @@ const Z_9TH = -1.3408;
 const Z_91ST = 1.3408;
 const Z_2ND = -2.0537;
 
-/** Колко персентилни интервала спад са повод за тревога при това тегло при раждане. */
+/** Колко перцентилни интервала спад са повод за тревога при това тегло при раждане. */
 export function falteringThresholdSpaces(birthWeightZ) {
   if (birthWeightZ === null || birthWeightZ === undefined || !Number.isFinite(birthWeightZ)) return 2;
   if (birthWeightZ < Z_9TH) return 1;
@@ -338,7 +362,7 @@ export function growthConcerns(patient, analysed) {
         type: 'weight_faltering',
         severity: 2,
         title: 'Изоставане в наддаването на тегло',
-        detail: `Теглото е паднало с ${spaces.toFixed(1)} персентилни интервала спрямо `
+        detail: `Теглото е паднало с ${spaces.toFixed(1)} перцентилни интервала спрямо `
           + `най-високата стойност (${formatDateLike(peak.date)}). При тегло при раждане `
           + `${birthWeightZ === null ? 'извън обхвата на сравнение' : describeCentile(birthWeightZ)} `
           + `прагът за оценка е ${thresholdSpaces} ${thresholdSpaces === 1 ? 'интервал' : 'интервала'} (NICE NG75).`,
@@ -347,19 +371,19 @@ export function growthConcerns(patient, analysed) {
     }
   }
 
-  // Текущо тегло под 2-ри персентил.
+  // Текущо тегло под 2-ри перцентил.
   const last = weights[weights.length - 1];
   if (last && last.assessments.weight.z < Z_2ND) {
     findings.push({
       type: 'weight_below_2nd',
       severity: 2,
-      title: 'Тегло под 2-ри персентил',
+      title: 'Тегло под 2-ри перцентил',
       detail: `Последното измерване е на ${Math.round(last.assessments.weight.percentile * 10) / 10}-и `
-        + 'персентил за възрастта — повод за клинична оценка независимо от динамиката.',
+        + 'перцентил за възрастта — повод за клинична оценка независимо от динамиката.',
     });
   }
 
-  // Обиколка на главата — рязко пресичане на персентили и в двете посоки.
+  // Обиколка на главата — рязко пресичане на перцентили и в двете посоки.
   const heads = rows.filter(r => r.assessments.head);
   if (heads.length >= 2) {
     const first = heads[0].assessments.head.z;
@@ -370,7 +394,7 @@ export function growthConcerns(patient, analysed) {
         type: 'head_crossing',
         severity: 2,
         title: change > 0 ? 'Ускорен растеж на обиколката на главата' : 'Изоставане в обиколката на главата',
-        detail: `Пресечени са ${(Math.abs(change) / CENTILE_SPACE_Z).toFixed(1)} персентилни интервала `
+        detail: `Пресечени са ${(Math.abs(change) / CENTILE_SPACE_Z).toFixed(1)} перцентилни интервала `
           + 'между първото и последното измерване — изисква оценка.',
       });
     }
@@ -389,7 +413,7 @@ export function growthConcerns(patient, analysed) {
           type: 'bmi_rise',
           severity: 1,
           title: 'Бързо покачване на индекса на телесна маса',
-          detail: `ИТМ се е покачил с ${(rise / CENTILE_SPACE_Z).toFixed(1)} персентилни интервала `
+          detail: `ИТМ се е покачил с ${(rise / CENTILE_SPACE_Z).toFixed(1)} перцентилни интервала `
             + 'от предходната година — повод за разговор за хранене и движение.',
         });
       }
@@ -404,7 +428,7 @@ export function growthConcerns(patient, analysed) {
       type: 'indicator_' + key,
       severity: 2,
       title: `${INDICATORS[key] ? INDICATORS[key].short : key}: ${a.label}`,
-      detail: `Последно измерване — ${Math.round(a.percentile * 10) / 10}-и персентил (z ${a.z.toFixed(2)}).`,
+      detail: `Последно измерване — ${percentileText(a.percentile)} перцентил (z ${zText(a.z)}).`,
     });
   }
   if (lastRow.assessments.bp && lastRow.assessments.bp.severity >= 1) {
@@ -416,7 +440,7 @@ export function growthConcerns(patient, analysed) {
         + `${lastRow.assessments.bp.threshold.systolic}/${lastRow.assessments.bp.threshold.diastolic} mmHg`
         + (lastRow.assessments.bp.which ? ` — над прага е ${lastRow.assessments.bp.which}` : '')
         + '. Единично измерване не поставя диагноза: потвърдете с повторни измервания '
-        + 'в поне два отделни дни и сверете с пълните персентилни таблици, които отчитат и ръста.',
+        + 'в поне два отделни дни и сверете с пълните перцентилни таблици, които отчитат и ръста.',
     });
   }
 
@@ -424,11 +448,11 @@ export function growthConcerns(patient, analysed) {
 }
 
 /* При недоносено дете теглото при раждане не се сравнява със стандарта за
- * доносени, затова прагът остава по подразбиране — два персентилни интервала. */
+ * доносени, затова прагът остава по подразбиране — два перцентилни интервала. */
 function describeCentile(z) {
-  if (z < Z_9TH) return 'под 9-и персентил';
-  if (z > Z_91ST) return 'над 91-ви персентил';
-  return 'между 9-и и 91-ви персентил';
+  if (z < Z_9TH) return 'под 9-и перцентил';
+  if (z > Z_91ST) return 'над 91-ви перцентил';
+  return 'между 9-и и 91-ви перцентил';
 }
 
 function formatDateLike(iso) {

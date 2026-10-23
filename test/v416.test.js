@@ -156,6 +156,34 @@ test('4.16: млякото за деня до 5 г. (HER 2019) — отделн�
   assert.ok(b12.value >= b12.ref, `B12 ${b12.value} / ${b12.ref}`);
 });
 
+test('4.16: малко дете — желязото близо до препоръката, фибрите без излишък, бележка при много фибри', () => {
+  for (const sex of ['m', 'f']) {
+    const t = kid(sex, 13, 9.5, 75, { days: 7 });
+    const row = (k) => t.micro.rows.find(r => r.key === k);
+    assert.ok(row('fe').pct >= 85, `желязо ${row('fe').pct}%`);
+    assert.ok(row('fiber').value >= row('fiber').ref * 0.9 && row('fiber').value <= row('fiber').ref * 1.5, `фибри ${row('fiber').value} / ${row('fiber').ref}`);
+  }
+  const older = kid('m', 30, 13, 92, { days: 7 });
+  const fib = older.micro.rows.find(r => r.key === 'fiber');
+  if (fib.value > fib.ref * 1.5) assert.ok(older.micro.notes.some(n => n.key === 'fiber' && /долна граница/.test(n.text)));
+  assert.ok(!kid('m', 100, 26, 130).micro.notes.some(n => n.key === 'fiber'), 'бележката е само до 4 г.');
+  // До 4 г.: кръглите храни — на четвъртинки, указанието е в приготвянето и на английски.
+  let cut = null;
+  for (let variant = 0; variant < 20 && !cut; variant++) {
+    const t = kid('f', 14, 10, 77, { days: 7, variant });
+    assert.ok(!JSON.stringify(t).includes('Замразено грозде'));
+    const o = optionsOf(t).find(x => x.cut);
+    if (o) cut = { o, en: optionsOf(translatePlan(t)).find(x => x.name && x.cut && x.key === o.key) };
+  }
+  assert.ok(cut, 'има ястие с кръгли храни');
+  assert.match(cut.o.method, /За дете до 4 г\.: .* — на четвъртинки \(задавяне, AAP 2010\)\.$/);
+  assert.match(cut.en.method, /For a child under 4: cut the .* into quarters \(choking risk, AAP 2010\)\.$/);
+  assert.ok(!optionsOf(kid('f', 72, 20, 115, { days: 7 })).some(x => x.cut), 'от 4 г. — без указанието');
+  // На английски имената със запетая се отделят с „;“.
+  const en = translatePlan(older).micro.notes.map(n => n.text).join(' ');
+  assert.ok(!/anchovies, fresh, /.test(en));
+});
+
 test('4.16: наднормено тегло и поднормено — предупрежденията и енергията', () => {
   const obese = kid('m', 108, 45, 140);
   assert.equal(obese.child.bmi.status, 'obese');

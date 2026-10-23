@@ -76,7 +76,7 @@ test('един непокрит етап води до стандартизир�
   assert.equal(r.status, 'screen');
   assert.equal(r.notMet, 1);
   assert.equal(r.missing[0].id, cp.items[0].id);
-  assert.match(ACTIONS.screen.detail, /75-и персентил/);
+  assert.match(ACTIONS.screen.detail, /75-и перцентил/);
 });
 
 test('несигурен отговор води само до проследяване', () => {

@@ -134,7 +134,7 @@ test('подсказките са подредени по спешност, бе
 
 test('децата: без правилата за възрастни, със сигналите за растеж', () => {
   const kid = adult({ birthDate: born(5), results: [{ id: 'r', date: T, code: 'k', value: 6.5 }] });
-  const list = find(kid, { child: { growth: [{ id: 'g', title: 'Тегло под 2-ри персентил', severity: 2 }], development: [] } });
+  const list = find(kid, { child: { growth: [{ id: 'g', title: 'Тегло под 2-ри перцентил', severity: 2 }], development: [] } });
   assert.ok(!list.some(f => f.rule === 'k_high'));
   assert.ok(list.some(f => f.rule === 'growth'));
 });

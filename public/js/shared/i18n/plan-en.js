@@ -11,7 +11,7 @@
 import { FOODS, RECIPES, YIELDS } from '../recipes.js';
 import { renderMethod } from '../recipe-method.js';
 import { EN_CATS, EN_FLAVOR, enBaseName, enFoodName } from './en-foods.js';
-import { MICRO_EN, microNoteText } from '../nutrition.js';
+import { MICRO_EN, cutText, microNoteText } from '../nutrition.js';
 import { EN_RECIPES } from './en-recipes.js';
 import { EN_DX } from './en-dx.js';
 import { EN_TEXT } from './en-text.js';
@@ -148,7 +148,7 @@ function optionEn(o) {
     const q = at >= 0 ? it.text.slice(at + 3) : '';
     return { ...it, text: `${it.extra ? '+ ' : ''}${enFoodName(it.food)}${q ? ` — ${quantityEn(q)}` : ''}` };
   });
-  const method = rec ? renderMethod(rec[1], o.items, { swaps: o.swaps, lang: 'en', name: enBaseName }) : tr(o.method);
+  const method = rec ? renderMethod(rec[1], o.items, { swaps: o.swaps, lang: 'en', name: enBaseName }) + (o.cut ? ' ' + cutText(o.cut, 'en') : '') : tr(o.method);
   return {
     ...o, name: name.charAt(0).toUpperCase() + name.slice(1), items, method,
     flavor: (o.flavor || []).map(f => EN_FLAVOR[f] || tr(f)),

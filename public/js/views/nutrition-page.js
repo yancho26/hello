@@ -5,10 +5,11 @@
 import { api } from '../api.js';
 import { state } from '../app.js';
 import { card, empty, field, h, input, mount, numberInput, select, toast } from '../ui/components.js';
-import { formatDate } from '../shared/dates.js';
+import { ageInMonthsExact, formatDate, today } from '../shared/dates.js';
 import { GOALS } from '../shared/nutrition.js';
 import { searchDrugs, drugName } from '../shared/drugs.js';
 import { planForm, planView, progressCard, savedPlans } from './nutrition-view.js';
+import { childPlanForm } from './child-nutrition-view.js';
 import { deleteWithConfirm } from './adult-dialogs.js';
 import { downloadNutritionPdf } from './pdf-export.js';
 import { foodCatalog } from './food-catalog.js';
@@ -24,13 +25,18 @@ export async function renderNutritionPage(host) {
   const editor = h('div');
   const rerender = () => renderNutritionPage(host);
 
+  // remount — същият човек с въведеното досега: при смяна на дете и възрастен формата е различна.
+  const edit = (client, onSaved) => {
+    const draw = (draft) => mount(editor, clientEditor(client, { onSaved, onClose, draft, remount: draw }));
+    draw(null);
+  };
   const open = async (id) => {
     selected = id;
     drawList();
-    if (id === 'new') { mount(editor, clientEditor(null, { onSaved: (c) => { selected = c.id; rerender(); }, onClose })); return; }
+    if (id === 'new') { edit(null, (c) => { selected = c.id; rerender(); }); return; }
     try {
       const { client } = await api.nutritionClient(id);
-      mount(editor, clientEditor(client, { onSaved: () => rerender(), onClose }));
+      edit(client, () => rerender());
     } catch (err) { toast(err.message, 'error'); }
     editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
@@ -41,9 +47,9 @@ export async function renderNutritionPage(host) {
       h('thead', null, h('tr', null, h('th', null, 'Име'), h('th', null, 'Възраст'), h('th', null, 'Диагнози'), h('th', null, 'Последен режим'))),
       h('tbody', null, clients.map(c => h('tr.clickable' + (selected === c.id ? '.selected' : ''), { onclick: () => open(c.id) },
         h('td', null, h('strong', null, c.name || h('span.dim', null, 'без име')), c.phone ? h('div.tiny.dim', null, c.phone) : null),
-        h('td.small', null, `${c.age} г. · ${c.sex === 'f' ? 'жена' : 'мъж'}`),
+        h('td.small', null, `${c.age} г. · ${c.age < 18 ? (c.sex === 'f' ? 'момиче' : 'момче') : c.sex === 'f' ? 'жена' : 'мъж'}`),
         h('td.small.mono', null, c.diagnoses.slice(0, 6).join(', ') || '—'),
-        h('td.small', null, c.lastPlan ? `${formatDate(c.lastPlan.date)} · ${c.lastPlan.kcal} kcal · ${GOALS[c.lastPlan.goal] || ''}` : h('span.dim', null, 'няма'),
+        h('td.small', null, c.lastPlan ? `${formatDate(c.lastPlan.date)} · ${c.lastPlan.kcal} kcal · ${c.lastPlan.child ? 'хранене и движение' : GOALS[c.lastPlan.goal] || ''}` : h('span.dim', null, 'няма'),
           c.plans > 1 ? h('span.tiny.dim', null, ` (${c.plans} режима)`) : null))))))
     : empty('Още няма хора извън пациентската листа. „Нов човек“ започва нов хранителен режим.', '🥗'));
   drawList();
@@ -72,7 +78,8 @@ export async function renderNutritionPage(host) {
     tabs,
     h('div.alert-strip.info', { style: { marginBottom: '14px' } },
       'За пациент от листата режимът се изготвя в досието му, раздел „Хранене“ — там данните се вземат от досието. '
-      + 'Тук въведете човека и всичките му заболявания по МКБ-10; записът не става пациент и не влиза в справките.'),
+      + 'Тук въведете човека и всичките му заболявания по МКБ-10; записът не става пациент и не влиза в справките. '
+      + 'За дете от 1 до 17 г. въведете датата на раждане — формата става за дете, с движение, сън и екрани.'),
     card(`Хора (${clients.length})`, { icon: '🧑', tight: true }, listEl),
     h('div', { style: { height: '16px' } }),
     editor);
@@ -82,8 +89,14 @@ export async function renderNutritionPage(host) {
 
 /* ------------------------------- редактор ------------------------------- */
 
-function clientEditor(client, { onSaved, onClose }) {
-  const c = client || { name: '', sex: '', birthDate: '', age: '', phone: '', weight: '', height: '', waist: '', activity: 'sedentary', diagnoses: [], allergies: [], meds: [], egfr: '', potassium: '', note: '', plans: [] };
+/** Навършени години от датата на раждане (или въведената възраст). */
+const yearsOf = (c) => (c.birthDate ? ageInMonthsExact(c.birthDate, today()) / 12 : Number(c.age) || null);
+
+function clientEditor(client, { onSaved, onClose, draft = null, remount = null }) {
+  const c = { ...(client || { name: '', sex: '', birthDate: '', age: '', phone: '', weight: '', height: '', waist: '', activity: 'sedentary', diagnoses: [], allergies: [], meds: [], egfr: '', potassium: '', note: '', plans: [] }), ...(draft || {}) };
+  // Дете от 1 до 17 г. (версия 4.16) — формата за дете: активност, спорт, напитки и движение.
+  const years = yearsOf(c);
+  if (years !== null && years >= 1 && years < 18) return childClientEditor(client, c, { onSaved, onClose, remount });
   const preview = h('div');
   let variant = 0;
   let swaps = {};   // „Друго ястие“ — до ново изготвяне или „Друго меню“
@@ -171,6 +184,11 @@ function clientEditor(client, { onSaved, onClose }) {
   sex.addEventListener('change', () => {
     for (const el of [form.cycleEl, form.trainingCycleEl]) if (el) el.style.display = sex.value === 'f' ? '' : 'none';
   });
+  // Дата на раждане на дете — формата става за дете (с въведеното досега).
+  birth.addEventListener('change', () => {
+    const y = birth.value ? ageInMonthsExact(birth.value, today()) / 12 : null;
+    if (remount && y !== null && y >= 1 && y < 18) remount({ name: name.value, sex: sex.value, phone: phone.value, birthDate: birth.value, allergies: allergies.value.split(/[;,]/).map(x => x.trim()).filter(Boolean), note: note.value });
+  });
 
   const saveData = async () => {
     const p = readPerson(form.read());
@@ -243,4 +261,104 @@ function medsPicker(initial) {
     el: h('div.med-picker', null, chips, h('div.row.tight', { style: { marginTop: '8px' } }, inp, datalist, h('button.btn.sm', { type: 'button', onclick: add }, '+ Добави'))),
     value: () => [...items],
   };
+}
+
+/* ------------------------------- дете (версия 4.16) ------------------------------- */
+
+function childClientEditor(client, c, { onSaved, onClose, remount }) {
+  const preview = h('div');
+  let variant = 0;
+  let swaps = {};
+  let clientId = client?.id || null;
+  const ageMonths = ageInMonthsExact(c.birthDate, today());
+
+  const name = input({ name: 'name', value: c.name || '', placeholder: 'по желание — например инициали' });
+  const phone = input({ name: 'phone', value: c.phone || '', placeholder: 'по желание' });
+  const sex = select([{ value: '', label: '—' }, { value: 'f', label: 'момиче' }, { value: 'm', label: 'момче' }]
+    .map(o => ({ ...o, selected: (c.sex || '') === o.value })), { name: 'sex' });
+  const birth = h('input', { type: 'date', name: 'birthDate', value: c.birthDate || '', max: today() });
+  const allergies = input({ name: 'allergies', value: (c.allergies || []).join(', '), placeholder: 'напр. ядки, яйца, мляко' });
+  const note = h('textarea', { name: 'note', rows: 2, placeholder: 'по желание' }, c.note || '');
+  // Пол и дата на раждане определят формата — при промяна тя се изгражда наново със същите данни.
+  const basics = () => ({ name: name.value, sex: sex.value, phone: phone.value, birthDate: birth.value, allergies: allergies.value.split(/[;,]/).map(x => x.trim()).filter(Boolean), note: note.value });
+  for (const el of [sex, birth]) el.addEventListener('change', () => remount?.(basics()));
+
+  const top = h('div.stack', null,
+    h('div.form-grid', null,
+      h('div', null, field('Име', name)),
+      h('div', null, field('Пол', sex)),
+      h('div', null, field('Телефон', phone))),
+    h('div.form-grid', null,
+      h('div', null, field('Дата на раждане', birth, `${Math.floor(ageMonths / 12)} г. ${Math.floor(ageMonths % 12)} мес.`)),
+      h('div', null, field('Алергии и непоносимости', allergies, 'изключват се от менюто')),
+      h('div', null, field('Бележка', note))));
+
+  const readPerson = (body) => ({
+    name: name.value.trim(), sex: sex.value, phone: phone.value.trim(), birthDate: birth.value,
+    weight: body.weight, height: body.height, diagnoses: body.diagnoses,
+    allergies: allergies.value, meds: [], note: note.value,
+  });
+  const person = (p) => ({ name: p.name || 'Без име', birthDate: p.birthDate, sex: p.sex });
+  const show = (plan, who) => mount(preview, planView(plan, {
+    onVariant: () => { variant++; swaps = {}; form.generate(); },
+    onSwap: (key) => { swaps = { ...swaps, [key]: (swaps[key] || 0) + 1 }; form.generate(); },
+    onSave: () => form.generate(true),
+    saveLabel: clientId ? 'Запази режима' : 'Запази детето и режима',
+    onPdf: () => downloadNutritionPdf(person(who), plan),
+    onPdfEn: () => downloadNutritionPdf(person(who), plan, { lang: 'en' }),
+    onPdfShopping: () => downloadNutritionPdf(person(who), plan, { only: 'shopping' }),
+  }));
+
+  const saved = [...(c.plans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
+  const form = childPlanForm({
+    ageMonths, sex: c.sex, top,
+    weight: c.weight ? { value: c.weight } : null, height: c.height ? { value: c.height } : null,
+    prev: saved[0]?.plan.input || {}, allergies: c.allergies || [], diagnoses: c.diagnoses || [],
+    diagnosesHint: 'Въведете заболяванията на детето — ограниченията (без глутен, без лактоза) се прилагат.',
+    onSubmit: () => { variant = 0; swaps = {}; },
+    onGenerate: async (body, save) => {
+      const p = readPerson(body);
+      try {
+        const res = await api.nutritionPlanFor({ ...body, person: p, clientId, variant, swaps, save });
+        if (save) {
+          clientId = res.client.id;
+          toast('Записано в „Хранене“.', 'ok');
+          onSaved(res.client);
+          return;
+        }
+        show(res.plan, p);
+        preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (err) { toast(err.message, 'error'); }
+    },
+  });
+
+  const saveData = async () => {
+    const p = readPerson(form.read());
+    try {
+      const res = clientId ? await api.saveNutritionClient(clientId, p) : await api.addNutritionClient(p);
+      clientId = res.client.id;
+      toast('Данните са записани.', 'ok');
+      onSaved(res.client);
+    } catch (err) { toast(err.message, 'error'); }
+  };
+
+  return h('div.stack', null,
+    card(client ? (client.name || 'Без име') : 'Ново дете', {
+      icon: '🧒',
+      actions: [
+        h('button.btn.sm', { onclick: saveData }, '💾 Запиши данните'),
+        client ? h('button.btn.sm.danger', {
+          onclick: () => deleteWithConfirm(`„${client.name || 'Без име'}“ и запазените режими ще бъдат изтрити.`,
+            () => api.deleteNutritionClient(client.id), onClose),
+        }, 'Изтрий') : null,
+        h('button.btn.sm.ghost', { onclick: onClose }, 'Затвори'),
+      ],
+    }, form.el),
+    preview,
+    savedPlans(saved, {
+      show: (plan) => show(plan, c),
+      pdf: (n) => downloadNutritionPdf(person(c), n.plan),
+      pdfEn: (n) => downloadNutritionPdf(person(c), n.plan, { lang: 'en' }),
+      remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutritionClientPlan(client.id, n.id), () => onSaved(client)),
+    }));
 }

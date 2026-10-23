@@ -50,7 +50,7 @@ test('преди достигане на термин стандартите н�
   const rows = analyseMeasurements(patient, [{ date: '2026-08-22', weight: 1.4, height: 40 }]);
   assert.equal(rows[0].beforeTerm, true);
   assert.deepEqual(rows[0].assessments, {},
-    'няма персентили преди термин — там важат карти като Fenton/INTERGROWTH');
+    'няма перцентили преди термин — там важат карти като Fenton/INTERGROWTH');
 });
 
 test('недоносено дете се оценява по коригирана възраст', () => {
@@ -62,7 +62,7 @@ test('недоносено дете се оценява по коригиран�
   assert.ok(Math.abs(row.chronologicalMonths - 6.05) < 0.1);
   assert.ok(row.ageMonths < row.chronologicalMonths - 1.5);
 
-  // Същото тегло, оценено по хронологична възраст, би дало по-нисък персентил.
+  // Същото тегло, оценено по хронологична възраст, би дало по-нисък перцентил.
   const term = { sex: 'm', birthDate: '2026-03-03', birth: { gestWeeks: 40 } };
   const termRow = analyseMeasurements(term, [{ date: '2026-09-03', weight: 6.8, height: 63 }])[0];
   assert.ok(row.assessments.weight.z > termRow.assessments.weight.z,
@@ -90,7 +90,7 @@ function child(birthWeightZ, points, sex = 'm') {
   return { patient, analysed: analyseMeasurements(patient, measurements) };
 }
 
-test('спад с два персентилни интервала при нормално тегло при раждане се отчита', () => {
+test('спад с два перцентилни интервала при нормално тегло при раждане се отчита', () => {
   const { patient, analysed } = child(0, [[2, 0], [4, -0.4], [6, -1.5]]);
   const concerns = growthConcerns(patient, analysed);
   const f = concerns.find(c => c.type === 'weight_faltering');
@@ -107,7 +107,7 @@ test('лек спад при нормално тегло при раждане �
 });
 
 test('прагът е по-нисък при ниско тегло при раждане', () => {
-  // Тегло при раждане под 9-и персентил: тревога вече при един интервал.
+  // Тегло при раждане под 9-и перцентил: тревога вече при един интервал.
   const low = child(-1.6, [[2, -1.6], [4, -1.9], [6, -2.35]]);
   assert.ok(growthConcerns(low.patient, low.analysed).some(c => c.type === 'weight_faltering'));
 
@@ -116,13 +116,13 @@ test('прагът е по-нисък при ниско тегло при раж
   assert.ok(!growthConcerns(high.patient, high.analysed).some(c => c.type === 'weight_faltering'));
 });
 
-test('тегло под 2-ри персентил се отчита отделно', () => {
+test('тегло под 2-ри перцентил се отчита отделно', () => {
   const { patient, analysed } = child(-1.9, [[2, -2.1], [4, -2.2]]);
   const concerns = growthConcerns(patient, analysed);
   assert.ok(concerns.some(c => c.type === 'weight_below_2nd'));
 });
 
-test('пресичане на персентили при обиколката на главата се отчита', () => {
+test('пресичане на перцентили при обиколката на главата се отчита', () => {
   const birthDate = '2025-09-03';
   const patient = { sex: 'm', birthDate, birth: { gestWeeks: 40 } };
   const mk = (months, z) => ({

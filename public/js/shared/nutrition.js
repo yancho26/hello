@@ -614,7 +614,7 @@ function planFor(input) {
   const ctx = {
     prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
     sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
-    exclude, penalize, dislikes,
+    exclude, penalize, dislikes, youngChild: isChild && ct.years < 4,
   };
   const lowerCarb = diabetes || patternId === 'lowcarb';
   // При модела с малко въглехидрати нишестето не расте; при диабет расте умерено.
@@ -623,6 +623,11 @@ function planFor(input) {
   // Дете до 5 г.: млякото за деня е отделно „хранене“ с точно количество (HER 2019) — ястията са за останалата енергия.
   const milk = isChild ? childMilk(ct.years, prefs, !!input.breastfed) : null;
   const milkKcal = milk ? FOODS[milk.food].kcal * milk.ml / 100 : 0;
+  // Дете без запек: фибрите в менюто — около препоръката (EFSA 2017; 14 г/1000 kcal по DGA 2020),
+  // не двойно повече. Млякото е без фибри, затова границата е за енергията от ястията.
+  if (isChild && !dx.considered.some(c => /^K59/.test(c.code))) {
+    ctx.fiberCap = (Math.max(ct.fiber, (target * 14) / 1000) * 1000) / (target - milkKcal);
+  }
   const slots = milk
     ? [...MEAL_PLANS[mealsPerDay].map(s => ({ ...s, share: s.share * (1 - milkKcal / target) })),
       { id: 'milk', meal: 'milk', label: 'Мляко', share: milkKcal / target, time: '' }]
@@ -664,7 +669,9 @@ function planFor(input) {
       addOns: td.addOns.map(a => a.kind), kcal: td.kcal, kcalAdd: trainAdd(d), tips: trainingNutrition(td),
     };
   };
-  const dayFocus = (d) => [...dx.focus, ...(sync?.applied ? sync.days[d]?.focus || [] : [])];
+  // Дете до 4 г.: желязото най-често не стига (малко енергия, много мляко) — ястията с повече желязо напред.
+  const childIron = isChild && ct.years < 4 ? ['iron'] : [];
+  const dayFocus = (d) => [...dx.focus, ...childIron, ...(sync?.applied ? sync.days[d]?.focus || [] : [])];
   if (sync?.applied) {
     prefer.push(...sync.prefer);
     if (sync.irregular) warnings.push('Цикълът е нередовен — фазите в менюто са ориентировъчни.');
@@ -766,7 +773,11 @@ function planFor(input) {
 
   // Приготвянето с окончателните грамове на всяка порция.
   const options = [...meals.flatMap(m => m.options), ...(week || []).flatMap(d => d.meals.map(m => m.option))].filter(Boolean);
-  for (const o of options) o.method = o.fixed ? '' : renderMethod(o.template, o.items, { swaps: o.swaps });
+  for (const o of options) {
+    o.method = o.fixed ? '' : renderMethod(o.template, o.items, { swaps: o.swaps });
+    const cut = SCALE.small && !o.fixed ? chokeCut(o) : null;
+    if (cut) { o.cut = cut; o.method += ' ' + cutText(cut); }
+  }
   for (const o of options) delete o.template;
 
   const day = dayTotals(meals.map(m => m.options[0]));
@@ -840,6 +851,29 @@ function planFor(input) {
 
 /** Добавка в лутеалната и предменструалната фаза (kcal дневно). */
 export const CYCLE_KCAL = 100;
+
+/* Дете до 4 г.: кръглите и твърди храни се режат (AAP 2010) — указанието е в приготвянето. */
+const CUT_NAMES = {
+  cherry: ['чери доматите', 'cherry tomatoes'], grapes: ['гроздето', 'grapes'], olives: ['маслините', 'olives'],
+  quailegg: ['пъдпъдъчите яйца', 'quail eggs'], turkeysausage: ['колбаса', 'sausage'],
+};
+function chokeCut(o) {
+  const ids = new Set(o.items.map(it => it.food));
+  const quarter = ['grapes', 'olives', 'quailegg'].filter(id => ids.has(id));
+  if (/чери/i.test(o.name)) quarter.push('cherry');
+  const strips = ids.has('turkeysausage') ? ['turkeysausage'] : [];
+  return quarter.length || strips.length ? { quarter, strips } : null;
+}
+
+/** Указанието за рязане — на български или на английски. */
+export function cutText(cut, lang = 'bg') {
+  const en = lang === 'en';
+  const list = (ids) => ids.map(id => CUT_NAMES[id][en ? 1 : 0]).join(', ').replace(/, ([^,]*)$/, en ? ' and $1' : ' и $1');
+  const parts = [];
+  if (cut.quarter.length) parts.push(en ? `cut the ${list(cut.quarter)} into quarters` : `${list(cut.quarter)} — на четвъртинки`);
+  if (cut.strips.length) parts.push(en ? `cut the ${list(cut.strips)} into thin strips` : `${list(cut.strips)} — на тънки ивици`);
+  return en ? `For a child under 4: ${parts.join('; ')} (choking risk, AAP 2010).` : `За дете до 4 г.: ${parts.join('; ')} (задавяне, AAP 2010).`;
+}
 
 /** Ден от седмицата за дата — „Сряда“. */
 function weekdayOf(date) {
@@ -944,6 +978,9 @@ function cycleSyncFor(input, { start, days, stats, dx, target, floor, strength }
 
 /* ------------------------------- подбор на рецепти ------------------------------- */
 
+/* Ястия, които не се дават до 4 г. и с нарязване: замразените цели зърна грозде са твърди и кръгли (AAP 2010). */
+const NOT_UNDER_4 = new Set(['Замразено грозде на шишчета']);
+
 /** Рецептите за едно хранене, които стават за човека, подредени по подходящост. */
 function poolFor(kind, ctx, variant) {
   const collect = (c) => {
@@ -951,6 +988,7 @@ function poolFor(kind, ctx, variant) {
     RECIPES.forEach((r, i) => {
       if (!mealsOf(r).includes(kind)) return;
       if (c.sourcedOnly && !r.source) return;
+      if (c.youngChild && NOT_UNDER_4.has(r.name)) return;
       const items = substituted(r, c.prefs).items;
       if (excluded(items, c)) return;
       const tags = recipeTags({ ...r, items: items.map(it => [it.food, it.grams]) });
@@ -1113,8 +1151,11 @@ function score(r, items, tags, ctx) {
       if (tags.has('highprotein')) s += 3;
       break;
     default:
-      if (tags.has('fiber')) s += 1;
+      if (tags.has('fiber') && !ctx.fiberCap) s += 1;
   }
+  // Дете: много фибри пълнят, без да дават енергия, и намаляват усвояването на желязото —
+  // ястията с повече от горната граница на g/1000 kcal отстъпват.
+  if (ctx.fiberCap && t.kcal) s -= clampTo(((t.fiber / t.kcal) * 1000 / ctx.fiberCap - 1) * 4, 0, 4);
   if (ctx.goal === 'lose') {
     if (tags.has('highprotein')) s += 1;
     if (tags.has('fiber')) s += 1;
@@ -1531,6 +1572,7 @@ function microNotes(rows, { ctx, prefs, classes, pregnancy }) {
   // Източник е храна, която дава поне 10% от препоръката на порция.
   const rich = (k) => richIn(k, ctx, 5, row(k).ref * 0.1);
   if (row('sfa')?.status === 'high') out.push({ key: 'sfa', foods: [] });
+  if (ctx.youngChild && row('fiber')?.value > row('fiber').ref * 1.5) out.push({ key: 'fiber', foods: [] });
   if (low('mg')) out.push({ key: 'mg', foods: rich('mg') });
   if (low('k') && !classes.has('MRA') && !classes.has('FINERENONE')) out.push({ key: 'k', foods: rich('k') });
   if (low('vc')) out.push({ key: 'vc', foods: rich('vc') });
@@ -1546,7 +1588,9 @@ export function microNoteText(n, rows, { lang = 'bg', name = baseName } = {}) {
   const r = rows.find(x => x.key === n.key);
   const en = lang === 'en';
   const num = (v) => (en ? String(v) : String(v).replace('.', ','));
-  const foods = n.foods.map(name).join(en ? ', ' : ', ');
+  // Английските имена понякога са със запетая („pistachios, unsalted“) — тогава списъкът е с „;“.
+  const names = n.foods.map(name);
+  const foods = names.join(names.some(x => x.includes(',')) ? '; ' : ', ');
   const label = en ? MICRO_EN[n.key][0] : r.label;
   const unit = en ? MICRO_EN[n.key][1] : r.unit;
   const head = en ? `${label}: about ${num(r.value)} ${unit} a day; reference ${num(r.ref)} ${unit} (EFSA)`
@@ -1559,6 +1603,9 @@ export function microNoteText(n, rows, { lang = 'bg', name = baseName } = {}) {
       ? (en ? `${head}. Without fish the menu has almost no EPA and DHA; the body makes a little from ALA (walnuts, flaxseed, chia, rapeseed oil). An algal oil supplement is at the doctor's discretion.`
         : `${head}. Без риба менюто почти няма EPA и DHA — организмът ги прави в малко количество от ALA (орехи, ленено семе, чиа, рапично олио); добавка (масло от водорасли) — по преценка на лекаря.`)
       : (en ? `${head}. Oily fish once or twice a week: ${foods}.` : `${head}. Мазна риба 1–2 пъти седмично: ${foods}.`);
+    case 'fiber': return en
+      ? `${head}, which is a minimum. If a young child fills up quickly or gains weight poorly, swap some whole-grain foods and pulses for refined ones, which are less bulky.`
+      : `${head} — препоръката е долна граница. Ако малкото дете бързо се засища или наддава слабо, част от пълнозърнестите храни и бобовите се заменят с бели, които са по-малко обемни.`;
     case 'vd': return en
       ? `${head}; the reference assumes minimal sun exposure. The main source is the skin in sunlight${foods ? `; foods: ${foods}` : '; foods provide little'}. A supplement is at the doctor's discretion.`
       : `${head} — препоръката е при минимално слънце. Основният източник е кожата на слънце${foods ? `; от храните — ${foods}` : '; храните дават малко'}. Добавка — по преценка на лекаря.`;
@@ -1570,7 +1617,7 @@ export function microNoteText(n, rows, { lang = 'bg', name = baseName } = {}) {
 }
 const MICRO_RICH = { mg: 'магнезий', k: 'калий', vc: 'витамин C', fol: 'фолат', b12: 'B12' };
 const MICRO_EN = {
-  fiber: ['Fibre', 'g'], sfa: ['Saturated fat', 'g'], k: ['Potassium', 'mg', 'potassium'], ca: ['Calcium', 'mg'],
+  fiber: ['Fiber', 'g'], sfa: ['Saturated fat', 'g'], k: ['Potassium', 'mg', 'potassium'], ca: ['Calcium', 'mg'],
   mg: ['Magnesium', 'mg', 'magnesium'], fe: ['Iron', 'mg'], vc: ['Vitamin C', 'mg', 'vitamin C'], fol: ['Folate', 'µg', 'folate'],
   b12: ['Vitamin B12', 'µg', 'B12'], vd: ['Vitamin D', 'µg'], n3: ['Omega-3 (EPA and DHA)', 'mg'], ala: ['Omega-3 (ALA)', 'g'],
 };
