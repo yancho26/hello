@@ -221,6 +221,15 @@ export function translatePlan(plan) {
   })) : null;
   // Дете (версия 4.16): перцентилът — английско поредно число.
   if (plan.child) out.child = { ...out.child, percentile: percentileEn(plan.child.bmi?.percentile) };
+  // Текстовете, които режимът пише сам (версия 4.17), идват с английския си вариант; останалите — по речника.
+  const en = plan.advice?.en;
+  if (en) {
+    for (const k of ['prefer', 'limit', 'avoid', 'notes', 'warnings', 'clinician', 'weekly', 'habits', 'flavor', 'monitoring']) {
+      if (Array.isArray(plan[k])) out[k] = plan[k].map((s, i) => en[k]?.[i] ?? tr(s));
+    }
+    if (en.summary) out.summary = en.summary;
+    if (en.why) out.why = en.why;
+  }
   out.shopping = shoppingEn(plan.shopping);
   out.shoppingWeeks = plan.shoppingWeeks ? plan.shoppingWeeks.map(shoppingEn) : null;
   // Витамините и минералите (версия 4.15): имената и подсказките се изграждат наново на английски.

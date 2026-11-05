@@ -68,7 +68,7 @@ export function nutritionTab(ctx) {
     activity: ls.activity,
     pulse: lastPulse(p),
     defaultGoal: v.bmi >= 25 ? 'lose' : v.bmi && v.bmi < 18.5 ? 'gain' : 'maintain',
-    defaultPattern: conds.has('htn') ? 'dash' : 'mediterranean',
+    defaultPattern: 'auto',
     prefs: [...(ls.diet || []), ...allergy.prefs],
     prefsHint: allergy.matched.length ? `Отбелязани са според алергиите в досието: ${allergy.matched.join(', ')}.` : '',
     diagnoses: dossierDiagnoses(p),
@@ -236,7 +236,10 @@ export function planForm(cfg) {
   const target = numberInput({ name: 'targetWeight', min: 30, max: 350, value: last.targetWeight ?? '', placeholder: 'по желание' });
   const adjust = numberInput({ name: 'kcalAdjust', min: -600, max: 600, value: last.kcalAdjust || '', placeholder: 'напр. −150' });
   const targetHelp = h('div.row.tight', { style: { flexWrap: 'wrap', marginTop: '4px' } });
-  const pattern = select(Object.entries(PATTERNS).map(([k, x]) => ({ value: k, label: x.label, selected: k === (last.pattern || cfg.defaultPattern || 'mediterranean') })), { name: 'pattern' });
+  // „По заболяванията“ (версия 4.17): програмата избира модела и обяснява защо.
+  const chosenPattern = last.pattern || cfg.defaultPattern || 'auto';
+  const pattern = select([{ value: 'auto', label: 'по заболяванията (препоръчва се)', selected: chosenPattern === 'auto' || !PATTERNS[chosenPattern] },
+    ...Object.entries(PATTERNS).map(([k, x]) => ({ value: k, label: x.label, selected: k === chosenPattern }))], { name: 'pattern' });
   const patternHint = h('div.field-hint');
   const meals = select([3, 4, 5].map(n => ({ value: n, label: `${n} хранения`, selected: Number(last.mealsPerDay || 5) === n })), { name: 'mealsPerDay' });
   const days = select([
@@ -266,7 +269,7 @@ export function planForm(cfg) {
     const kcal = g === 'lose' ? PACES[pace.value].lose : g === 'gain' ? PACES[pace.value].gain : 0;
     paceHint.textContent = g === 'maintain' ? 'Енергията е равна на разхода.'
       : `${kcal > 0 ? '+' : ''}${kcal} kcal дневно — около ${dec(Math.abs(Math.round(kcal * 7 / 770) / 10))} кг седмично.`;
-    patternHint.textContent = PATTERNS[pattern.value].about;
+    patternHint.textContent = PATTERNS[pattern.value]?.about || 'Моделът се избира по заболяванията, бъбречната функция и възрастта; в режима е обяснено защо.';
     const opts = [];
     if (w > 30 && g === 'lose') opts.push([`−5% · ${Math.round(w * 0.95)} кг`, Math.round(w * 0.95)], [`−10% · ${Math.round(w * 0.9)} кг`, Math.round(w * 0.9)]);
     const h2 = Number(String(height.value).replace(',', '.'));
@@ -527,6 +530,32 @@ function projectionText(plan) {
   return parts.join(' · ');
 }
 
+/** Писмото на лекаря — режимът накратко (версия 4.17). */
+function letterBlock(plan) {
+  if (!plan.summary?.length) return null;
+  return h('div.nut-letter', null, h('h3', null, plan.child ? L('Накратко за режима на детето') : L('Накратко за Вашия режим')),
+    plan.summary.map(p => h('p', null, p)));
+}
+
+/** Защо този режим: моделът, всяко заболяване и възрастта (версия 4.17). */
+function whyBlock(plan) {
+  if (!plan.why?.length) return null;
+  const plain = (plan.diagnoses || []).filter(c => !c.label);
+  return h('div.nut-why', null, h('h3', null, L('Защо този режим')),
+    plan.why.map(w => h(`div.why-item.${w.kind}`, null,
+      h('div.why-head', null, (w.codes || []).map(c => h('span.dx-code', null, c)), h('strong', null, w.title)),
+      h('p', null, w.text),
+      w.src ? h('div.tiny.dim', null, L('Насока: ') + w.src) : null)),
+    plain.length ? h('p.small.dim', null, L('Взети предвид, без промени в храненето: ') + plain.map(c => `${c.code} ${c.name || ''}`.trim()).join('; ')) : null);
+}
+
+/** Бележките за лекаря — в екрана, не и в отчета за пациента (версия 4.17). */
+function clinicianBlock(plan) {
+  if (!plan.clinician?.length) return null;
+  return h('div.nut-clin', null, h('div.small', null, h('strong', null, L('За лекаря')), h('span.dim', null, L(' · не влиза в отчета за пациента'))),
+    h('ul', null, plan.clinician.map(t => h('li', null, t))));
+}
+
 /** Как е взета предвид всяка диагноза. */
 function diagnosesBlock(plan) {
   const dx = plan.diagnoses || [];
@@ -627,6 +656,8 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
         onSave ? h('button.btn.sm.primary', { onclick: onSave }, saveLabel) : null,
       ],
     },
+    clinicianBlock(plan),
+    letterBlock(plan),
     plan.warnings.length ? h('div.stack', { style: { gap: '6px', marginBottom: '12px' } }, plan.warnings.map(w => h('div.alert-strip.warn', null, w))) : null,
     h(`div.alert-strip.${plan.child && plan.child.bmi.status !== 'normal' ? 'warn' : 'info'}`, { style: { marginBottom: '12px' } }, projectionText(plan),
       plan.projection?.note ? h('div.small', { style: { fontWeight: 400 } }, plan.projection.note) : null),
@@ -642,9 +673,9 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
       t.iron ? tile(L('Желязо'), t.iron, L('мг'), L(`в менюто ≈${Math.round(minerals.fe)} мг`)) : null,
       t.calcium ? tile(L('Калций'), t.calcium, L('мг'), L(`в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`)) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,
-    plan.pattern ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, L(`Модел: ${plan.pattern.label}. `)), plan.pattern.about) : null,
+    plan.pattern && !plan.why ? h('p.small', { style: { margin: '8px 0 0' } }, h('strong', null, L(`Модел: ${plan.pattern.label}. `)), plan.pattern.about) : null,
     dislikes.length ? h('p.small', { style: { margin: '6px 0 0' } }, h('strong', null, L('Не яде: ')), dislikes.join(', ') + '.') : null,
-    diagnosesBlock(plan),
+    plan.why ? whyBlock(plan) : diagnosesBlock(plan),
     cyclePlanBlock(plan),
     microBlock(plan),
     plan.portions ? h('div.nut-cols', null,

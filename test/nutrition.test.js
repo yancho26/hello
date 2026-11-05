@@ -56,7 +56,7 @@ test('цел и темпо: дефицит 300/500/750, покачване, пр
   assert.ok(lose('fast').targets.kcal < lose('standard').targets.kcal, 'ИТМ 34,7 — по-бързо е разрешено');
   const fastLowBmi = nutritionPlan({ ...base, goal: 'lose', pace: 'fast', weight: 85 });
   assert.equal(fastLowBmi.input.pace, 'standard', 'при ИТМ под 30 — умерено');
-  assert.ok(fastLowBmi.warnings.some(w => /умерено/.test(w)));
+  assert.ok(fastLowBmi.clinician.some(w => /умерено/.test(w)));
   const keep = nutritionPlan({ ...base, goal: 'maintain' });
   assert.ok(Math.abs(keep.targets.kcal - tdee) <= 30, `поддържане ≈ разхода: ${keep.targets.kcal} / ${Math.round(tdee)}`);
   assert.equal(keep.projection.weeklyKg, 0);
@@ -80,7 +80,7 @@ test('целево тегло: срок и дата; обратна посока
   assert.deepEqual(p.projection.suggestions, [90, 86]);
   const wrong = nutritionPlan({ ...base, goal: 'lose', targetWeight: 100 });
   assert.equal(wrong.projection.targetWeight, null);
-  assert.ok(wrong.warnings.some(w => /не съответства/.test(w)));
+  assert.ok(wrong.clinician.some(w => /не съответства/.test(w)));
   const far = nutritionPlan({ ...base, goal: 'lose', targetWeight: 75 });
   assert.match(far.projection.note, /междинна цел/);
 });
@@ -106,7 +106,7 @@ test('хранителни модели и брой хранения', () => {
   const dash = nutritionPlan({ ...base, conditions: new Set(['htn']) });
   assert.equal(dash.pattern.id, 'dash', 'при хипертония по подразбиране DASH');
   const sglt = nutritionPlan({ ...base, pattern: 'lowcarb', goal: 'lose', sex: 'f', weight: 80, height: 160, classes: new Set(['SGLT2']) });
-  assert.ok(sglt.targets.carbs < 130 ? sglt.warnings.some(w => /кетоацидоза/.test(w)) : true);
+  assert.ok(sglt.targets.carbs < 130 ? sglt.clinician.some(w => /кетоацидоза/.test(w)) : true);
   for (const n of [3, 4, 5]) {
     const plan = nutritionPlan({ ...base, mealsPerDay: n });
     assert.equal(plan.meals.length, n);
@@ -139,7 +139,7 @@ test('ограничения и алергии се спазват в целия
   // От алергиите в досието.
   assert.deepEqual(allergyPreferences(['Орехи', 'риба', 'пеницилин']).prefs.sort(), ['noFish', 'noNuts']);
   const allergic = check([], ['nuts', 'fish', 'seafood'], { allergies: ['лешници', 'морски дарове'] });
-  assert.ok(allergic.notes.some(n => /алергиите в досието/.test(n)));
+  assert.ok(allergic.notes.some(n => /към които сте алергични: лешници, морски дарове/.test(n)));
   // Заболявания.
   const dm = nutritionPlan({ ...base, conditions: new Set(['dm2']), days: 7 });
   assert.ok(!hasFlag(dm, 'sweet'), 'при диабет — без сладки храни');

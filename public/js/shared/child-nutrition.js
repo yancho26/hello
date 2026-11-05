@@ -235,26 +235,31 @@ export function childMilk(years, prefs, breastfed = false) {
 
 /* Профилите по МКБ-10, чийто текст е подходящ и за деца; при другите се пазят само
  * ограниченията (без глутен, без лактоза, изключени храни) и нуждата от диетолог. */
-const CHILD_TEXT_CODES = /^K90\.0|^E73|^T78\.[01]|^Z91\.0|^L20|^E55|^K5[01]|^E7[04]|^F50|^D50/;
-
-/** Специфичните съвети за деца — вместо тези за възрастни. */
+/* Текстовете за деца по диагнозите — от версия 4.17 тук, защото текстовете за възрастни в
+ * diet-advice.js са написани към възрастния човек. */
 const CHILD_DX_TEXT = [
   { re: /^K59\.0/, prefer: ['Запек: балансирано хранене с достатъчно фибри (плодове, зеленчуци, пълнозърнести, бобови) и течности; самото хранене обикновено не стига — лечението е по указание на лекаря (NICE CG99).'] },
   { re: /^E10/, notes: ['Диабет тип 1: хранене като за връстниците, с броене на въглехидратите според инсулина (ISPAD 2022); подсладените напитки — само при хипогликемия.'] },
   { re: /^K21/, prefer: ['Рефлукс: по-малки порции; последното хранене 2–3 часа преди сън; мазни храни и газирани напитки — според оплакванията.'] },
+  { re: /^K90\.0/, notes: ['Цьолиакия: строго безглутеново хранене за цял живот — също и следи от глутен (общи тигани, панировка, сосове).'] },
+  { re: /^E73/, notes: ['Непоносимост към лактоза: до 12 г лактоза наведнъж (чаша мляко) обикновено се понася; киселото мляко и отлежалите сирена — също.'] },
+  { re: /^T78\.[01]|^Z91\.0/, clinician: ['Хранителна алергия: впишете конкретния алерген в „Алергии“ (ядки, риба, мляко, яйца, соя, глутен) — тогава менюто го изключва.'] },
+  { re: /^L20/, notes: ['Атопичен дерматит: без елиминационни диети само по резултат от алергологично изследване; храна се избягва само при доказана алергия (AAD 2014).',
+    'Рибено масло, витамин D и други добавки нямат достатъчно доказателства; пробиотици за лечение не се препоръчват (AAD 2014).'] },
+  { re: /^E55/, prefer: ['Витамин D: мазна риба, яйца, обогатени млечни; добавката — по назначение.'] },
+  { re: /^K5[01]/, notes: ['Болест на Крон/колит: в ремисия — разнообразно хранене; при активност или стеснения — с малко фибри и по указание на диетолог.'] },
+  { re: /^E7[04]/, warnings: ['Вродено нарушение на обмяната (фенилкетонурия, непоносимост към фруктоза и др.): нужен е специализиран режим — това меню не е приложимо.'] },
+  { re: /^F50/, clinician: ['Хранително разстройство: режимът се изготвя от специализиран екип; не давайте на пациента цифри за калории.'] },
 ];
 
 /**
- * Текстовете по диагнозите за дете: от профила по МКБ-10 — само при кодовете, чийто текст е
- * подходящ и за деца, плюс съветите за деца. Ограниченията и изключените храни от профилите
- * се прилагат отделно, както при възрастните. profileFor — от diet-icd.js.
+ * Текстовете по диагнозите за дете. Ограниченията и изключените храни от профилите по МКБ-10
+ * се прилагат отделно, както при възрастните.
  */
-export function childDiagnoses(codes, profileFor) {
-  const out = { prefer: [], limit: [], avoid: [], notes: [], warnings: [] };
+export function childDiagnoses(codes) {
+  const out = { prefer: [], limit: [], avoid: [], notes: [], warnings: [], clinician: [] };
   const add = (k, s) => { if (!out[k].includes(s)) out[k].push(s); };
   for (const c of codes) {
-    const pr = CHILD_TEXT_CODES.test(c) ? profileFor(c) : null;
-    for (const k of Object.keys(out)) for (const s of pr?.[k] || []) add(k, s);
     for (const t of CHILD_DX_TEXT.filter(x => x.re.test(c))) for (const k of Object.keys(out)) for (const s of t[k] || []) add(k, s);
   }
   return out;
@@ -287,80 +292,103 @@ export function childDrinks(years) {
 }
 
 /**
- * Правилата и съветите за детето. t — childTargets; prefs — ограниченията (Set);
- * breastfed — кърменето продължава (до 2 г. и след това, докато майката и детето желаят).
+ * Правилата и съветите за детето — от версия 4.17 написани към родителя, като двойки [bg, en].
+ * t — childTargets; prefs — ограниченията (Set); breastfed — кърменето продължава.
+ * clinician — числата за ИТМ и насочването: за лекаря, не и в отчета за родителя.
  */
-export function childGuidance(t, { sex, prefs, breastfed = false }) {
+export function childGuidance(t, { prefs, breastfed = false }) {
   const y = t.years;
   const prefer = [];
   const limit = [];
   const avoid = [];
   const notes = [];
   const warnings = [];
+  const clinician = [];
   const dairyFree = prefs.has('noDairy') || prefs.has('vegan');
+  const c = (v) => [dec(v), String(v)];
+  const [caB, caE] = c(t.calcium);
 
-  prefer.push('Зеленчуци и плодове на всяко хранене; цели плодове вместо сок (ESPGHAN 2017).');
-  prefer.push('Пълнозърнести храни, бобови, яйца; риба 1–2 пъти седмично — видове с малко живак (скумрия, сьомга, пъстърва, хек).');
-  if (y < 4) prefer.push('До 3 г. мазнините са 35–40% от енергията (EFSA): зехтин, олио или масло в ястията, пълномаслени млечни до 2 г.');
+  prefer.push(['Предлагайте зеленчуци и плодове на всяко хранене. Целите плодове са по-добри от сока.', 'Offer vegetables and fruit at every meal. Whole fruit is better than juice.']);
+  prefer.push(['Всеки ден пълнозърнести храни, а често и бобови и яйца.', 'Whole grains every day, and pulses and eggs often.']);
+  if (y < 4) prefer.push(['До 3 години детето има нужда от повече мазнини, 35–40% от енергията: слагайте зехтин, олио или масло в ястията.', 'Until age 3 your child needs more fat, 35–40% of energy: add olive oil, vegetable oil or butter to dishes.']);
   if (!dairyFree) {
     prefer.push(y < 2
-      ? `Мляко — пълномаслено, ${breastfed ? 'заедно с кърмата — според това колко суче' : 'около 470–710 мл дневно'}; кисело мляко и сирене — за калция (${t.calcium} мг дневно, EFSA).`
+      ? (breastfed
+        ? [`Пълномаслено мляко, кисело мляко и сирене за калция (${caB} мг на ден), заедно с кърмата, колкото детето суче.`, `Full-fat milk, yogurt and cheese for calcium (${caE} mg a day), alongside breastfeeding as much as your child wants.`]
+        : [`Пълномаслено мляко, около 470–710 мл на ден, и кисело мляко и сирене за калция (${caB} мг на ден).`, `Full-fat milk, about 470–710 ml a day, plus yogurt and cheese for calcium (${caE} mg a day).`])
       : y < 6
-        ? `Мляко с понижена масленост — до ${y < 4 ? '470' : '590'} мл дневно (HER 2019); кисело мляко и сирене — за калция (${t.calcium} мг дневно, EFSA).`
-        : `Млечни продукти всеки ден — мляко, кисело мляко, сирене — за калция: ${t.calcium} мг дневно (EFSA).`);
+        ? [`Мляко с понижена масленост до ${y < 4 ? '470' : '590'} мл на ден и кисело мляко и сирене за калция (${caB} мг на ден).`, `Reduced-fat milk up to ${y < 4 ? '470' : '590'} ml a day, plus yogurt and cheese for calcium (${caE} mg a day).`]
+        : [`Млечни продукти всеки ден (мляко, кисело мляко, сирене) за калция: ${caB} мг на ден.`, `Dairy every day (milk, yogurt, cheese) for calcium: ${caE} mg a day.`]);
   }
+  const [flB, flE] = c(r1(t.fluids / 1000));
   prefer.push(y < 6
-    ? 'Вода — основната напитка; млякото и водата са напитките за всеки ден (HER 2019).'
-    : `Вода — основната напитка: около ${dec(r1(t.fluids / 1000))} л от напитки дневно, повече при спорт и в жега (EFSA).`);
-  if (breastfed && y < 3) prefer.push('Кърменето продължава до 2 г. и след това, докато майката и детето желаят (СЗО, AAP 2022).');
+    ? ['Водата е основната напитка; за всеки ден са само водата и млякото.', 'Water is the main drink; water and milk are the only everyday drinks.']
+    : [`Водата е основната напитка: около ${flB} л на ден, повече при спорт и в жега.`, `Water is the main drink: about ${flE} l a day, more with sport and in hot weather.`]);
+  if (breastfed && y < 3) prefer.push(['Кърменето може да продължи до 2 години и след това, докато Вие и детето желаете.', 'Breastfeeding can continue to age 2 and beyond, for as long as you and your child wish.']);
 
-  limit.push(`Сол до ${dec(t.salt)} г дневно (EFSA 2019: натрий ${dec(t.sodium)} г) — без досоляване; внимание с хляба, сиренето, колбасите, чипса и готовите храни.`);
+  const [saB, saE] = c(t.salt);
+  limit.push([`Сол до ${saB} г на ден. Не досолявайте храната на детето и внимавайте с хляба, сиренето, колбасите, чипса и готовите храни.`,
+    `Salt up to ${saE} g a day. Do not add salt to your child’s food, and watch out for bread, cheese, cured meats, crisps and ready meals.`]);
   limit.push(y < 2
-    ? 'Захар: до 2 г. — колкото е възможно по-малко свободни захари (ESPGHAN 2017); в менюто няма мед и добавена захар.'
-    : `Свободни захари под ${t.sugarMax} г дневно (5% от енергията, ESPGHAN 2017): сладкиши, бонбони, подсладени напитки и млечни продукти, сокове. Сладкото — с основно хранене, не между храненията.`);
-  if (y < 6) limit.push(`Плодов сок 100% — до ${y < 4 ? '120' : '120–180'} мл дневно и само ако детето не яде достатъчно плодове (HER 2019).`);
-  limit.push('Колбаси, кренвирши, наденици, чипс и пакетирани закуски — рядко.');
+    ? ['До 2 години е най-добре да няма добавена захар; в менюто няма мед и захар.', 'Until age 2 it is best to have no added sugar; the menu has no honey or sugar.']
+    : [`Захар: до ${t.sugarMax} г на ден. Сладкото давайте след основно хранене, не между храненията; броят се и подсладените млечни продукти и сокът.`,
+      `Sugar: up to ${t.sugarMax} g a day. Give sweets after a main meal, not between meals; sweetened dairy and juice count too.`]);
+  if (y < 6) limit.push([`Плодов сок 100%: до ${y < 4 ? '120' : '120–180'} мл на ден и само ако детето не яде достатъчно плодове.`, `100% fruit juice: up to ${y < 4 ? '120' : '120–180'} ml a day, and only if your child does not eat enough fruit.`]);
+  limit.push(['Колбаси, кренвирши, чипс и пакетирани закуски: рядко.', 'Sausages, hot dogs, crisps and packaged snacks: rarely.']);
 
-  avoid.push('Подсладени и газирани напитки, напитки с подсладители, енергийни напитки, кафе и чай с кофеин (HER 2019, ESPGHAN 2017).');
-  if (y < 6 && !dairyFree) avoid.push('Растителни напитки (овесена, оризова, бадемова) вместо мляко, ароматизирано мляко и „мляко за малки деца“ — освен по медицинска причина (HER 2019).');
-  if (y < 4) avoid.push('Задавяне (най-голям риск до 3 г., AAP 2010): цели ядки и семки, пуканки, твърди бонбони — не се дават; гроздето и чери доматите — на четвъртинки; морковите и ябълките — настъргани или сварени; кренвиршите — на тънки ивици. Ядките — смлени или като паста.');
-  avoid.push('Сурово или недопечено месо, риба и яйца; непастьоризирано мляко; риба меч, акула и прясна риба тон (много живак).');
+  avoid.push(['Подсладени и газирани напитки, напитки с подсладители, енергийни напитки, кафе и чай с кофеин.', 'Sweetened and fizzy drinks, drinks with sweeteners, energy drinks, coffee and caffeinated tea.']);
+  if (y < 6 && !dairyFree) avoid.push(['Растителни напитки вместо мляко, ароматизирано мляко и „мляко за малки деца“, освен ако лекарят не ги е препоръчал.', 'Plant drinks instead of milk, flavored milk and toddler milks, unless a doctor has recommended them.']);
+  if (y < 4) {
+    avoid.push(['До 4 години пазете детето от задавяне: не давайте цели ядки и семки, пуканки и твърди бонбони. Гроздето и чери доматите режете на четвъртинки, морковите и ябълките настъргайте или сварете, а кренвиршите режете на тънки ивици. Ядките давайте смлени или като паста.',
+      'Until age 4, protect your child from choking: no whole nuts or seeds, popcorn or hard sweets. Cut grapes and cherry tomatoes into quarters, grate or cook carrots and apples, and cut hot dogs into thin strips. Give nuts ground or as a paste.']);
+  }
+  avoid.push(['Сурово или недопечено месо, риба и яйца, непастьоризирано мляко, риба меч, акула и прясна риба тон.', 'Raw or undercooked meat, fish and eggs, unpasteurized milk, swordfish, shark and fresh tuna.']);
 
-  if (dairyFree && y < 6) warnings.push('Без мляко и млечни при малко дете: заместителят (обогатен с калций и витамин D) се избира с лекар или диетолог (HER 2019); проследявайте растежа.');
-  if (prefs.has('vegan')) warnings.push('Веганско хранене при дете: само с педиатричен диетолог — витамин B12 като добавка задължително; внимание с желязото, калция, йода, витамин D и омега-3; проследяване на растежа (ESPGHAN 2025).');
-  else if (prefs.has('vegetarian')) notes.push('Вегетарианско хранене: желязо от бобови, яйца и пълнозърнести — заедно с витамин C; B12 — от млечни продукти и яйца.');
+  if (dairyFree && y < 6) {
+    warnings.push(['Без мляко малкото дете има нужда от заместител, обогатен с калций и витамин D. Изберете го заедно с мен или с диетолог; растежът ще се следи по-често.',
+      'Without milk, a young child needs a substitute fortified with calcium and vitamin D. Choose it with me or a dietitian; growth will be checked more often.']);
+  }
+  if (prefs.has('vegan')) {
+    warnings.push(['Веганско хранене при дете се прави само с педиатричен диетолог. Витамин B12 като добавка е задължителен, а желязото, калцият, йодът, витамин D, омега-3 и растежът трябва да се следят.',
+      'A vegan diet for a child should only be followed with a pediatric dietitian. A vitamin B12 supplement is essential, and iron, calcium, iodine, vitamin D, omega-3 and growth all need monitoring.']);
+  } else if (prefs.has('vegetarian')) {
+    notes.push(['При вегетарианско хранене желязото идва от бобови, яйца и пълнозърнести храни, по-добре заедно с витамин C, а витамин B12 от млечните продукти и яйцата.',
+      'On a vegetarian diet, iron comes from pulses, eggs and whole grains, ideally with vitamin C, and vitamin B12 from dairy and eggs.']);
+  }
 
-  // Тегло за възрастта.
+  // Тегло за възрастта — числата са за лекаря; обяснението за родителя е в „Защо този режим“.
   const b = t.bmi;
   if (b.status === 'severeThin' || b.status === 'thin') {
-    warnings.push(`ИТМ за възрастта под ${b.status === 'severeThin' ? '−3' : '−2'} SD (${b.label} по СЗО): изяснете причината и проследявайте растежа отблизо${b.status === 'severeThin' ? '; насочете към специалист' : ''}. Енергията е изчислена за теглото при медианния ИТМ — то е над сегашното.`);
+    clinician.push(`ИТМ за възрастта под ${b.status === 'severeThin' ? '−3' : '−2'} SD (${b.label} по СЗО): изяснете причината и проследявайте растежа отблизо${b.status === 'severeThin' ? '; насочете към специалист' : ''}. Енергията е изчислена за теглото при медианния ИТМ — то е над сегашното.`);
   }
   if (b.status === 'over' || b.status === 'obese') {
-    warnings.push(`${b.status === 'obese' ? 'Затлъстяване' : 'Наднормено тегло'} по СЗО (ИТМ за възрастта над ${b.status === 'obese' ? (t.years < 5 ? '+3' : '+2') : (t.years < 5 ? '+2' : '+1')} SD): без ограничителни диети — промени за цялото семейство в храненето, движението, съня и екраните. Енергията е изчислена за коригирано тегло (${dec(t.weightUsed)} кг), затова е малко под разхода при сегашното тегло.`);
-    if (b.status === 'obese') warnings.push('AAP 2023: при затлъстяване — интензивна семейна програма за хранене и начин на живот, поне 26 часа за 3–12 месеца; от 12 г. — и лекарства по преценка на специалист.');
+    clinician.push(`${b.status === 'obese' ? 'Затлъстяване' : 'Наднормено тегло'} по СЗО (ИТМ за възрастта над ${b.status === 'obese' ? (t.years < 5 ? '+3' : '+2') : (t.years < 5 ? '+2' : '+1')} SD): без ограничителни диети — промени за цялото семейство в храненето, движението, съня и екраните. Енергията е изчислена за коригирано тегло (${dec(t.weightUsed)} кг), затова е малко под разхода при сегашното тегло.`);
+    if (b.status === 'obese') clinician.push('AAP 2023: при затлъстяване — интензивна семейна програма за хранене и начин на живот, поне 26 часа за 3–12 месеца; от 12 г. — и лекарства по преценка на специалист.');
   }
-  if (b.status === 'risk') notes.push('ИТМ за възрастта между +1 и +2 SD — риск от наднормено тегло (СЗО): следете кривата на всеки преглед.');
+  if (b.status === 'risk') notes.push(['ИТМ за възрастта е между +1 и +2 SD, тоест има риск от наднормено тегло. Ще следим кривата на всеки преглед.', 'BMI-for-age is between +1 and +2 SD, which means a risk of overweight. We will follow the curve at every check-up.']);
 
   const habits = [
-    'Родителят решава какво, кога и къде се яде; детето — дали и колко да изяде. Без „изяж всичко“ — децата сами усещат глада и ситостта.',
-    '3 основни хранения и 1–2 закуски в сходни часове; без похапване между тях.',
-    'Семейни хранения на масата, без екрани; храната не е награда или наказание.',
-    'Нова храна се предлага многократно и без натиск — често са нужни 8–15 опита; детето вижда, че възрастните я ядат.',
-    y < 3 ? 'Детето се храни само с лъжица и с пръсти — бъркотията е част от ученето.' : 'Детето помага при пазаруването и готвенето — така опитва по-смело нови храни.',
+    ['Вие решавате какво, кога и къде се яде, а детето решава дали и колко да изяде. Не го карайте да „изяде всичко“: децата сами усещат глада и ситостта.',
+      'You decide what, when and where food is eaten, and your child decides whether and how much to eat. Do not make them clear the plate: children sense hunger and fullness themselves.'],
+    ['Три основни хранения и 1–2 закуски в сходни часове, без похапване между тях.', 'Three main meals and 1–2 snacks at similar times, without grazing in between.'],
+    ['Хранете се заедно на масата, без екрани. Храната не е награда или наказание.', 'Eat together at the table, without screens. Food is not a reward or a punishment.'],
+    ['Предлагайте новата храна многократно и без натиск: често са нужни 8–15 опита, а детето се учи, като вижда, че Вие я ядете.', 'Offer a new food many times without pressure: it often takes 8–15 tries, and children learn by seeing you eat it.'],
+    y < 3 ? ['Оставете детето да се храни само с лъжица и с пръсти: бъркотията е част от ученето.', 'Let your child feed themselves with a spoon and fingers: the mess is part of learning.']
+      : ['Включете детето в пазаруването и готвенето: така опитва по-смело нови храни.', 'Involve your child in shopping and cooking: they will try new foods more readily.'],
   ];
   const monitoring = [
-    'Ръст и тегло — на профилактичните прегледи; ИТМ за възрастта се следи по кривите на СЗО (раздел „Растеж“).',
-    'Целта не е определено тегло, а детето да расте по своята крива.',
+    ['Ръстът и теглото се мерят на профилактичните прегледи, а ИТМ за възрастта се следи по кривите на СЗО.', 'Height and weight are measured at check-ups, and BMI-for-age is followed on the WHO charts.'],
+    ['Целта не е определено тегло, а детето да расте по своята крива.', 'The aim is not a particular weight but for your child to grow along their own curve.'],
   ];
-  if (b.status === 'over' || b.status === 'obese') monitoring.push('При наднормено тегло: ИТМ за възрастта да намалява бавно — теглото да расте по-бавно от ръста; проверка на 3 месеца.');
+  if (b.status === 'over' || b.status === 'obese') monitoring.push(['При наднормено тегло целта е теглото да расте по-бавно от ръста. Ще проверим след 3 месеца.', 'With excess weight, the aim is for weight to rise more slowly than height. We will check again in 3 months.']);
   const weekly = [
-    !prefs.has('vegetarian') && !prefs.has('noFish') ? 'Риба 1–2 пъти седмично, едното — мазна (скумрия, сьомга, пъстърва).' : null,
-    'Бобови поне 2–3 пъти седмично: леща, боб, нахут, грах.',
-    !prefs.has('vegetarian') && !prefs.has('noRedMeat') ? 'Червено месо до 2 пъти седмично — постно, за желязото; колбаси — по изключение.' : null,
-    !prefs.has('noEgg') && !prefs.has('vegan') ? 'Яйца — няколко пъти седмично, добре сварени.' : null,
-    y < 2 ? 'Сладкиш — не се предлага.' : 'Сладкиш — рядко, в малка порция, след основно хранене.',
+    !prefs.has('vegetarian') && !prefs.has('noFish') ? ['Риба 1–2 пъти седмично, едната мазна: скумрия, сьомга или пъстърва.', 'Fish once or twice a week, one of them oily: mackerel, salmon or trout.'] : null,
+    ['Бобови поне 2–3 пъти седмично: леща, боб, нахут или грах.', 'Pulses at least 2–3 times a week: lentils, beans, chickpeas or peas.'],
+    !prefs.has('vegetarian') && !prefs.has('noRedMeat') ? ['Червено месо до 2 пъти седмично, постно, заради желязото; колбаси по изключение.', 'Red meat up to twice a week, lean, for iron; cured meats only as an exception.'] : null,
+    !prefs.has('noEgg') && !prefs.has('vegan') ? ['Яйца няколко пъти седмично, добре сварени.', 'Eggs several times a week, well cooked.'] : null,
+    y < 2 ? ['Сладкиш не се предлага.', 'No cakes or sweets.'] : ['Сладкиш рядко, в малка порция и след основно хранене.', 'Cake or sweets rarely, in a small portion and after a main meal.'],
   ].filter(Boolean);
-  return { prefer, limit, avoid, notes, warnings, habits, monitoring, weekly, drinks: childDrinks(y) };
+  return { prefer, limit, avoid, notes, warnings, clinician, habits, monitoring, weekly, drinks: childDrinks(y) };
 }
 
 /** Кратко описание на енергията — за бележките и PDF. */

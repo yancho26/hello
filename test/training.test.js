@@ -127,7 +127,7 @@ test('тренировки и хранене: енергия по дни, бел
   const p = nutritionPlan({ ...base, days: 7, training });
   assert.ok(p.flags.training && p.training.days.length === 28);
   assert.equal(p.energy.activity, 'moderate', 'активността — по плана');
-  assert.ok(p.notes.some(n => /по тренировъчния план/.test(n)));
+  assert.ok(p.clinician.some(n => /по тренировъчния план/.test(n)));
   assert.ok(p.targets.proteinPerKg >= 1.4, 'цел „сила“ — повече белтък');
   const train = p.week.filter(d => d.training.sessions.some(s => !s.extra));
   const rest = p.week.filter(d => !d.training.sessions.length);

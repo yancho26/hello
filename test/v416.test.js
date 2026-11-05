@@ -133,7 +133,7 @@ test('4.16: храните по възрастта — пълномаслено 
   // При алергия към мляко няма мляко за деня, а предупреждението е за заместителя.
   const noDairy = kid('m', 30, 13, 91, { allergies: ['краве мляко'] });
   assert.ok(!noDairy.meals.some(m => m.meal === 'milk'));
-  assert.ok(noDairy.warnings.some(w => /заместителят/.test(w)));
+  assert.ok(noDairy.warnings.some(w => /заместител, обогатен с калций/.test(w)));
 });
 
 test('4.16: млякото за деня до 5 г. (HER 2019) — отделно хранене с точно количество', () => {
@@ -187,11 +187,14 @@ test('4.16: малко дете — желязото близо до препо�
 test('4.16: наднормено тегло и поднормено — предупрежденията и енергията', () => {
   const obese = kid('m', 108, 45, 140);
   assert.equal(obese.child.bmi.status, 'obese');
-  assert.ok(obese.warnings.some(w => /без ограничителни диети/.test(w)));
-  assert.ok(obese.warnings.some(w => /AAP 2023/.test(w)));
+  // От версия 4.17 числата за ИТМ са за лекаря, а родителят чете обяснението в „Защо този режим“.
+  assert.ok(obese.clinician.some(w => /без ограничителни диети/.test(w)));
+  assert.ok(obese.clinician.some(w => /AAP 2023/.test(w)));
+  assert.ok(obese.why.some(w => w.key === 'childWeight' && /не се правят ограничителни диети/.test(w.text)));
   assert.ok(obese.monitoring.some(m => /по-бавно от ръста/.test(m)));
   const thin = kid('f', 120, 24, 140);
-  assert.ok(thin.warnings.some(w => /медианния ИТМ/.test(w)));
+  assert.ok(thin.clinician.some(w => /медианния ИТМ/.test(w)));
+  assert.ok(thin.why.some(w => w.key === 'childWeight' && /под нормата/.test(w.text)));
 });
 
 test('4.16: диагнозите при дете — ограниченията остават, съветите за възрастни — не', () => {

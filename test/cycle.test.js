@@ -209,7 +209,8 @@ test('желязо и калций: цели по EFSA, бележка при н
   // Липса на менструация при ИТМ под 25 — без отслабване.
   const am = nutritionPlan({ ...woman, goal: 'lose', weight: 64, cycle: { periods: starts('2026-05-01') } });
   assert.equal(am.input.goal, 'maintain');
-  assert.ok(am.warnings.some(w => /Endocrine Society 2017/.test(w)));
+  assert.ok(am.clinician.some(w => /Endocrine Society 2017/.test(w)), 'бележката за лекаря');
+  assert.ok(am.warnings.some(w => /Менструацията Ви липсва/.test(w)), 'и обяснението за пациента');
   const amDx = nutritionPlan({ ...woman, goal: 'lose', weight: 64, diagnoses: [{ code: 'N91.1' }] });
   assert.equal(amDx.input.goal, 'maintain');
   // При затлъстяване отслабването остава.
@@ -220,7 +221,8 @@ test('МКБ-10: обилна менструация, ПМС, дисменоре
   const dx = dietProfiles([{ code: 'N92.0' }, { code: 'N94.3' }, { code: 'N94.6' }, { code: 'N95.1' }, { code: 'N91.2' }]);
   assert.ok(dx.focus.has('iron') && dx.focus.has('calcium'));
   assert.ok(dx.menopause && dx.amenorrhea);
-  assert.ok(dx.notes.some(n => /Cochrane 2016/.test(n)));
+  assert.ok(dx.keys.has('dysmenorrhea'));
+  assert.ok(nutritionPlan({ ...woman, diagnoses: [{ code: 'N94.6' }] }).why.some(w => w.src === 'Cochrane 2016'));
   assert.ok(dx.considered.every(c => c.label), 'всички кодове имат профил');
   assert.ok(dietProfiles([{ code: 'D50.9' }]).focus.has('iron'));
   // Акцентът на желязото важи всеки ден.

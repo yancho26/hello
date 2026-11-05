@@ -107,7 +107,7 @@ test('GLP-1 агонист: белтък поне 1,2 г/кг при отсла�
   const p = nutritionPlan({ ...base, goal: 'lose', classes: new Set(['GLP1']), mealsPerDay: 3 });
   assert.ok(p.targets.proteinPerKg >= 1.2);
   assert.match(p.targets.proteinNote, /ACLM\/ASN\/OMA\/TOS 2025/);
-  assert.ok(p.prefer.some(t => /по-малки и по-чести хранения/.test(t)));
+  assert.ok(p.prefer.some(t => /^По-малки и по-чести хранения/.test(t)));
   assert.ok(p.notes.some(t => /4 или 5 по-малки хранения/.test(t)));
   assert.equal(p.flags.glp1, true);
   const no = nutritionPlan({ ...base, goal: 'lose' });
@@ -159,7 +159,7 @@ test('прогноза на теглото: забавя се с времето 
   const far = nutritionPlan({ ...m, goal: 'lose', targetWeight: 70 });
   assert.equal(far.projection.weeks, null);
   assert.ok(far.projection.plateau > 70);
-  assert.ok(far.notes.some(n => /установява около/.test(n)));
+  assert.ok(far.notes.some(n => /ще се установи около/.test(n)));
   assert.match(far.projection.note, /междинна цел/);
   // Поддържане — без крива.
   assert.equal(nutritionPlan({ ...m, goal: 'maintain' }).projection.curve, null);
@@ -196,7 +196,7 @@ test('напредък по режима: правилата за контрол
   const next = nutritionPlan({ ...m, weight: 94.6, goal: 'lose', kcalAdjust: slow.adjust });
   assert.equal(next.input.kcalAdjust, -150);
   assert.ok(next.targets.kcal < p.targets.kcal - 100);
-  assert.ok(next.notes.some(n => /коригирана с −150 kcal/.test(n)));
+  assert.ok(next.notes.some(n => /намалена с 150 kcal на ден/.test(n)));
   // Не под долната граница.
   const low = nutritionPlan({ sex: 'f', age: 60, weight: 68, height: 152, activity: 'sedentary', goal: 'lose', kcalAdjust: -600 });
   assert.ok(low.targets.kcal >= 1200);

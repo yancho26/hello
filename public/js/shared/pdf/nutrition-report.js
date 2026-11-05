@@ -41,6 +41,7 @@ const PALETTE = [C.brand, C.teal, C.coral, C.sky, '#d39b12', C.rose, C.green, C.
 const SHOP_COLOR = { veg: C.green, fruit: C.coral, grain: '#b8860b', legume: C.amber, protein: C.rose, dairy: C.sky, nuts: '#8d6e63', fat: C.teal, other: C.slate };
 const SECTION = {
   goals: { color: C.brand, soft: C.brandSoft, icon: '◎' },
+  why: { color: C.sky, soft: C.skySoft, icon: '◆' },
   guide: { color: C.green, soft: C.greenSoft, icon: '✓' },
   cycle: { color: C.rose, soft: C.roseSoft, icon: '●' },
   training: { color: C.coral, soft: C.coralSoft, icon: '▲' },
@@ -85,6 +86,7 @@ function report({ plan, person = {}, practice = {}, doctor = null, fonts, versio
   } else {
     flow.newPage({ first: true });
     cover(ctx);
+    letter(ctx);
     targets(ctx);
     guidance(ctx);
     if (plan.cycle) cycleBlock(ctx);
@@ -271,6 +273,7 @@ function targets(ctx) {
   for (const w of plan.warnings || []) noteBox(ctx, [{ text: '! ', font: 'bold', color: C.red }, { text: w }], { bg: C.redSoft, bar: C.red });
   projectionChart(ctx);
   flow.space(4);
+  whySection(ctx);
   heading(ctx, 'goals', ui('Дневни цели'), plan.child
     ? ui('Енергия по EFSA 2013 (покой по Henry 2005 × PAL × 1,01 за растежа); белтък, фибри, вода, витамини и минерали — по EFSA за възрастта; сол — EFSA 2019; захари — ESPGHAN 2017.')
     : ui('Енергия по Mifflin–St Jeor с коефициент за активност; белтък, мазнини, фибри, сол и течности по EFSA, СЗО и насоките за заболяванията.'));
@@ -375,19 +378,84 @@ function microTable(ctx) {
   flow.text(ui('Препоръки за възрастни по EFSA 2017; съставът на храните — по USDA FoodData Central. Растителните напитки и кисели млека са без витамините, добавени от производителя.'), { size: 7, color: C.ink3 });
 }
 
+/* ------------------------- писмото и обясненията (версия 4.17) ------------------------- */
+
+/** Писмото на лекаря: режимът накратко, с подпис и дата. */
+function letter(ctx) {
+  const { doc, flow, plan, doctor, date } = ctx;
+  if (!plan.summary?.length) return;
+  const w = flow.width - 34;
+  const title = textBlock(doc, [{ text: plan.child ? ui('Накратко за режима на детето') : ui('Накратко за Вашия режим'), font: 'bold', color: C.brandDark }], w, { size: 11 });
+  const paras = plan.summary.map(p => textBlock(doc, p, w, { size: 9.2, color: C.ink, lh: 1.45 }));
+  const sign = doctor?.name ? textBlock(doc, [{ text: doctor.name, font: 'semibold', color: C.ink2 }, { text: `  ·  ${fd(date)}`, color: C.ink3 }], w, { size: 8.4 }) : null;
+  const h = 14 + title.h + 6 + paras.reduce((sum, p) => sum + p.h + 6, 0) + (sign ? sign.h + 2 : 0) + 8;
+  flow.add({
+    h,
+    draw: (page, x, y) => {
+      page.rect(x, y, flow.width, h, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 10 });
+      page.rect(x, y, 4, h, { fill: C.brand, radius: [10, 0, 0, 10] });
+      let yy = y + 13;
+      title.draw(page, x + 18, yy);
+      yy += title.h + 6;
+      for (const p of paras) { p.draw(page, x + 18, yy); yy += p.h + 6; }
+      if (sign) sign.draw(page, x + 18, yy);
+    },
+  }, { gap: 10 });
+}
+
+/** Защо този режим: моделът, всяко заболяване и възрастта — с насоката под всяко. */
+function whySection(ctx) {
+  const { doc, flow, plan } = ctx;
+  const items = plan.why || [];
+  if (!items.length) return;
+  heading(ctx, 'why', ui('Защо този режим'), null, { newPage: flow.room < 220 });
+  const w = flow.width;
+  const inner = w - 28;
+  const COLOR = { pattern: C.green, age: C.sky, dx: C.brand, cond: C.brand };
+  for (const it of items) {
+    const codes = it.codes || [];
+    const chipsW = codes.reduce((sum, c) => sum + chipWidth(doc, c, { size: 7 }) + 4, 0);
+    const title = textBlock(doc, [{ text: it.title || '', font: 'bold', color: C.ink }], inner - chipsW, { size: 9.4 });
+    const body = textBlock(doc, it.text || '', inner, { size: 8.7, color: C.ink2, lh: 1.42 });
+    const src = it.src ? textBlock(doc, [{ text: ui('Насока: '), font: 'semibold', color: C.ink3 }, { text: it.src, color: C.ink3 }], inner, { size: 7 }) : null;
+    const head = Math.max(title.h, codes.length ? 14 : 0);
+    const h = 9 + head + 4 + body.h + (src ? src.h + 2 : 0) + 7;
+    flow.add({
+      h,
+      draw: (page, x, y) => {
+        page.rect(x, y, w, h, { fill: C.white, stroke: C.line, lineWidth: 0.6, radius: 8 });
+        page.rect(x, y, 4, h, { fill: COLOR[it.kind] || C.brand, radius: [8, 0, 0, 8] });
+        let cx = x + 14;
+        for (const c of codes) cx += chip(page, doc, c, cx, y + 7, { size: 7, fg: C.brandDark, bg: C.brandSoft }) + 4;
+        title.draw(page, cx + (codes.length ? 2 : 0), y + 9);
+        const by = y + 9 + head + 4;
+        body.draw(page, x + 14, by);
+        if (src) src.draw(page, x + 14, by + body.h + 2);
+      },
+    }, { gap: 6 });
+  }
+  // Диагнозите без промени в храненето — да е ясно, че са взети предвид.
+  const plain = (plan.diagnoses || []).filter(c => !c.label);
+  if (plain.length) {
+    flow.text([{ text: ui('Взети предвид, без промени в храненето: '), font: 'semibold', color: C.ink2 }, { text: plain.map(c => `${c.code} ${c.name || ''}`.trim()).join('; '), color: C.ink2 }], { size: 8, after: 6 });
+  }
+  flow.space(4);
+}
+
 /* ----------------------------------- насоки ----------------------------------- */
 
 function guidance(ctx) {
   const { doc, flow, plan } = ctx;
   // Заглавието не остава само в края на страницата — първата карта след него е висока.
   heading(ctx, 'guide', ui('Как да се храните'), null, { newPage: flow.room < 200 });
-  if (plan.pattern) {
+  // От версия 4.17 моделът и заболяванията са обяснени в „Защо този режим“.
+  if (plan.pattern && !plan.why) {
     const about = textBlock(doc, plan.pattern.about, flow.width, { size: 8.5, color: C.ink2 });
     flow.add({ h: 18 + about.h, draw: (page, x, y) => { chip(page, doc, plan.pattern.label, x, y, { size: 8, fg: C.green, bg: C.greenSoft }); about.draw(page, x, y + 18); } }, { gap: 8 });
   }
   const dislikes = (plan.input?.dislikes || []).filter(id => FOODS[id]).map(id => (plan.lang === 'en' ? enBaseName(id) : shopName(id)));
   if (dislikes.length) flow.text([{ text: ui('Не яде: '), font: 'semibold', color: C.ink }, { text: dislikes.join(', ') + '.', color: C.ink2 }], { size: 8.5, after: 6 });
-  const dx = plan.diagnoses || [];
+  const dx = plan.why ? [] : plan.diagnoses || [];
   if (dx.length) {
     subheading(ctx, ui('Заболявания, взети предвид'));
     for (const c of dx) {
@@ -428,7 +496,9 @@ function guidance(ctx) {
     ], flow.width), { gap: 10 });
   }
   const three = [[ui('Предпочитайте'), plan.prefer, C.green, C.greenSoft, '✓'], [ui('Ограничете'), plan.limit, C.amber, C.amberSoft, '!'], [ui('Избягвайте'), plan.avoid, C.red, C.redSoft, '✗']];
-  listCards(ctx, three);
+  // От версия 4.17 правилата са цели изречения — на цяла ширина, правило по правило, за да текат между страниците.
+  if (plan.why) for (const [title, items, color, soft, icon] of three) ruleList(ctx, title, items, color, soft, icon);
+  else listCards(ctx, three);
   if (plan.medNotes?.length) {
     subheading(ctx, ui('Лекарства и храна'), C.sky);
     flow.add(bullets(doc, plan.medNotes.map(n => [{ text: `${n.med}: `, font: 'semibold' }, { text: n.text }]), flow.width, { color: C.sky }), { gap: 6 });
@@ -438,6 +508,27 @@ function guidance(ctx) {
     subheading(ctx, ui('Бележки'));
     flow.add(bullets(doc, plan.notes, flow.width, { color: C.brand }), { gap: 6 });
   }
+}
+
+/** Правилата под цветно заглавие — всяко правило е отделен блок, така че списъкът може да продължи на следващата страница. */
+function ruleList(ctx, title, items, color, soft, icon) {
+  const { doc, flow } = ctx;
+  if (!items?.length) return;
+  const blocks = items.map(it => textBlock(doc, it, flow.width - 22, { size: 8.7, lh: 1.42 }));
+  flow.need(24 + blocks[0].h + 4);
+  flow.add({
+    h: 22,
+    draw: (page, x, y) => {
+      page.rect(x, y, flow.width, 22, { fill: soft, radius: 6 });
+      page.rect(x, y + 20, flow.width, 2, { fill: color });
+      page.text(icon, x + 10, y + 15, { font: 'bold', size: 9.5, color });
+      page.text(title, x + 10 + doc.width(icon, 'bold', 9.5) + 6, y + 15, { font: 'bold', size: 9.5, color });
+    },
+  }, { gap: 6 });
+  for (const b of blocks) {
+    flow.add({ h: b.h, draw: (page, x, y) => { page.circle(x + 7, y + 8.7 * 0.7, 1.9, { fill: color }); b.draw(page, x + 16, y); } }, { gap: 4 });
+  }
+  flow.space(8);
 }
 
 /** Карти със списъци в колони; ако не се побират на страница — една под друга. */

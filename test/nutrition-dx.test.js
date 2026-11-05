@@ -53,13 +53,15 @@ test('МКБ-10: всяка диагноза се отразява на режи
   // Хипертония по код: DASH по подразбиране и правилата за сол.
   const htn = nutritionPlan({ ...base, diagnoses: [{ code: 'I10' }] });
   assert.equal(htn.pattern.id, 'dash');
-  assert.ok(htn.limit.some(t => /Хипертония/.test(t)));
+  assert.ok(htn.limit.some(t => /^Сол до 5 г/.test(t) && /налягането/.test(t)), 'солта — с причината');
+  assert.ok(htn.why.some(w => w.key === 'htn' && w.codes.includes('I10')));
 
   // ХБЗ стадий 4 без резултат: 0,8 г/кг, ограничен калий, бележка за eGFR.
   const ckd = nutritionPlan({ ...base, days: 7, diagnoses: [{ code: 'N18.4' }] });
   assert.equal(ckd.targets.proteinPerKg, 0.8);
   assert.ok(ckd.flags.limitK && ckd.flags.ckdAdvanced);
-  assert.ok(ckd.notes.some(n => /eGFR/.test(n)));
+  assert.ok(ckd.clinician.some(n => /eGFR/.test(n)), 'бележката за eGFR е за лекаря');
+  assert.ok(!ckd.why.some(w => /eGFR около/.test(w.text)), 'без измерен eGFR пациентът не вижда число');
   assert.ok(!options(ckd).some(o => o.items.some(it => FOODS[it.food].flags.has('highK') && it.grams > 75)));
   // Резултатът има предимство пред кода.
   assert.ok(!nutritionPlan({ ...base, egfr: 75, diagnoses: [{ code: 'N18.4' }] }).flags.ckd);
@@ -80,7 +82,7 @@ test('МКБ-10: всяка диагноза се отразява на режи
   // Онкологично заболяване и ХБЗ: спазва се KDIGO и има предупреждение.
   const onco = nutritionPlan({ ...base, egfr: 40, diagnoses: [{ code: 'C50.9' }] });
   assert.equal(onco.targets.proteinPerKg, 0.8);
-  assert.ok(onco.warnings.some(w => /нефролог/.test(w)));
+  assert.ok(onco.clinician.some(w => /нефролог/.test(w)));
 
   // Хиперкалиемия по код ограничава калия; запекът вдига фибрите.
   assert.ok(nutritionPlan({ ...base, diagnoses: [{ code: 'E87.5' }] }).flags.limitK);

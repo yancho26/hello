@@ -243,7 +243,7 @@ test('API: режимът на английски за човек извън л�
     assert.equal(en.data.plan.input.lang, 'en');
     assert.deepEqual(cyrillic({ ...en.data.plan, input: { ...en.data.plan.input, allergies: null } }), []);
     assert.ok(en.data.plan.diagnoses.some(d => d.name === 'Psoriasis'));
-    assert.ok(en.data.plan.prefer.some(t => /Psoriasis: if overweight/.test(t)));
+    assert.ok(en.data.plan.why.some(w => /^In psoriasis, excess weight/.test(w.text)), 'обяснението на английски');
     assert.equal(en.data.saved.plan.lang, 'en', 'записва се английският режим');
     const bg = await call('POST', '/api/nutrition/plan', { person, days: 1 });
     assert.ok(!bg.data.plan.lang && CYR.test(bg.data.plan.meals[0].label));

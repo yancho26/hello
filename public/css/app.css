@@ -742,6 +742,21 @@ svg.trend .pt.flag { fill: var(--danger); }
 .nut-list.good h3 { color: var(--ok); }
 .nut-list.limit h3 { color: var(--warn); }
 .nut-list.avoid h3 { color: var(--danger); }
+/* Писмото на лекаря, обясненията и бележките за лекаря (версия 4.17). */
+.nut-letter { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 12px; background: var(--surface); }
+.nut-letter h3 { font-size: 14.5px; margin: 0 0 6px; color: var(--brand-dark); }
+.nut-letter p { margin: 0 0 6px; font-size: 14px; line-height: 1.55; }
+.nut-why { margin-top: 14px; }
+.nut-why h3 { font-size: 14px; margin: 0 0 8px; }
+.why-item { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 8px; }
+.why-item.pattern { border-left-color: var(--ok); }
+.why-item.age { border-left-color: #3b8fd4; }
+.why-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.why-head .dx-code { min-width: 0; font-size: 12px; padding: 1px 6px; border-radius: 10px; background: var(--brand-soft); color: var(--brand-dark); }
+.why-item p { margin: 4px 0 2px; font-size: 13.5px; line-height: 1.5; }
+.nut-clin { border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px; background: var(--surface-2); }
+.nut-clin ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.nut-clin li { margin-bottom: 3px; }
 /* Движение, сън и екрани при дете (версия 4.16). */
 .move-facts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 10px 0 14px; }
 .move-fact { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }
