@@ -270,17 +270,22 @@ function planFor(input) {
 
   // Детето расте: без отслабване и покачване — енергията е за растежа по неговата крива.
   let goal = isChild ? 'maintain' : GOALS[input.goal] ? input.goal : (b >= 25 && !dx.noLose ? 'lose' : b < 18.5 ? 'gain' : 'maintain');
+  // Пациентът чете защо в обяснението на заболяването; лекарят — че целта е сменена.
   if (goal === 'lose' && dx.noLose) {
-    putPair('warnings', NO_LOSE[dx.noLose]);
+    putPair('clinician', NO_LOSE[dx.noLose]);
     goal = 'maintain';
   }
   // Менструален цикъл: липсата на менструация при нормално тегло може да е от недостиг на енергия.
   const cycleIn = sex === 'f' && !isChild ? cycleStats(input.cycle || {}, { age, asOf }) : null;
   const amenorrhea = dx.amenorrhea || !!cycleIn?.flags.some(f => f.code === 'amenorrhea');
   if (goal === 'lose' && amenorrhea && b < 25) {
-    put('warnings', 'Менструацията Ви липсва. Докато не се изясни причината, режимът е без енергиен дефицит, защото тя често се дължи на недостиг на енергия.',
-      'Your periods have stopped. Until the cause is clear, the plan has no energy deficit, because the cause is often too little energy.');
-    put('clinician', 'Липса на менструация при ИТМ под 25: възможен недостиг на енергия (функционална хипоталамична аменорея) — режимът е за поддържане, без дефицит. Endocrine Society 2017 препоръчва енергийният недостиг да се коригира. Изключете бременност.');
+    // С код по МКБ-10 това е в обяснението на диагнозата (и в бележката за лекаря към нея);
+    // когато идва от данните за цикъла — тук.
+    if (!dx.amenorrhea) {
+      put('warnings', 'Менструацията Ви липсва. Докато не се изясни причината, режимът е без енергиен дефицит, защото тя често се дължи на недостиг на енергия.',
+        'Your periods have stopped. Until the cause is clear, the plan has no energy deficit, because the cause is often too little energy.');
+      put('clinician', 'Липса на менструация при ИТМ под 25: възможен недостиг на енергия (функционална хипоталамична аменорея) — режимът е за поддържане, без дефицит. Endocrine Society 2017 препоръчва енергийният недостиг да се коригира. Изключете бременност.');
+    }
     goal = 'maintain';
   }
   // Менопауза — и за избора на модела, и за желязото и калция по-долу.
@@ -315,10 +320,9 @@ function planFor(input) {
   }
   // Възраст (версия 4.17): след 75 г. отслабване само при затлъстяване (ESPEN 2022, гериатрия) —
   // при ИТМ под 30 се губят повече мускули, отколкото мазнини.
+  // На пациента защо е казано в обяснението за възрастта; тук е бележката за лекаря.
   let ageNoLose = false;
   if (goal === 'lose' && age >= 75 && b < 30) {
-    put('warnings', 'На Вашата възраст отслабване при това тегло не се препоръчва, защото се губят повече мускули, отколкото мазнини. Режимът е за поддържане.',
-      'At your age, losing weight at this weight is not recommended, because more muscle than fat is lost. The plan maintains your weight.');
     put('clinician', 'След 75 г. при ИТМ под 30 отслабването носи риск от саркопения — режимът е за поддържане (ESPEN 2022).',
       'After 75 with a BMI under 30, weight loss carries a risk of sarcopenia, so the plan maintains weight (ESPEN 2022).');
     goal = 'maintain';
@@ -326,7 +330,8 @@ function planFor(input) {
   }
   let pace = PACES[input.pace] ? input.pace : 'standard';
   if (goal === 'lose' && pace === 'fast' && (b < 30 || age >= 65)) {
-    if (age >= 65) put('warnings', 'След 65 години бързото отслабване отнема мускули и кост, затова темпото е умерено.', 'After 65, fast weight loss takes away muscle and bone, so the pace is moderate.');
+    // След 65 г. плавното отслабване е обяснено на пациента в обяснението за възрастта.
+    if (age >= 65) put('clinician', 'След 65 г. темпото е умерено: бързото отслабване отнема мускули и кост (ESPEN 2022).', 'After 65 the pace is moderate: fast weight loss takes away muscle and bone (ESPEN 2022).');
     else put('clinician', 'По-бързо темпо се предлага при ИТМ 30 и повече — темпото е умерено.');
     pace = 'standard';
   }
@@ -476,7 +481,8 @@ function planFor(input) {
   // Желязо и калций (EFSA 2015): желязо 16 мг за жени преди менопаузата, 11 мг за мъже и след
   // менопаузата; калций 1000 мг до 24 г., 950 мг след това.
   const iron = isChild ? ct.iron : sex === 'f' && !menopause ? 16 : 11;
-  const calcium = isChild ? ct.calcium : age < 25 ? 1000 : 950;
+  // При остеопороза — поне 1000 мг (ESCEO/IOF 2019), както е и в обяснението за нея.
+  const calcium = isChild ? ct.calcium : age < 25 || dx.keys.has('osteoporosis') ? 1000 : 950;
   const targets = {
     kcal: target, protein, fat, carbs, fiber, satFat, sugarMax,
     salt: isChild ? ct.salt : 5, fluids, iron, calcium,
@@ -545,7 +551,9 @@ function planFor(input) {
     keys: dx.keys, cond, condOnly: [...(input.conditions || [])].filter(c => !dxConds.has(c)), prefs, classes,
     pregnancy: !!dx.pregnancy, lactation: !!dx.lactation, menopause, energyAdd: dx.energyAdd || 0, trimester: dx.trimester,
     mealsPerDay, strength, pattern: patternId, patternAutoId: auto.id, patternReason: auto.reason,
-    fluidsRestricted: !isChild && (cond.has('hf') || dialysis), ageNoLose,
+    // Без „пийте около … л“ в писмото и при възрастта: при СН и диализа течностите са ограничени,
+    // а при нисък натрий количеството зависи от причината.
+    fluidsRestricted: !isChild && (cond.has('hf') || dialysis || dx.keys.has('hypona')), ageNoLose,
     weeklyKg: projection?.weeklyKg ?? 0, targetWeight: projection?.targetWeight ?? null, weeks: projection?.weeks ?? null,
     dx: dx.considered.map(c => ({ code: c.code, name: c.name, keys: c.keys })),
     child: isChild ? { years: ct.years, status: ct.bmi.status, weightUsed: ct.weightUsed } : null,
@@ -576,7 +584,7 @@ function planFor(input) {
   if (dx.dietitian) {
     const who = dx.considered.filter(c => c.dietitian).map(c => c.label);
     if (isChild) put('warnings', 'При заболяванията на детето е добре режимът да се обсъди и с диетолог.', 'With your child’s conditions, it is a good idea to discuss the plan with a dietitian as well.');
-    else put('warnings', 'Режимът е ориентир. При Вашите заболявания Ви препоръчвам да го обсъдите и с диетолог.', 'This plan is a guide. With your conditions, I recommend that you also discuss it with a dietitian.');
+    else put('warnings', 'При Вашите заболявания Ви препоръчвам да обсъдите режима и с диетолог.', 'With your conditions, I recommend that you also discuss the plan with a dietitian.');
     put('clinician', `При тези диагнози (${[...new Set(who)].join(', ')}) режимът е ориентировъчен — обсъдете го с диетолог.`);
   }
   if (dx.pregnancy && !dx.trimester && !isChild) put('clinician', 'Бременност: въведете гестационната седмица — енергията е приета за 2. тримесечие (EFSA).');
@@ -749,7 +757,7 @@ function planFor(input) {
       d.totals = dayTotals(opts);
     }
   }
-  if (ckd && proteinCut) put('notes', 'Порциите месо, риба, яйца, млечни продукти и бобови в менюто са по-малки заради ограничението на белтъка.', 'Portions of meat, fish, eggs, dairy and pulses in the menu are smaller because of the protein limit.');
+  if (ckd && proteinCut) put('notes', 'Порциите на храните с много белтък в менюто са по-малки, за да не надхвърля белтъкът границата за бъбреците.', 'Portions of protein-rich foods in the menu are smaller so that protein stays within the limit for your kidneys.');
 
   // Приготвянето с окончателните грамове на всяка порция.
   const options = [...meals.flatMap(m => m.options), ...(week || []).flatMap(d => d.meals.map(m => m.option))].filter(Boolean);
@@ -764,13 +772,27 @@ function planFor(input) {
 
   // Желязо и калций в менюто спрямо препоръката.
   const avgOf = (k) => (week ? week.reduce((acc, d) => acc + d.totals[k], 0) / week.length : day[k]);
+  // Ако правилата вече казват кои храни — тук е само колко не достига.
+  const listed = (re) => G.prefer.some(x => re.test(x[0]));
   if (avgOf('fe') < iron * 0.75) {
-    put('notes', `Желязо в менюто: около ${Math.round(avgOf('fe'))} мг на ден при нужда от ${iron} мг. Добавяйте бобови, тиквени семки, постно червено месо, яйца и спанак, заедно с нещо с витамин C. Добавка с желязо само при доказан недостиг.`,
-      `Iron in your menu: about ${Math.round(avgOf('fe'))} mg a day against a need of ${iron} mg. Add pulses, pumpkin seeds, lean red meat, eggs and spinach, together with something rich in vitamin C. An iron supplement only with a confirmed deficiency.`);
+    const fe = Math.round(avgOf('fe'));
+    if (listed(/^Храни с желязо всеки ден/)) {
+      put('notes', `Желязото в менюто е около ${fe} мг на ден при нужда от ${iron} мг, затова добавяйте по още една порция от храните с желязо.`,
+        `Iron in your menu is about ${fe} mg a day against a need of ${iron} mg, so add one more portion of iron-rich foods.`);
+    } else {
+      put('notes', `Желязо в менюто: около ${fe} мг на ден при нужда от ${iron} мг. Добавяйте бобови, тиквени семки, постно червено месо, яйца и спанак, заедно с нещо с витамин C. Добавка с желязо само при доказан недостиг.`,
+        `Iron in your menu: about ${fe} mg a day against a need of ${iron} mg. Add pulses, pumpkin seeds, lean red meat, eggs and spinach, together with something rich in vitamin C. An iron supplement only with a confirmed deficiency.`);
+    }
   }
   if (avgOf('ca') < calcium * 0.75) {
-    put('notes', `Калций в менюто: около ${round(avgOf('ca'), 10)} мг на ден при нужда от ${calcium} мг. Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`,
-      `Calcium in your menu: about ${round(avgOf('ca'), 10)} mg a day against a need of ${calcium} mg. Add dairy, cheese, sardines, tofu or calcium-fortified plant drinks.`);
+    const ca = round(avgOf('ca'), 10);
+    if (listed(/^Калций около|^Млечни продукти не спирайте|^Нискомаслени млечни продукти всеки ден, 2–3/)) {
+      put('notes', `Калцият в менюто е около ${ca} мг на ден при нужда от ${calcium} мг, затова добавяйте по още една порция от храните с калций.`,
+        `Calcium in your menu is about ${ca} mg a day against a need of ${calcium} mg, so add one more portion of calcium-rich foods.`);
+    } else {
+      put('notes', `Калций в менюто: около ${ca} мг на ден при нужда от ${calcium} мг. Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`,
+        `Calcium in your menu: about ${ca} mg a day against a need of ${calcium} mg. Add dairy, cheese, sardines, tofu or calcium-fortified plant drinks.`);
+    }
   }
 
   // Седмицата с движение, сънят и екраните за детето (child-activity.js).
@@ -778,7 +800,9 @@ function planFor(input) {
 
   // Витамини, минерали и мастни киселини в менюто спрямо EFSA (версия 4.15).
   const micro = microRows({ avgOf, sex, target, targets, pregnancy: !!dx.pregnancy, lactation: !!dx.lactation, limitK, ckd, child: ct?.micro });
-  const microHints = microNotes(micro, { ctx, prefs, classes, pregnancy: !!dx.pregnancy });
+  // Дозата на витамин D е в бележките (след 65 г., при остеопороза и менопауза) — тук без „добавка по преценка“.
+  const vdDose = G.notes.some(x => /^Витамин D: обичайната доза/.test(x[0]));
+  const microHints = microNotes(micro, { ctx, prefs, classes, pregnancy: !!dx.pregnancy, vdDose });
 
   // Защо е този режим и писмото на лекаря (версия 4.17) — на двата езика.
   F.caMenu = avgOf('ca');
@@ -1570,7 +1594,7 @@ export function richIn(key, ctx, n = 5, min = 0) {
 }
 
 /** Подсказки за веществата, които менюто не покрива: { key, kind, foods } — текстът е в microNoteText. */
-function microNotes(rows, { ctx, prefs, classes, pregnancy }) {
+function microNotes(rows, { ctx, prefs, classes, pregnancy, vdDose = false }) {
   const out = [];
   const row = (k) => rows.find(r => r.key === k);
   const low = (k) => row(k)?.status === 'low';
@@ -1584,7 +1608,7 @@ function microNotes(rows, { ctx, prefs, classes, pregnancy }) {
   if (low('fol') && !pregnancy) out.push({ key: 'fol', foods: rich('fol') });
   if (low('b12') && !prefs.has('vegan')) out.push({ key: 'b12', foods: rich('b12') });
   if (low('n3')) out.push(prefs.has('vegetarian') || prefs.has('noFish') ? { key: 'n3', kind: 'nofish', foods: [] } : { key: 'n3', foods: rich('n3') });
-  if (low('vd')) out.push({ key: 'vd', foods: rich('vd') });
+  if (low('vd')) out.push({ key: 'vd', foods: rich('vd'), ...(vdDose ? { dose: true } : {}) });
   return out.map(n => ({ ...n, text: microNoteText(n, rows) }));
 }
 
@@ -1611,9 +1635,13 @@ export function microNoteText(n, rows, { lang = 'bg', name = baseName } = {}) {
     case 'fiber': return en
       ? `${head}, which is a minimum. If a young child fills up quickly or gains weight poorly, swap some whole-grain foods and pulses for refined ones, which are less bulky.`
       : `${head} — препоръката е долна граница. Ако малкото дете бързо се засища или наддава слабо, част от пълнозърнестите храни и бобовите се заменят с бели, които са по-малко обемни.`;
-    case 'vd': return en
-      ? `${head}; the reference assumes minimal sun exposure. The main source is the skin in sunlight${foods ? `; foods: ${foods}` : '; foods provide little'}. A supplement is at the doctor's discretion.`
-      : `${head} — препоръката е при минимално слънце. Основният източник е кожата на слънце${foods ? `; от храните — ${foods}` : '; храните дават малко'}. Добавка — по преценка на лекаря.`;
+    case 'vd': {
+      // dose — дозата на добавката вече е в бележките, затова не се повтаря тук.
+      const sup = n.dose ? '' : en ? ' A supplement is at the doctor\'s discretion.' : ' Добавка — по преценка на лекаря.';
+      return en
+        ? `${head}; the reference assumes minimal sun exposure. The main source is the skin in sunlight${foods ? `; foods: ${foods}` : '; foods provide little'}.${sup}`
+        : `${head} — препоръката е при минимално слънце. Основният източник е кожата на слънце${foods ? `; от храните — ${foods}` : '; храните дават малко'}.${sup}`;
+    }
     default: {
       const what = en ? `Good sources of ${MICRO_EN[n.key][2]}` : `Богати на ${MICRO_RICH[n.key]}`;
       return `${head}. ${what}: ${foods}.`;

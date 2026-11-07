@@ -67,7 +67,9 @@ test('4.17: възрастта променя режима', () => {
   // След 75 г. при ИТМ под 30 — без отслабване (ESPEN 2022), с обяснение.
   const old = plan({ age: 80, weight: 70, height: 160, goal: 'lose' });
   assert.equal(old.input.goal, 'maintain');
-  assert.ok(old.warnings.some(w => /На Вашата възраст отслабване при това тегло не се препоръчва/.test(w)));
+  // На пациента — веднъж, в обяснението за възрастта; на лекаря — че целта е сменена.
+  assert.ok(!old.warnings.some(w => /отслабване/i.test(w)), old.warnings.join(' | '));
+  assert.ok(old.clinician.some(t => /саркопения/.test(t)));
   const age = old.why.find(w => w.kind === 'age');
   assert.equal(age.title, 'Възраст: 80 г.');
   assert.match(age.text, /Отслабване не е предвидено/);
@@ -80,6 +82,8 @@ test('4.17: възрастта променя режима', () => {
   const frail = plan({ age: 78, egfr: 40, diagnoses: [{ code: 'N18.3' }] });
   assert.equal(frail.targets.proteinPerKg, 1.0);
   assert.match(frail.why.find(w => w.key === 'kidney').text, /На Вашата възраст белтъкът е малко повече/);
+  // Числото за белтъка е само в обяснението за бъбреците, не и в това за възрастта.
+  assert.equal(frail.why.filter(w => /г\/кг/.test(w.text)).length, 1, frail.why.map(w => w.text).join(' | '));
   // Млада жена — желязо и фолиева киселина; мъж на 40 — без карта за възрастта.
   assert.match(plan({ age: 30 }).why.find(w => w.kind === 'age').text, /фолиева киселина 400 мкг/);
   assert.ok(!plan({ sex: 'm', age: 40, weight: 80, height: 178 }).why.some(w => w.kind === 'age'));
@@ -95,7 +99,11 @@ test('4.17: писмото и правилата са към пациента �
   const p = plan({ egfr: 40, diagnoses: [{ code: 'I10' }, { code: 'N18.3' }, { code: 'E11.9' }, { code: 'M10.9' }], days: 7 });
   assert.equal(p.summary.length, 2);
   assert.match(p.summary[0], /^Съставих този режим специално за Вас според теглото \(72 кг\)/);
-  assert.match(p.summary[0], /Препоръчвам Ви средиземноморски тип хранене, защото/);
+  // В писмото — причината накратко; подробно е в обяснението под него, без да се повтаря.
+  assert.match(p.summary[0], /Препоръчвам Ви средиземноморски тип хранене заради бъбреците, диабета и налягането\. По-долу обяснявам защо и как съобразих храненето с всяко от заболяванията Ви\./);
+  assert.ok(!p.summary.join(' ').includes(p.why[0].text.slice(1, 50)), 'писмото не повтаря обяснението за модела');
+  // Солта с число — само в едно обяснение (при хипертонията).
+  assert.equal(p.why.filter(w => /до 5 г/.test(w.text)).length, 1, p.why.map(w => w.text).join(' | '));
   assert.match(p.summary[1], /Най-важното за Вас: /);
   const en = translatePlan(p);
   assert.match(en.summary[0], /^I have put this plan together for you/);
@@ -113,6 +121,48 @@ test('4.17: писмото и правилата са към пациента �
   // Английският е изцяло от двойките — без кирилица в правилата.
   for (const k of ['prefer', 'limit', 'avoid', 'notes', 'warnings', 'clinician', 'weekly', 'habits', 'flavor', 'monitoring']) {
     assert.ok(en[k].every(t => !CYR.test(t)), `${k}: ${en[k].filter(t => CYR.test(t)).join(' | ')}`);
+  }
+});
+
+test('4.17: всяко нещо се казва веднъж — писмо, обяснения и правила', () => {
+  const said = (p) => [...p.summary, ...p.why.map(w => w.text), ...all(p), ...p.warnings, ...p.weekly, ...p.habits, ...p.monitoring]
+    .flatMap(t => String(t).split(/(?<=[.!?])\s+/)).map(s => s.trim().toLowerCase()).filter(s => s.length > 12);
+  // 77 г. с хипертония, диабет, ХБЗ 3 и остеопороза; формата праща „отслабване“ при ИТМ над 25.
+  const p = plan({ sex: 'm', age: 77, weight: 81, height: 171, goal: 'lose',
+    diagnoses: [{ code: 'I10' }, { code: 'E11.9' }, { code: 'N18.3' }, { code: 'M81.0' }] });
+  assert.equal(p.input.goal, 'maintain');
+  assert.ok(!p.warnings.some(w => /отслабване/i.test(w)), 'не като предупреждение');
+  assert.equal(p.why.filter(w => /Отслабване не е предвидено/.test(w.text)).length, 1);
+  assert.equal(p.why.filter(w => /г\/кг/.test(w.text)).length, 1, 'белтъкът с число — само при бъбреците');
+  assert.equal(p.why.filter(w => /до 5 г/.test(w.text)).length, 1, 'солта с число — само при хипертонията');
+  const s = said(p);
+  assert.equal(new Set(s).size, s.length, s.filter((x, i) => s.indexOf(x) !== i).join(' | '));
+  // Сърдечна недостатъчност — претегляне всяка сутрин, никъде „веднъж седмично“.
+  const hf = plan({ diagnoses: [{ code: 'I50.0' }] });
+  assert.match(hf.monitoring[0], /всяка сутрин/);
+  assert.ok(![...hf.monitoring, ...hf.notes, ...hf.habits, ...hf.summary].some(t => /веднъж седмично/.test(t)));
+  // Нисък натрий — без колко литра да пиете.
+  const na = plan({ age: 72, diagnoses: [{ code: 'E87.1' }] });
+  assert.ok(![...na.summary, ...na.why.map(w => w.text), ...na.prefer].some(t => /л течности|Пийте по часовник|^Течности:/.test(t)));
+  // Бременност с цел „отслабване“ — бележка за лекаря, не предупреждение към бременната.
+  const preg = plan({ age: 30, weight: 80, goal: 'lose', pregnancyWeek: 14, diagnoses: [{ code: 'Z34.0' }] });
+  assert.ok(!preg.warnings.some(w => /отслаб/.test(w)));
+  assert.ok(preg.clinician.some(t => /целта „отслабване“/.test(t)));
+  // Спиронолактон: бележката към лекарството казва „внимавайте с калия“, правилата не съветват повече калий.
+  const mra = plan({ diagnoses: [{ code: 'I10' }], classes: new Set(['MRA']) });
+  assert.ok(!mra.prefer.some(t => /^Храни с калий/.test(t)) && !/богати на калий/.test(mra.why.find(w => w.key === 'htn').text));
+  // Най-важното в писмото — всяка тема веднъж.
+  const thin = plan({ age: 81, weight: 45, height: 158, goal: 'gain', diagnoses: [{ code: 'E44.0' }] });
+  const top = /Най-важното за Вас: (.*?)\./.exec(thin.summary[1])[1].split('; ');
+  assert.equal(top.filter(x => /белтък/.test(x)).length, 1, top.join(' | '));
+  // Всички диагнози, млад и възрастен: без еднакво изречение два пъти.
+  for (const d of DX) {
+    for (const age of [30, 80]) {
+      if (/^O|^Z3[3-9]/.test(d.code) && age > 30) continue;
+      const sex = /^[NO]|^Z3|^E28/.test(d.code) ? 'f' : 'm';
+      const x = said(plan({ sex, age, weight: 78, height: 168, goal: 'lose', diagnoses: [d], pregnancyWeek: /^Z3[3-6]|^O/.test(d.code) ? 20 : undefined }));
+      assert.equal(new Set(x).size, x.length, `${d.code}@${age}: ${x.filter((y, i) => x.indexOf(y) !== i).join(' | ')}`);
+    }
   }
 });
 

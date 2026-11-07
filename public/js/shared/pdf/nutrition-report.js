@@ -148,7 +148,7 @@ function personFacts(ctx) {
   if (person.birthDate) facts.push(ui(formatAge(person.birthDate, date)));
   else if (person.age || i.age) facts.push(ui(`${person.age || i.age} г.`));
   if (i.weight) facts.push(ui(`${dec(i.weight)} кг`));
-  if (i.height) facts.push(ui(`${i.height} см`));
+  if (i.height) facts.push(ui(`${dec(i.height)} см`));
   if (plan.child) facts.push(ui(`ИТМ ${dec(plan.child.bmi.value)}`) + (plan.child.percentile ? ui(` (${plan.child.percentile} перцентил)`) : ''));
   else if (plan.bmi) facts.push(ui(`ИТМ ${dec(plan.bmi)}`));
   return facts;

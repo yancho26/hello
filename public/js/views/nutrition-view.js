@@ -197,7 +197,7 @@ export function savedPlans(saved, { show, pdf, pdfEn, remove }) {
   return card('Запазени режими', { icon: '📁', tight: true }, h('div.table-wrap', null, h('table', null,
     h('tbody', null, saved.map(n => h('tr', null,
       h('td.small.nowrap', null, formatDate(n.date)),
-      h('td', null, `${n.plan.targets.kcal} kcal · белтък ${n.plan.targets.protein} г · ${n.plan.child ? `${n.plan.input.weight} кг, ${n.plan.input.height} см` : GOALS[n.plan.input.goal] || ''}`,
+      h('td', null, `${n.plan.targets.kcal} kcal · белтък ${n.plan.targets.protein} г · ${n.plan.child ? `${dec(n.plan.input.weight)} кг, ${dec(n.plan.input.height)} см` : GOALS[n.plan.input.goal] || ''}`,
         n.plan.pattern || n.plan.child ? h('div.tiny.dim', null, `${n.plan.child ? `хранене и движение за ${ageLabel(n.plan.child.years)}` : n.plan.pattern.label}${menuKind(n.plan)}`
           + (n.plan.input.diagnoses?.length ? ` · ${n.plan.input.diagnoses.map(d => d.code).join(', ')}` : '')) : null),
       h('td.actions', null,
