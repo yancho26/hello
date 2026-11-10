@@ -10,7 +10,7 @@ import { addDays, daysBetween, formatDate, today } from '../shared/dates.js';
 import { ACTIVITY, FOODS, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, expectedWeight, planProgress, weekChunks } from '../shared/nutrition.js';
 import { shopName } from '../shared/recipes.js';
 import { enBaseName } from '../shared/i18n/en-foods.js';
-import { dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../shared/diet-icd.js';
+import { defaultGoalFor, dietProfiles, dossierDiagnoses, dxName, searchDx, validIcd } from '../shared/diet-icd.js';
 import { normIcd } from '../shared/icd.js';
 import { ALCOHOL, SMOKING, deleteWithConfirm, lifestyleDialog } from './adult-dialogs.js';
 import { busy, downloadNutritionPdf } from './pdf-export.js';
@@ -67,7 +67,7 @@ export function nutritionTab(ctx) {
     height: { value: v.height ? dec(v.height.value) : '', hint: v.bmi ? `ИТМ ${dec(v.bmi)} — ${v.bmiClass?.label || ''}` : '' },
     activity: ls.activity,
     pulse: lastPulse(p),
-    defaultGoal: v.bmi >= 25 ? 'lose' : v.bmi && v.bmi < 18.5 ? 'gain' : 'maintain',
+    defaultGoal: defaultGoalFor(v.bmi, a.age ?? null, dossierDiagnoses(p)),
     defaultPattern: 'auto',
     prefs: [...(ls.diet || []), ...allergy.prefs],
     prefsHint: allergy.matched.length ? `Отбелязани са според алергиите в досието: ${allergy.matched.join(', ')}.` : '',
@@ -206,6 +206,9 @@ export function savedPlans(saved, { show, pdf, pdfEn, remove }) {
         pdfEn && n.plan.lang !== 'en' ? [h('button.btn.xs', { onclick: busy(() => pdfEn(n)), title: 'Същият режим като PDF на английски' }, '📄 EN'), ' '] : null,
         h('button.btn.xs.danger', { onclick: () => remove(n) }, '✕'))))))));
 }
+
+/* Кой определя течностите, когато числото е само ориентир (версия 4.18). */
+const FLUIDS_BY = { tests: 'ще уточним след изследванията', nephrologist: 'определя нефрологът' };
 
 const menuKind = (plan) => (!plan.week ? '' : plan.week.length > 7 ? ' · месечно меню' : ' · седмично меню');
 /** „2 г.“, „9 г.“ — възрастта в запазения режим на дете. */
@@ -669,7 +672,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
       tile(L('Мазнини'), t.fat, L('г'), L(`${t.fatPct}%`) + (t.satFat ? L(` · наситени <${t.satFat} г`) : '')),
       tile(L('Фибри'), t.fiber, L('г')),
       tile(L('Сол'), '<' + num(t.salt), L('г')),
-      tile(L('Течности'), num(Math.round(t.fluids / 100) / 10), L('л'), plan.child ? L(`общо с храната ${num(plan.child.water)} л`) : null),
+      tile(L('Течности'), num(Math.round(t.fluids / 100) / 10), L('л'), plan.child ? L(`общо с храната ${num(plan.child.water)} л`) : t.fluidsBy ? L(FLUIDS_BY[t.fluidsBy]) : null),
       t.iron ? tile(L('Желязо'), t.iron, L('мг'), L(`в менюто ≈${Math.round(minerals.fe)} мг`)) : null,
       t.calcium ? tile(L('Калций'), t.calcium, L('мг'), L(`в менюто ≈${Math.round(minerals.ca / 10) * 10} мг`)) : null),
     t.proteinNote ? h('p.small.muted', { style: { margin: '8px 0 0' } }, t.proteinNote) : null,

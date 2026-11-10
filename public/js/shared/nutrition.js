@@ -339,6 +339,9 @@ function planFor(input) {
     put('clinician', 'По-бързо покачване се предлага при поднормено тегло — темпото е умерено, за да се трупат мускули, а не мазнини.');
     pace = 'standard';
   }
+  if (goal === 'gain' && b >= 30) {
+    put('clinician', 'Избрана е цел „покачване“ при ИТМ 30 и повече — проверете целта.', 'The goal “gain weight” is selected with a BMI of 30 or more; please check the goal.');
+  }
   if (goal === 'gain' && b < 16) {
     put('clinician', 'ИТМ под 16: риск от синдром на повторно захранване — увеличавайте храната постепенно, с контрол на калий, фосфор и магнезий; обсъдете насочване (NICE).');
   }
@@ -442,6 +445,9 @@ function planFor(input) {
   // или до 20% от енергията (при много енергия), но не над 2 г/кг (2,2 при силови тренировки).
   let proteinMax = isChild ? ct.proteinMax : ckd ? round(refWeight * (ckdAdvanced ? 0.9 : frailCkd ? 1.1 : 1.0)) : dialysis ? round(refWeight * 1.3) : round(Math.min(refWeight * (strength ? 2.2 : 2.0), Math.max(protein * 1.5, target * 0.2 / 4)));
   if (!isChild && dx.proteinCap && !ckd && !dialysis) proteinMax = Math.max(protein, Math.min(proteinMax, round(refWeight * dx.proteinCap * 1.1)));
+  // При бременност и кърмене добавката е и в горната граница — иначе при ХБЗ целта излиза над нея (поправка във версия 4.18).
+  if (!isChild && proteinAdd && (ckd || dialysis)) proteinMax += proteinAdd;
+  if (!isChild && proteinMax < protein) proteinMax = protein;
 
   // Мазнини и въглехидрати по модела.
   let fatPct;
@@ -488,6 +494,8 @@ function planFor(input) {
     salt: isChild ? ct.salt : 5, fluids, iron, calcium,
     proteinPerKg, proteinMax, proteinNote, fatPct, satFatPct,
     carbPct: Math.round((carbs * 4 / target) * 100),
+    // Числото за течностите е само ориентир: при нисък натрий зависи от причината, при диализа го определя нефрологът.
+    ...(!isChild && dx.keys.has('hypona') ? { fluidsBy: 'tests' } : !isChild && dialysis ? { fluidsBy: 'nephrologist' } : {}),
   };
   if (classes.has('SGLT2') && carbs < 130) {
     put('clinician', `SGLT2-инхибитор и под 130 г въглехидрати дневно (${carbs} г) — риск от кетоацидоза с нормална кръвна захар; обсъдете модела.`);
@@ -736,6 +744,8 @@ function planFor(input) {
         opts = opts.map((o, i) => (o && !o.fixed ? rebalance(scaleProtein(o, r), slotKcal[i]) : o));
       }
       if (limitK) opts = opts.map(o => (o && !o.fixed ? capPotassium(o) : o));
+      // Малко сол: солените съставки на ястието заедно са до 400 мг натрий и след мащабирането.
+      if (lowSalt) opts = opts.map(o => (o && !o.fixed ? capSalt(o) : o));
       const before = dayTotals(opts).protein;
       const bias = before > aim ? 'low' : before < protein ? 'high' : null;
       // Млякото на детето е с точно количество — не се нагласява (fixed).
@@ -792,6 +802,39 @@ function planFor(input) {
     } else {
       put('notes', `Калций в менюто: около ${ca} мг на ден при нужда от ${calcium} мг. Добавяйте млечни продукти, сирене, сардини, тофу или растителни напитки с калций.`,
         `Calcium in your menu: about ${ca} mg a day against a need of ${calcium} mg. Add dairy, cheese, sardines, tofu or calcium-fortified plant drinks.`);
+    }
+  }
+
+  // Менюто спрямо целите (версия 4.18): когато средно за деня белтъкът или енергията са далеч от
+  // целта, това се казва — на лекаря с числата, а на човека с какво да го допълни. Преди менюто
+  // можеше мълчаливо да дава повече белтък от границата при ХБЗ или доста по-малко при веган.
+  if (!isChild) {
+    const ap = Math.round(avgOf('protein'));
+    const ak = round(avgOf('kcal'), 10);
+    const tk = week ? round(week.reduce((acc, d) => acc + d.kcal, 0) / week.length, 10) : target;
+    const capped = ckd || !!dx.proteinCap;
+    if (capped && ap > proteinMax * 1.05) {
+      put('clinician', `Менюто дава средно около ${ap} г белтък на ден при цел ${protein} г (горна граница ${proteinMax} г): при тази енергия по-малко не се получава с обикновени храни. Обсъдете с диетолог нископротеинови продукти.`,
+        `The menu averages about ${ap} g of protein a day against a target of ${protein} g (upper limit ${proteinMax} g): with this energy need it cannot go lower with ordinary foods. Consider low-protein products with a dietitian.`);
+      put('notes', `Белтъкът в менюто е средно около ${ap} г на ден, над целта от ${protein} г: при Вашата нужда от енергия по-малко не се получава с обикновени храни.`,
+        `Protein in your menu averages about ${ap} g a day, above the target of ${protein} g: with your energy needs it cannot go lower with ordinary foods.`);
+    } else if (!ckd && ap < protein * 0.9) {
+      const boosts = PROTEIN_BOOSTS.filter(([food, grams]) => !excluded([{ food, grams }], ctx)).slice(0, 3)
+        .map(([food, grams, bg, en]) => { const g = Math.round(FOODS[food].p * grams / 100); return [`${bg} (около ${g} г белтък)`, `${en} (about ${g} g of protein)`]; });
+      const or = (xs, word) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} ${word} ${xs[xs.length - 1]}` : xs[0]);
+      const two = protein - ap > 24;
+      put('notes', boosts.length
+        ? `Белтъкът в менюто е средно около ${ap} г на ден при цел ${protein} г. За да я стигнете, добавяйте всеки ден по ${two ? 'две' : 'едно'} от тези: ${or(boosts.map(x => x[0]), 'или')}.`
+        : `Белтъкът в менюто е средно около ${ap} г на ден при цел ${protein} г. Как да го допълните, ще обсъдим заедно.`,
+      boosts.length
+        ? `Protein in your menu averages about ${ap} g a day against a target of ${protein} g. To reach it, add ${two ? 'two' : 'one'} of these every day: ${or(boosts.map(x => x[1]), 'or')}.`
+        : `Protein in your menu averages about ${ap} g a day against a target of ${protein} g. We will discuss together how to top it up.`);
+      put('clinician', `Менюто дава средно около ${ap} г белтък на ден при цел ${protein} г — при тези ограничения ястията не стигат; на пациента е казано с какво да го допълни.`,
+        `The menu averages about ${ap} g of protein a day against a target of ${protein} g; with these restrictions the dishes fall short, and the patient is told what to add.`);
+    }
+    if (Math.abs(ak - tk) / tk > 0.07) {
+      put('clinician', `Менюто дава средно около ${ak} kcal на ден при цел ${tk} kcal — при тези ограничения ястията не достигат целта.`,
+        `The menu averages about ${ak} kcal a day against a target of ${tk} kcal; with these restrictions the dishes do not reach the target.`);
     }
   }
 
@@ -1144,9 +1187,7 @@ function excluded(items, ctx) {
   if (cond.has('gout') && has('purine')) return true;
   if (ctx.diabetes && has('sweet')) return true;
   if (ctx.lowSalt) {
-    const saltyNa = items.filter(it => FOODS[it.food].flags.has('salt') && FOODS[it.food].cat !== 'grain')
-      .reduce((s, it) => s + FOODS[it.food].na * it.grams / 100, 0);
-    if (saltyNa > 400) return true;
+    if (saltyNa(items) > SALT_PER_DISH) return true;
   }
   return false;
 }
@@ -1305,9 +1346,15 @@ const SCALE_ADULT = { min: 0.5, floor: 0.4 };
 let SCALE = SCALE_ADULT;
 
 /** Нова порция на съставка в границите по-горе и не под 40% от порцията в рецептата (при малки деца — по-малко). */
+/* Солена храна, която не е хляб или тестено: соев сос, горчица, маслини, туршия, сирене. */
+const saltyFood = (food) => FOODS[food].flags.has('salt') && FOODS[food].cat !== 'grain';
+
 function resize(it, grams, maxPieces = 3) {
   const base = it.base || it.grams;
-  const cap = it.extra ? maxGrams(it.food) : Math.min(maxGrams(it.food), base * 2.5);
+  // Соевият сос, горчицата, маслините и туршията не растат с порцията повече от 1,5 пъти:
+  // по-голямото ястие идва от гарнитурата, а не от солта (поправка във версия 4.18).
+  const grow = saltyFood(it.food) && !PROTEIN_FOODS.has(it.food) ? 1.5 : 2.5;
+  const cap = it.extra ? maxGrams(it.food) : Math.min(maxGrams(it.food), base * grow);
   const floor = it.extra ? 0 : base * SCALE.floor;
   const p = portionText(it.food, Math.min(Math.max(grams, floor), Math.max(cap, 5)), maxPieces, it.loose);
   return { ...it, grams: p.grams, text: it.extra ? `+ ${p.text}` : p.text };
@@ -1387,7 +1434,24 @@ function rebalance(option, kcal) {
   if (!otherKcal) return option;
   const fixedKcal = option.kcal - otherKcal;
   const factor = Math.min(1.6, Math.max(0.6, (kcal - fixedKcal) / otherKcal));
-  return withTotals(option, option.items.map(it => (other.includes(it) ? resize(it, it.grams * factor) : it)));
+  // Нагоре растат само несолените съставки; надолу — всички.
+  const grows = (it) => other.includes(it) && !(factor > 1 && saltyFood(it.food));
+  return withTotals(option, option.items.map(it => (grows(it) ? resize(it, it.grams * factor) : it)));
+}
+
+/* При режим с малко сол: солените съставки на едно ястие заедно са до 400 мг натрий (както при
+ * подбора на ястията). Порцията им се намалява, ако мащабирането я е вдигнало над това. */
+const SALT_PER_DISH = 400;
+const saltyNa = (items) => items.filter(it => saltyFood(it.food)).reduce((acc, it) => acc + FOODS[it.food].na * it.grams / 100, 0);
+function capSalt(option) {
+  const na = saltyNa(option.items);
+  if (na <= SALT_PER_DISH) return option;
+  const f = SALT_PER_DISH / na;
+  return withTotals(option, option.items.map((it) => {
+    if (!saltyFood(it.food)) return it;
+    const pt = portionText(it.food, Math.max(2, it.grams * f), 1, true);
+    return { ...it, grams: pt.grams, text: it.extra ? `+ ${pt.text}` : pt.text };
+  }));
 }
 
 function scaleProtein(option, ratio) {
@@ -1429,6 +1493,18 @@ const PROTEIN_EXTRAS = [
 ];
 const SWEET_DISH = new Set(['honey', 'darkchoc', 'muesli', 'oats', 'driedfruit']);
 
+/* С какво човек да допълни белтъка, когато менюто не стига до целта: [храна, грамове, bg, en].
+ * Минават през ограниченията му (веган, без млечни, калий и т.н.). */
+const PROTEIN_BOOSTS = [
+  ['cottage', 150, '150 г извара', '150 g of cottage cheese'],
+  ['egg', 110, '2 яйца', '2 eggs'],
+  ['chicken', 80, '80 г печено пилешко филе', '80 g of roast chicken breast'],
+  ['greekyogurt', 200, '200 г цедено кисело мляко', '200 g of strained yogurt'],
+  ['tofu', 200, '200 г тофу', '200 g of tofu'],
+  ['lentils', 200, '200 г сварена леща', '200 g of cooked lentils'],
+  ['chickpeas', 200, '200 г сварен нахут', '200 g of cooked chickpeas'],
+];
+
 /**
  * Последна стъпка: енергията на ястието се доближава до тази на храненето.
  * Мащабират се храните без много белтък (при по-малко въглехидрати нишестето не
@@ -1441,6 +1517,7 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
     const diff = kcal - o.kcal;
     if (Math.abs(diff) <= kcal * 0.04) return o;
     const flexible = (it) => !it.extra && !PROTEIN_FOODS.has(it.food) && !isPiece(it)
+      && !(diff > 0 && saltyFood(it.food))
       && !(diff > 0 && ctx.lowerCarb && STARCH.has(it.food))
       && !(diff > 0 && ctx.limitK && FOODS[it.food].flags.has('highK'));
     const flexKcal = totals(o.items.filter(flexible)).kcal;
@@ -1456,6 +1533,9 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
   const nutty = EXTRAS.filter(([f]) => NUTTY.has(f));
   const plain = EXTRAS.filter(([f]) => !NUTTY.has(f));
   const order = bias === 'low' ? [...plain, ...nutty] : bias === 'high' ? [...PROTEIN_EXTRAS, ...nutty, ...plain] : EXTRAS;
+  // Ястие, което вече е извън правилата (подборът е бил отпуснат, защото няма друго), не спира
+  // добавките: проверява се самата добавка. Иначе храненето остава с много по-малко енергия.
+  const already = excluded(o.items, ctx);
   for (const [extra, max, when] of order) {
     const short = kcal - o.kcal;
     if (short <= kcal * 0.05) break;
@@ -1476,7 +1556,7 @@ function fitEnergy(option, kcal, meal, ctx, bias = null) {
     const trial = have
       ? o.items.map(it => (it === have ? { ...it, grams: it.grams + want } : it))
       : [...o.items, { food, grams: want, extra: true }];
-    if (excluded(trial, ctx)) continue;
+    if (already ? excluded([{ food, grams: want }], ctx) : excluded(trial, ctx)) continue;
     o = withTotals(o, trial.map(it => {
       if (it.food !== food) return it;
       return it.extra ? resize(it, it.grams, 1) : { ...resize({ ...it, base: maxGrams(food) }, it.grams), base: it.base };

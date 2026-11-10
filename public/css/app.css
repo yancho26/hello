@@ -978,7 +978,8 @@ details.worklist[open] > summary { background: var(--surface-2); }
 }
 .assistant-layout { display: grid; grid-template-columns: minmax(0, 2.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .assistant-layout > .card { margin: 0; }
-@media (max-width: 980px) { .assistant-layout { grid-template-columns: 1fr; } }
+/* minmax(0, …): иначе широката таблица разпъва колоната извън екрана на телефон (поправка във версия 4.18). */
+@media (max-width: 980px) { .assistant-layout { grid-template-columns: minmax(0, 1fr); } }
 @media print {
   .af { break-inside: avoid; background: none; }
 }

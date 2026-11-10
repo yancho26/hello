@@ -98,7 +98,7 @@ export async function renderPatients(host) {
       h('div.titles', null,
         h('h1', null, view.archived ? 'Архив' : 'Пациенти'),
         h('div.muted.small', null, plural(list.length, 'пациент', 'пациенти'))),
-      h('div.row.no-print', { style: { flexWrap: 'nowrap' } }, sortSelect,
+      h('div.row.no-print', { style: { flexWrap: 'wrap', justifyContent: 'flex-end' } }, sortSelect,
         h('button.btn', {
           title: 'Внасяне на списък от Excel, LibreOffice, CSV или друга програма',
           onclick: () => openImportDialog({ onDone: () => renderPatients(host) }),

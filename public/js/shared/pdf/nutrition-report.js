@@ -293,7 +293,7 @@ function targets(ctx) {
     [ui('Мазнини'), t.fat, ui('г'), ui(`${t.fatPct}%`) + (t.satFat ? ui(` · наситени <${t.satFat} г`) : ''), MACRO.fat],
     [ui('Фибри'), t.fiber, ui('г'), ui('поне толкова'), C.green],
     [ui('Сол'), ui(`<${dec(t.salt)}`), ui('г'), ui('заедно с хляба'), C.slate],
-    [ui('Течности'), ui(dec(Math.round(t.fluids / 100) / 10)), ui('л'), plan.child ? ui(`общо с храната ${dec(plan.child.water)} л`) : ui('вода, чай, супи'), C.sky],
+    [ui('Течности'), ui(dec(Math.round(t.fluids / 100) / 10)), ui('л'), plan.child ? ui(`общо с храната ${dec(plan.child.water)} л`) : ui(t.fluidsBy === 'tests' ? 'ще уточним след изследванията' : t.fluidsBy === 'nephrologist' ? 'определя нефрологът' : 'вода, чай, супи'), C.sky],
   ];
   if (t.iron) tiles.push([ui('Желязо'), t.iron, ui('мг'), ui(`в менюто ≈${Math.round(m.fe)} мг`), C.rose]);
   if (t.calcium) tiles.push([ui('Калций'), t.calcium, ui('мг'), ui(`в менюто ≈${Math.round(m.ca / 10) * 10} мг`), C.teal]);

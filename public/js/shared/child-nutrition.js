@@ -376,9 +376,9 @@ export function childGuidance(t, { prefs, breastfed = false }) {
     y < 3 ? ['Оставете детето да се храни само с лъжица и с пръсти: бъркотията е част от ученето.', 'Let your child feed themselves with a spoon and fingers: the mess is part of learning.']
       : ['Включете детето в пазаруването и готвенето: така опитва по-смело нови храни.', 'Involve your child in shopping and cooking: they will try new foods more readily.'],
   ];
+  // Че целта е растеж по кривата, а не тегло, и че ще следим на прегледите — в писмото до родителя.
   const monitoring = [
-    ['Ръстът и теглото се мерят на профилактичните прегледи, а ИТМ за възрастта се следи по кривите на СЗО.', 'Height and weight are measured at check-ups, and BMI-for-age is followed on the WHO charts.'],
-    ['Целта не е определено тегло, а детето да расте по своята крива.', 'The aim is not a particular weight but for your child to grow along their own curve.'],
+    ['ИТМ за възрастта се проследява по кривите на СЗО при всяко измерване.', 'BMI-for-age is followed on the WHO curves at every measurement.'],
   ];
   if (b.status === 'over' || b.status === 'obese') monitoring.push(['При наднормено тегло целта е теглото да расте по-бавно от ръста. Ще проверим след 3 месеца.', 'With excess weight, the aim is for weight to rise more slowly than height. We will check again in 3 months.']);
   const weekly = [

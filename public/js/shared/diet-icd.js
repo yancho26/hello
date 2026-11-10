@@ -333,3 +333,16 @@ export function dossierDiagnoses(p) {
   }
   return out;
 }
+
+/**
+ * Целта по подразбиране във формата: при ИТМ от 25 нагоре — отслабване, освен след 75 г. при
+ * ИТМ под 30 и при заболяване, при което не се отслабва (бременност, цироза, онкологично лечение…).
+ * Преди формата предлагаше „отслабване“ и на тях, а режимът после го сменяше (версия 4.18).
+ */
+export function defaultGoalFor(bmi, age, diagnoses = []) {
+  if (bmi && bmi < 18.5) return 'gain';
+  if (!(bmi >= 25)) return 'maintain';
+  if (age >= 75 && bmi < 30) return 'maintain';
+  if (dietProfiles(diagnoses).noLose) return 'maintain';
+  return 'lose';
+}

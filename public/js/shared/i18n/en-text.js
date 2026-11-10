@@ -1496,6 +1496,8 @@ export const EN_TEXT = {
   'Накратко за Вашия режим': 'Your plan at a glance',
   'Накратко за режима на детето': 'Your child’s plan at a glance',
   'Защо този режим': 'Why this plan',
+  'ще уточним след изследванията': 'to be set after your tests',
+  'определя нефрологът': 'set by your nephrologist',
   'Насока: ': 'Guideline: ',
   'Взети предвид, без промени в храненето: ': 'Taken into account, with no change to the diet: ',
   'За лекаря': 'For the doctor',
