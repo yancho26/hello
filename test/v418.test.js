@@ -175,7 +175,7 @@ test('4.18: дневникът на пациента — редовете са �
   assert.deepEqual(keysOf(hf), ['weight', 'bp', 'glucose', 'fluids', 'meals', 'salt', 'veg', 'sugar', 'alcohol', 'activity', 'breath', 'hypo']);
   const row = (p, k) => p.diary.rows.find(r => r.key === k);
   assert.equal(row(hf, 'weight').hint, 'всяка сутрин преди закуска');
-  assert.equal(row(hf, 'bp').label, 'Кръвно налягане (цел под 135/85)', '140/90 в кабинета е 135/85 у дома (ESC 2024)');
+  assert.equal(row(hf, 'bp').label, 'Кръвно налягане (цел под 135/85)', '140/90 в кабинета е 135/85 у дома (ACC/AHA 2017, ESC 2024)');
   assert.equal(row(hf, 'bp').kind, 'two');
   assert.match(row(hf, 'fluids').hint, /^около \d(,\d)? л на ден$/);
   assert.deepEqual(hf.diary.rows.filter(r => r.kind === 'mark').map(r => r.key), ['breath', 'hypo'], 'до два реда за оплаквания');
