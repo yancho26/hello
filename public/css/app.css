@@ -757,6 +757,7 @@ svg.trend .pt.flag { fill: var(--danger); }
 .nut-clin { border: 1px dashed var(--line-strong); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 12px; background: var(--surface-2); }
 .nut-clin ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
 .nut-clin li { margin-bottom: 3px; }
+.nut-follow { margin: 12px 0 0; }
 /* Движение, сън и екрани при дете (версия 4.16). */
 .move-facts { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin: 10px 0 14px; }
 .move-fact { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface-2); }

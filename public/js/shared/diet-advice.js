@@ -326,9 +326,10 @@ const WHY = {
   prediabetes: { src: 'ADA 2026', why: () => [
     'Предиабетът често се връща към нормата с промяна в храненето и движението. Свалянето на 5–7% от теглото и 150 минути движение седмично намаляват риска от диабет с около 58%.',
     'Prediabetes often returns to normal with changes in diet and activity. Losing 5–7% of your weight and 150 minutes of activity a week lower the risk of diabetes by about 58%.'] },
-  tg: { src: 'ESC/EAS 2019', why: () => [
-    'Триглицеридите се покачват най-вече от захар, бял хляб, сладки напитки и алкохол. Затова менюто е с малко от тях и с мазна риба, чиито омега-3 мазнини ги понижават.',
-    'Triglycerides rise mainly with sugar, white bread, sweet drinks and alcohol. Your menu has little of these and includes oily fish, whose omega-3 fats lower them.'] },
+  // След изречението с показателя от досието — „Те се покачват…“, за да не започват две изречения еднакво.
+  tg: { src: 'ESC/EAS 2019', why: (v, F) => [
+    `${F.ind?.tg ? 'Те' : 'Триглицеридите'} се покачват най-вече от захар, бял хляб, сладки напитки и алкохол. Затова менюто е с малко от тях и с мазна риба, чиито омега-3 мазнини ги понижават.`,
+    `${F.ind?.tg ? 'They' : 'Triglycerides'} rise mainly with sugar, white bread, sweet drinks and alcohol. Your menu has little of these and includes oily fish, whose omega-3 fats lower them.`] },
   dyslip: { src: 'ESC/EAS 2025', why: (v) => [
     `Наситените мазнини вдигат „лошия“ холестерол LDL, затова в менюто те са под ${v.b.satFat} г на ден, а мазнините идват предимно от зехтин, ядки и риба.`,
     `Saturated fat raises “bad” LDL cholesterol, so your menu keeps it under ${v.e.satFat} g a day, with fats coming mostly from olive oil, nuts and fish.`] },
@@ -369,8 +370,8 @@ const WHY = {
     : ['Сега целта е теглото да не се покачва. Порциите и видът на храната в менюто са подбрани така, че да поддържат сегашното тегло.',
       'For now the aim is to keep your weight from rising. Portions and foods in the menu are chosen to keep your current weight.']) },
   gout: { src: 'EULAR 2016, ACR 2020', why: (v, F) => both(
-    ['Пикочната киселина се покачва от карантия, бира и спиртни напитки, подсладени напитки с фруктоза и много месо и морски дарове. Затова те са ограничени, а нискомаслените млечни продукти и водата помагат тя да се отделя.',
-      'Uric acid rises with offal, beer and spirits, drinks sweetened with fructose, and large amounts of meat and seafood. These are limited, while low-fat dairy and water help your body get rid of it.'],
+    [`${F.ind?.urate ? 'Тя' : 'Пикочната киселина'} се покачва от карантия, бира и спиртни напитки, подсладени напитки с фруктоза и много месо и морски дарове. Затова те са ограничени, а нискомаслените млечни продукти и водата помагат тя да се отделя.`,
+      `${F.ind?.urate ? 'It' : 'Uric acid'} rises with offal, beer and spirits, drinks sweetened with fructose, and large amounts of meat and seafood. These are limited, while low-fat dairy and water help your body get rid of it.`],
     when(F.goal === 'lose', 'Отслабването също намалява пристъпите.', 'Losing weight also reduces attacks.')) },
   osteoporosis: { src: 'ESCEO/IOF 2019', why: (v) => both(
     [`За здравите кости са нужни калций, витамин D и белтък. Менюто е подбрано с повече храни с калций${v.b.caMenu ? ` и дава около ${v.b.caMenu} мг на ден` : ''} при препоръка 1000–1200 мг${v.own('protein', 'osteoporosis') ? `, а белтъкът е ${v.b.ppk} г/кг` : ''}.`,
@@ -399,12 +400,12 @@ const WHY = {
   stones: { src: 'EAU 2024', why: (v) => [
     `Камъните се образуват, когато урината е концентрирана. Затова най-важното е да пиете много${v.own('fluids', 'stones') ? `: около ${v.b.fluids} л течности на ден` : ''}, за да отделяте поне 2–2,5 л урина. Солта и много животински белтък увеличават калция в урината, а калцият от храната, обратно, предпазва, защото свързва оксалатите в червата.`,
     `Stones form when urine is concentrated. The most important thing is to drink plenty${v.own('fluids', 'stones') ? `: about ${v.e.fluids} l of fluid a day` : ''}, so that you pass at least 2–2.5 l of urine. Salt and a lot of animal protein increase calcium in the urine, while calcium from food does the opposite and protects you, because it binds oxalate in the gut.`] },
-  hyperk: { src: 'KDIGO 2024', why: () => [
-    'Калият в кръвта Ви е повишен, а той идва най-много от плодовете, зеленчуците, бобовите и ядките. Затова порциите на най-богатите на калий храни в менюто са по-малки.',
-    'Your blood potassium is high, and most of it comes from fruit, vegetables, pulses and nuts. That is why the portions of the foods richest in potassium are smaller in your menu.'] },
-  hypok: { src: 'ESC 2024', why: () => [
-    'Калият в кръвта Ви е нисък. Храните, богати на калий, помагат да се възстанови, ако бъбреците Ви са здрави, но често е нужна и таблетка по назначение.',
-    'Your blood potassium is low. Potassium-rich foods help restore it if your kidneys are healthy, but a tablet as prescribed is often needed as well.'] },
+  hyperk: { src: 'KDIGO 2024', why: (v, F) => [
+    `Калият в кръвта Ви е повишен${potassiumOf(F)[0]}, а той идва най-много от плодовете, зеленчуците, бобовите и ядките. Затова порциите на най-богатите на калий храни в менюто са по-малки.`,
+    `Your blood potassium is high${potassiumOf(F)[1]}, and most of it comes from fruit, vegetables, pulses and nuts. That is why the portions of the foods richest in potassium are smaller in your menu.`] },
+  hypok: { src: 'ESC 2024', why: (v, F) => [
+    `Калият в кръвта Ви е нисък${potassiumOf(F)[0]}. Храните, богати на калий, помагат да се възстанови, ако бъбреците Ви са здрави, но често е нужна и таблетка по назначение.`,
+    `Your blood potassium is low${potassiumOf(F)[1]}. Potassium-rich foods help restore it if your kidneys are healthy, but a tablet as prescribed is often needed as well.`] },
   hypona: { src: 'ESE 2014', why: () => [
     'Натрият в кръвта Ви е нисък. Колко вода и сол да приемате зависи от причината и ще го определим след изследванията. Дотогава не пийте повече вода от обичайното.',
     'Your blood sodium is low. How much water and salt you should have depends on the cause, and we will decide this after your tests. Until then, do not drink more water than usual.'] },
@@ -500,7 +501,8 @@ const WHY = {
     ['При псориатичен артрит нормалното тегло намалява болката в ставите и подобрява ефекта от лечението.',
       'In psoriatic arthritis, a healthy weight reduces joint pain and improves the effect of treatment.'],
     when(F.goal === 'lose', 'Затова режимът е за отслабване.', 'That is why this plan is for weight loss.'),
-    ['Храненето допълва, но не заменя лечението.', 'Diet supports but does not replace treatment.']) },
+    // При псориазис същото изречение е в неговото обяснение — не се казва два пъти.
+    when(!hasOf(F)('psoriasis'), 'Храненето допълва, но не заменя лечението.', 'Diet supports but does not replace treatment.')) },
   psoriasis: { src: 'NPF 2018', why: () => [
     'При псориазис наднорменото тегло засилва възпалението, а отслабването намалява кожните промени. Безглутеново хранене помага само при доказана чувствителност към глутен. Храненето допълва, но не заменя лечението.',
     'In psoriasis, excess weight increases inflammation, and weight loss reduces skin lesions. A gluten-free diet helps only with confirmed gluten sensitivity. Diet supports but does not replace treatment.'] },
@@ -516,9 +518,12 @@ const WHY = {
   hs: { src: 'North American HS 2019', why: () => [
     'При супуративен хидраденит наднорменото тегло и тютюнопушенето засилват болестта, затова отслабването и спирането на цигарите помагат. Спирането на млечните продукти няма достатъчно доказателства.',
     'In hidradenitis suppurativa, excess weight and smoking make the disease worse, so losing weight and stopping smoking help. There is not enough evidence for cutting out dairy.'] },
-  pressure: { src: 'ESPEN 2022', why: (v) => [
+  // При недохранване „режимът не е за отслабване“ е казано в неговото обяснение — тук не се повтаря.
+  pressure: { src: 'ESPEN 2022', why: (v, F) => (hasOf(F)('malnutrition') ? [
+    'Докато раната зараства, тялото изразходва повече енергия и белтък, затова е важно да изяждате всички хранения.',
+    'While the wound heals, your body uses more energy and protein, so it is important to eat all your meals.'] : [
     `Докато раната зараства, тялото изразходва повече енергия и белтък. Затова режимът не е за отслабване${v.own('protein', 'pressure') ? `, а белтъкът е около ${v.b.protein} г на ден` : ''}.`,
-    `While the wound heals, your body uses more energy and protein. That is why this plan is not for weight loss${v.own('protein', 'pressure') ? `, and protein is about ${v.e.protein} g a day` : ''}.`] },
+    `While the wound heals, your body uses more energy and protein. That is why this plan is not for weight loss${v.own('protein', 'pressure') ? `, and protein is about ${v.e.protein} g a day` : ''}.`]) },
   parkinson: { src: 'ESPEN 2018', why: () => [
     'При болест на Паркинсон запекът е чест, затова менюто е с повече фибри и течности. Леводопата действа по-добре, ако я взимате поне 30 минути преди хранене, защото белтъкът в храната пречи на усвояването ѝ.',
     'Constipation is common in Parkinson’s disease, so your menu has more fiber and fluid. Levodopa works better if you take it at least 30 minutes before a meal, because protein in food reduces its absorption.'] },
@@ -626,6 +631,89 @@ const WHY = {
     'There is no diet with proven benefit in endometriosis. A balanced diet is enough, and strict restrictions without a confirmed intolerance are not recommended.'] },
 };
 
+/* ------------------------- показателите на човека (версия 4.18) ------------------------- */
+
+const dateBg = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)} г.`;
+const dateEn = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+/* Число с най-много един знак след запетаята; fix — винаги с един („7,0“). */
+const one = (v, en, fix = false) => fmt(fix ? (Math.round(v * 10) / 10).toFixed(1) : Math.round(v * 10) / 10, en);
+
+/* Кой показател от досието върви с кое обяснение. Всеки се казва веднъж — в първото от тях. */
+const IND_FOR = {
+  htn: 'bp', dm2: 'hba1c', dm1: 'hba1c', prediabetes: 'hba1c', dyslip: 'ldl', chd: 'ldl', pad: 'ldl', stroke: 'ldl',
+  tg: 'tg', gout: 'urate', anemia: 'iron', heavy: 'iron', vitd: 'vitd', b12: 'b12',
+};
+
+/**
+ * Изречението за показателя на човека в началото на обяснението: стойността, датата и целта му —
+ * „Последният Ви гликиран хемоглобин е 7,8% (12.09.2026 г.) при цел под 7,0%.“ Връща [bg, en] или null.
+ */
+function indicatorLine(F, key, ind) {
+  const I = F.ind;
+  if (!I) return null;
+  if (ind === 'bp' && I.bp) {
+    const { sys, dia, date, target: t, ok } = I.bp;
+    return ok
+      ? [`Последното Ви измерено налягане е ${sys}/${dia} (${dateBg(date)}) и е в целта под ${t.sys}/${t.dia}.`, `Your last blood pressure reading was ${sys}/${dia} (${dateEn(date)}), within the target of under ${t.sys}/${t.dia}.`]
+      : [`Последното Ви измерено налягане е ${sys}/${dia} (${dateBg(date)}) при цел под ${t.sys}/${t.dia}.`, `Your last blood pressure reading was ${sys}/${dia} (${dateEn(date)}); the target is under ${t.sys}/${t.dia}.`];
+  }
+  if (ind === 'hba1c' && I.hba1c) {
+    const { value, date, prev, target, ok } = I.hba1c;
+    const diff = prev ? value - prev.value : 0;
+    const trend = Math.abs(diff) >= 0.3
+      ? [`, ${diff < 0 ? 'по-нисък' : 'по-висок'} от предишните ${one(prev.value, false)}%`, `, ${diff < 0 ? 'down' : 'up'} from ${one(prev.value, true)}%`] : ['', ''];
+    const head = [`Последният Ви гликиран хемоглобин е ${one(value, false)}% (${dateBg(date)})${trend[0]}`, `Your last HbA1c was ${one(value, true)}% (${dateEn(date)})${trend[1]}`];
+    if (key === 'prediabetes') return [`${head[0]}; между 5,7 и 6,4% е предиабет.`, `${head[1]}; 5.7–6.4% is the prediabetes range.`];
+    // Вметнатото „по-нисък от предишните …“ се затваря със запетая.
+    const c = trend[0] ? ',' : '';
+    return ok
+      ? [`${head[0]}${c} и е в целта под ${one(target, false, true)}%.`, `${head[1]}, within the target of under ${one(target, true, true)}%.`]
+      : [`${head[0]}${c} при цел под ${one(target, false, true)}%.`, `${head[1]}; the target is under ${one(target, true, true)}%.`];
+  }
+  if (ind === 'ldl' && I.ldl) {
+    const { value, date, target, ok } = I.ldl;
+    const head = [`LDL холестеролът Ви е ${one(value, false)} mmol/L (${dateBg(date)})`, `Your LDL cholesterol is ${one(value, true)} mmol/L (${dateEn(date)})`];
+    if (!target) return [`${head[0]}.`, `${head[1]}.`];
+    return ok
+      ? [`${head[0]} и е в целта под ${one(target, false)}.`, `${head[1]}, within the target of under ${one(target, true)}.`]
+      : [`${head[0]} при цел под ${one(target, false)}.`, `${head[1]}; the target is under ${one(target, true)}.`];
+  }
+  if (ind === 'tg' && I.tg) {
+    const { value, date, ok } = I.tg;
+    return ok
+      ? [`Триглицеридите Ви са ${one(value, false)} mmol/L (${dateBg(date)}) и са в нормата.`, `Your triglycerides are ${one(value, true)} mmol/L (${dateEn(date)}), within the normal range.`]
+      : [`Триглицеридите Ви са ${one(value, false)} mmol/L (${dateBg(date)}); нормата е под 1,7.`, `Your triglycerides are ${one(value, true)} mmol/L (${dateEn(date)}); normal is under 1.7.`];
+  }
+  if (ind === 'urate' && I.urate) {
+    const { value, date, ok } = I.urate;
+    return ok
+      ? [`Пикочната Ви киселина е ${Math.round(value)} µmol/L (${dateBg(date)}) и е в целта под 360.`, `Your uric acid is ${Math.round(value)} µmol/L (${dateEn(date)}), within the target of under 360.`]
+      : [`Пикочната Ви киселина е ${Math.round(value)} µmol/L (${dateBg(date)}) при цел под 360.`, `Your uric acid is ${Math.round(value)} µmol/L (${dateEn(date)}); the target is under 360.`];
+  }
+  if (ind === 'iron' && (I.hb || I.ferritin)) {
+    const { hb, ferritin } = I;
+    if (hb && ferritin) return [`Последният Ви хемоглобин е ${Math.round(hb.value)} g/L (${dateBg(hb.date)}), а феритинът ${Math.round(ferritin.value)} µg/L.`, `Your last hemoglobin was ${Math.round(hb.value)} g/L (${dateEn(hb.date)}), and ferritin ${Math.round(ferritin.value)} µg/L.`];
+    if (hb) return [`Последният Ви хемоглобин е ${Math.round(hb.value)} g/L (${dateBg(hb.date)}).`, `Your last hemoglobin was ${Math.round(hb.value)} g/L (${dateEn(hb.date)}).`];
+    return [`Последният Ви феритин е ${Math.round(ferritin.value)} µg/L (${dateBg(ferritin.date)}).`, `Your last ferritin was ${Math.round(ferritin.value)} µg/L (${dateEn(ferritin.date)}).`];
+  }
+  if (ind === 'vitd' && I.vitd) {
+    const { value, date, low } = I.vitd;
+    return low
+      ? [`Последното Ви ниво на витамин D е ${Math.round(value)} nmol/L (${dateBg(date)}); достатъчно е над 50.`, `Your last vitamin D level was ${Math.round(value)} nmol/L (${dateEn(date)}); a sufficient level is above 50.`]
+      : [`Последното Ви ниво на витамин D е ${Math.round(value)} nmol/L (${dateBg(date)}) и е достатъчно.`, `Your last vitamin D level was ${Math.round(value)} nmol/L (${dateEn(date)}), which is sufficient.`];
+  }
+  if (ind === 'b12' && I.b12) {
+    const { value, date, low } = I.b12;
+    return low
+      ? [`Последният Ви витамин B12 е ${Math.round(value)} pmol/L (${dateBg(date)}); нормата е над 150.`, `Your last vitamin B12 was ${Math.round(value)} pmol/L (${dateEn(date)}); normal is above 150.`]
+      : [`Последният Ви витамин B12 е ${Math.round(value)} pmol/L (${dateBg(date)}) и е в нормата.`, `Your last vitamin B12 was ${Math.round(value)} pmol/L (${dateEn(date)}), within the normal range.`];
+  }
+  return null;
+}
+
+/* Калият от досието в скоби — за обясненията при висок и нисък калий. */
+const potassiumOf = (F) => (F.ind?.k ? [` (${one(F.ind.k.value, false)} mmol/L на ${dateBg(F.ind.k.date)})`, ` (${one(F.ind.k.value, true)} mmol/L on ${dateEn(F.ind.k.date)})`] : ['', '']);
+
 /* Бъбреците — един текст според стадия (по eGFR, а без него — по кода). */
 function kidneyWhy(F, v) {
   // Колко течности между диализите — в правилото за течностите.
@@ -725,6 +813,16 @@ export function whyItems(F) {
   const owner = {};
   for (const [topic, order] of Object.entries(OWNERS)) owner[topic] = order(F).find(k => present.has(k)) || null;
   v.own = (topic, key) => owner[topic] === key;
+  // Показателят на човека (налягане, HbA1c, LDL…) — в началото на първото обяснение, към което се отнася.
+  const usedInd = new Set();
+  const withFact = (k, text) => {
+    const ind = IND_FOR[k];
+    if (!ind || usedInd.has(ind)) return text;
+    const line = indicatorLine(F, k, ind);
+    if (!line) return text;
+    usedInd.add(ind);
+    return [`${line[0]} ${text[0]}`, `${line[1]} ${text[1]}`];
+  };
   const out = [patternWhy(F, v)];
   for (const [k, ds] of groups) {
     const names = [...new Set(ds.map(d => d.name).filter(Boolean))];
@@ -737,7 +835,7 @@ export function whyItems(F) {
     }
     const W = WHY[k];
     if (!W) continue;
-    out.push({ key: k, kind: 'dx', codes: ds.map(d => d.code), title, text: W.why(v, F), src: W.src });
+    out.push({ key: k, kind: 'dx', codes: ds.map(d => d.code), title, text: withFact(k, W.why(v, F)), src: W.src });
   }
   // Заболяванията от досието без код по МКБ-10 (хроничните заболявания).
   for (const c of F.condOnly || []) {
@@ -747,7 +845,7 @@ export function whyItems(F) {
       const w = kidneyWhy(F, v);
       out.push({ key: 'kidney', kind: 'cond', codes: [], title: COND_TITLE.ckd, text: w.text, src: w.src });
     } else if (WHY[k]) {
-      out.push({ key: k, kind: 'cond', codes: [], title: COND_TITLE[c], text: WHY[k].why(v, F), src: WHY[k].src });
+      out.push({ key: k, kind: 'cond', codes: [], title: COND_TITLE[c], text: withFact(k, WHY[k].why(v, F)), src: WHY[k].src });
     }
     groups.set(k, []);
   }
@@ -1000,6 +1098,19 @@ export function adultRules(F) {
   if (gf) add('avoid', ['Пшеница, ръж, ечемик и всичко с тях. Овес само ако е сертифициран без глутен.', 'Wheat, rye, barley and anything made with them. Oats only if certified gluten-free.']);
   if (F.prefs.has('lactoseFree')) add('notes', ['Млечни продукти без лактоза. Твърдите отлежали сирена обикновено се понасят.', 'Lactose-free dairy. Hard aged cheeses are usually tolerated.']);
 
+  // Показателите от досието (версия 4.18): кои липсват или са стари — за лекаря.
+  if (F.ind) {
+    const miss = [];
+    if (has('htn') && !F.ind.bp) miss.push(['налягане', 'blood pressure']);
+    if ((has('dm2') || has('dm1')) && !F.ind.hba1c) miss.push(['HbA1c', 'HbA1c']);
+    if (['dyslip', 'chd', 'pad', 'stroke'].some(has) && !F.ind.ldl) miss.push(['LDL', 'LDL']);
+    if (has('gout') && !F.ind.urate) miss.push(['пикочна киселина', 'uric acid']);
+    if (miss.length) {
+      add('clinician', [`В досието няма скорошни резултати за: ${list(miss.map(m => m[0]), false)}. Обяснението към пациента не ги споменава.`,
+        `The record has no recent results for: ${list(miss.map(m => m[1]), true)}. The explanation for the patient does not mention them.`]);
+    }
+  }
+
   // Специфичното за всяко заболяване.
   for (const k of F.keys) {
     const S = SPECIFIC[k];
@@ -1212,6 +1323,119 @@ export function monitoringPairs(F) {
   return [hf || ['Претегляйте се веднъж седмично. Колебания до 1 кг нагоре или надолу са нормални.', 'Weigh yourself once a week. Changes of up to 1 kg either way are normal.']];
 }
 
+/* ------------------------- дневник и контролен преглед (версия 4.18) ------------------------- */
+
+/* Целта за налягането, измерено у дома: 140/90 в кабинета отговаря на 135/85 у дома (ESC 2024); по-ниските са еднакви. */
+const homeBp = (t) => (t && t.sys === 140 && t.dia === 90 ? { sys: 135, dia: 85 } : t);
+
+/** Колко седмици има в дневника — колкото до контролния преглед при отслабване и покачване. */
+export const DIARY_WEEKS = 4;
+
+/**
+ * Дневникът на пациента: какво да записва всеки ден според заболяванията, лекарствата и целта.
+ * Редовете са от три вида: value — число (тегло, минути), two — две числа на ден (сутрин и вечер),
+ * check — отметка „спазих го“, mark — отметка „имаше оплакване“. Под таблицата са полетата за
+ * седмицата (тегло, талия). Връща { intro: [bg, en], rows: [{ key, kind, label, hint }], fields }.
+ */
+export function diaryFor(F) {
+  const has = hasOf(F);
+  const v = numbers(F);
+  const rows = [];
+  const row = (key, kind, bg, en, hintBg = '', hintEn = '') => rows.push({ key, kind, label: [bg, en], hint: [hintBg, hintEn] });
+  const hf = has('hf');
+  const hypoRisk = has('dm1') || F.classes.has('INSULIN') || F.classes.has('SU');
+
+  // Тегло всеки ден — само при сърдечна недостатъчност; иначе е веднъж седмично, под таблицата.
+  if (hf) row('weight', 'value', 'Тегло, кг', 'Weight, kg', 'всяка сутрин преди закуска', 'every morning before breakfast');
+  if (has('htn') || hf || F.ckd || ['ckd12', 'gn', 'adpkd'].some(has)) {
+    const t = homeBp(F.ind?.targets?.bp);
+    row('bp', 'two', `Кръвно налягане${t ? ` (цел под ${t.sys}/${t.dia})` : ''}`, `Blood pressure${t ? ` (target below ${t.sys}/${t.dia})` : ''}`,
+      'сутрин и вечер, след 5 минути покой', 'morning and evening, after 5 minutes of rest');
+  }
+  // Самоконтрол на кръвната захар — при инсулин, сулфонилурейни и гестационен диабет (NICE NG28, ADA 2026).
+  if (hypoRisk || has('gdm')) {
+    row('glucose', 'two', 'Кръвна захар, mmol/L', 'Blood glucose, mmol/L', has('gdm') ? 'на гладно и 1 час след хранене' : 'на гладно и преди сън', has('gdm') ? 'fasting and 1 hour after a meal' : 'fasting and at bedtime');
+  }
+  if (hf) row('fluids', 'value', 'Течности общо, мл', 'Total fluids, ml', `около ${v.b.fluids} л на ден`, `about ${v.e.fluids} l a day`);
+  else if (F.dialysis) row('fluids', 'value', 'Течности общо, мл', 'Total fluids, ml', 'колкото е определил нефрологът', 'as much as your nephrologist has set');
+  else if (has('stones')) row('fluids', 'value', 'Вода и чай, чаши', 'Water and tea, glasses', `поне ${v.b.fluids} л на ден`, `at least ${v.e.fluids} l a day`);
+  else if (!has('hypona') && (F.age >= 65 || ['gout', 'constipation', 'hemorrhoids', 'fissure', 'diverticula', 'uti'].some(has))) {
+    row('fluids', 'value', 'Вода и чай, чаши', 'Water and tea, glasses', `около ${v.b.fluids} л на ден`, `about ${v.e.fluids} l a day`);
+  }
+  if (F.goal === 'gain' || has('malnutrition')) row('meals', 'check', 'Всички хранения, без пропуснато', 'All meals, none skipped');
+  else row('meals', 'check', 'Хранене по менюто', 'Meals as in the menu');
+  if (F.lowSalt) row('salt', 'check', 'Без досоляване и солени храни', 'No added salt or salty foods');
+  if (F.goal !== 'gain' && !F.limitK && !F.dialysis) row('veg', 'check', 'Зеленчуци на обяд и на вечеря', 'Vegetables at lunch and dinner');
+  if (F.goal === 'lose' || ['dm2', 'prediabetes', 'masld', 'tg'].some(has)) row('sugar', 'check', 'Без сладко и подсладени напитки', 'No sweets or sweetened drinks');
+  if (F.pregnancy || ['masld', 'cirrhosis', 'pancreatitis', 'alcohol', 'gout', 'tg'].some(has)) row('alcohol', 'check', 'Без алкохол', 'No alcohol');
+  row('activity', 'value', has('pad') ? 'Ходене, минути' : 'Движение, минути', has('pad') ? 'Walking, minutes' : 'Activity, minutes');
+
+  // Оплакванията — до два реда, по реда на значимост; отбелязват се дните, в които ги е имало.
+  const S = [
+    [hf, 'breath', 'Задух или отоци по краката', 'Breathlessness or swollen legs'],
+    [hypoRisk, 'hypo', 'Ниска кръвна захар', 'Low blood sugar'],
+    [has('gout'), 'joint', 'Болка в ставите', 'Joint pain'],
+    [has('ibs') || has('ibd'), 'gut', 'Болка, подуване или диария', 'Pain, bloating or diarrhea'],
+    [['constipation', 'hemorrhoids', 'fissure'].some(has), 'stool', 'Дни без изхождане', 'Days without a bowel movement'],
+    [has('gerd') || has('ulcer'), 'heartburn', 'Киселини или болка в стомаха', 'Heartburn or stomach pain'],
+    [F.glp1, 'nausea', 'Гадене', 'Nausea'],
+    [has('gallstones') || has('pancreatitis'), 'pain', 'Болка след хранене', 'Pain after eating'],
+    [has('migraine'), 'headache', 'Главоболие', 'Headache'],
+  ].filter(s => s[0]).slice(0, 2);
+  for (const [, key, bg, en] of S) row(key, 'mark', bg, en, 'отбележете, ако е имало', 'tick if it happened');
+
+  // Под таблицата: теглото веднъж седмично и талията в началото и в края (при отслабване).
+  const fields = [];
+  if (!hf) fields.push({ key: 'weight', label: ['Тегло, кг', 'Weight, kg'], weeks: 'all' });
+  if (F.goal === 'lose' && !F.pregnancy) fields.push({ key: 'waist', label: ['Талия, см', 'Waist, cm'], weeks: 'ends' });
+  return {
+    intro: ['Попълвайте дневника всеки ден и го донесете на следващия преглед. Така заедно ще видим какво помага и какво да променим.',
+      'Fill in the diary every day and bring it to your next visit. That way we will see together what helps and what to change.'],
+    rows, fields,
+  };
+}
+
+/**
+ * Контролният преглед: след колко седмици и какво да се провери. При отслабване, покачване,
+ * бременност, недохранване и лечение с GLP-1 — след 4 седмици, иначе след 12. Изследванията се
+ * предлагат само при досие (F.ind): които липсват или дотогава ще са по-стари от срока си.
+ * Връща { weeks, keys } — ключове от FOLLOW_CHECKS.
+ */
+export const FOLLOW_CHECKS = {
+  weight: ['тегло', 'weight'], waist: ['талия', 'waist'], bp: ['налягане', 'blood pressure'], diary: ['дневника', 'the diary'],
+  hba1c: ['HbA1c', 'HbA1c'], lipids: ['липиден профил', 'lipid profile'], urate: ['пикочна киселина', 'uric acid'],
+  kidney: ['калий и креатинин', 'potassium and creatinine'], cbc: ['кръвна картина и феритин', 'blood count and ferritin'],
+};
+
+export function followUpFor(F) {
+  const has = hasOf(F);
+  const weeks = F.goal !== 'maintain' || F.pregnancy || F.glp1 || has('malnutrition') ? 4 : 12;
+  const keys = ['weight'];
+  if (F.goal === 'lose' && !F.pregnancy) keys.push('waist');
+  if (has('htn') || has('hf') || F.ckd) keys.push('bp');
+  keys.push('diary');
+  if (F.ind) {
+    // Резултатът е „за повторение“, ако липсва или към прегледа ще е по-стар от months месеца.
+    const due = (r, months) => !r || monthsBetween(r.date, F.asOf) + weeks / 4.35 > months;
+    const dm = ['dm2', 'dm1', 'prediabetes'].some(has);
+    // HbA1c — на 3 месеца извън целта и на 6 месеца в нея (ADA 2026); при предиабет — веднъж годишно.
+    if (dm && due(F.ind.hba1c, has('prediabetes') && !has('dm2') && !has('dm1') ? 12 : F.ind.hba1c?.ok ? 6 : 3)) keys.push('hba1c');
+    // Липиди — 2–3 месеца след промяна, когато LDL е над целта (ESC/EAS 2019), иначе веднъж годишно.
+    if (['dyslip', 'chd', 'pad', 'stroke', 'tg'].some(has) && due(F.ind.ldl, F.ind.ldl?.ok === false ? 3 : 12)) keys.push('lipids');
+    if (has('gout') && due(F.ind.urate, F.ind.urate?.ok ? 12 : 6)) keys.push('urate');
+    // Калий и креатинин — при ХБЗ и при лекарства, които задържат калий.
+    if ((F.ckd || kSparing(F)) && (due(F.ind.k, F.ckdAdvanced ? 3 : 6) || due(F.ind.egfr, F.ckdAdvanced ? 3 : 6))) keys.push('kidney');
+    if ((has('anemia') || has('heavy')) && (due(F.ind.hb, 3) || F.ind.hb?.low)) keys.push('cbc');
+  }
+  return { weeks, keys };
+}
+
+/** Цели месеци (с десети) между две дати ISO. */
+function monthsBetween(from, to) {
+  if (!from || !to) return 0;
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / (30.44 * 86400000);
+}
+
 /* ---------------------------------- резюме ---------------------------------- */
 
 /* Най-важното за човека — по реда на значимост, до 3 неща. */
@@ -1270,8 +1494,10 @@ export function summaryFor(F) {
     : list(xs.map(lower1), en));
   const bg = [];
   const en = [];
-  bg.push(`Съставих този режим специално за Вас според теглото (${v.b.weight} кг), ръста (${v.b.height} см), възрастта (${v.b.age} г.), движението${names.length ? ` и заболяванията Ви: ${cut(names, false)}` : ' и навиците Ви'}.`);
-  en.push(`I have put this plan together for you based on your weight (${v.e.weight} kg), height (${v.e.height} cm), age (${v.e.age}), activity${namesEn.length ? ` and your conditions: ${cut(namesEn, true)}` : ' and habits'}.`);
+  // Ако режимът цитира изследвания от досието, писмото го казва.
+  const labs = F.ind && ['hba1c', 'ldl', 'tg', 'urate', 'hb', 'ferritin', 'vitd', 'b12', 'k', 'egfr'].some(k => F.ind[k]);
+  bg.push(`Съставих този режим специално за Вас според теглото (${v.b.weight} кг), ръста (${v.b.height} см), възрастта (${v.b.age} г.), движението${labs ? ', последните Ви изследвания' : ''}${names.length ? ` и заболяванията Ви: ${cut(names, false)}` : ' и навиците Ви'}.`);
+  en.push(`I have put this plan together for you based on your weight (${v.e.weight} kg), height (${v.e.height} cm), age (${v.e.age}), activity${labs ? ', your latest test results' : ''}${namesEn.length ? ` and your conditions: ${cut(namesEn, true)}` : ' and habits'}.`);
   if (F.pregnancy) {
     bg.push('Целта е наддаване в препоръчаните за бременността граници.');
     en.push('The aim is weight gain within the range recommended for pregnancy.');
@@ -1284,6 +1510,22 @@ export function summaryFor(F) {
   } else {
     bg.push('Целта е да запазите сегашното си тегло.');
     en.push('The aim is to keep your current weight.');
+  }
+  // Промяната в теглото по измерванията в досието — към изречението за целта.
+  const w = F.ind?.weight;
+  if (w && Math.abs(w.change) >= 1 && !F.pregnancy) {
+    const kg = [one(Math.abs(w.change), false), one(Math.abs(w.change), true)];
+    const i = bg.length - 1;
+    if (w.change < 0 && F.goal === 'lose') {
+      bg[i] += ` От ${dateBg(w.from)} досега сте свалили ${kg[0]} кг.`;
+      en[i] += ` Since ${dateEn(w.from)} you have lost ${kg[1]} kg.`;
+    } else if (w.change < 0) {
+      bg[i] += ` От ${dateBg(w.from)} досега теглото Ви е спаднало с ${kg[0]} кг.`;
+      en[i] += ` Since ${dateEn(w.from)} your weight has gone down by ${kg[1]} kg.`;
+    } else {
+      bg[i] += ` От ${dateBg(w.from)} досега теглото Ви се е покачило с ${kg[0]} кг.`;
+      en[i] += ` Since ${dateEn(w.from)} your weight has gone up by ${kg[1]} kg.`;
+    }
   }
   // Моделът — с причината накратко; подробностите са в обясненията под писмото.
   const short = patternShort(F);

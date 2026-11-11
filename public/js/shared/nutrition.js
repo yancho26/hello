@@ -34,7 +34,7 @@ import { addDays, daysBetween, today } from './dates.js';
 import { FOODS, FOOD_CATS, LIQUIDS, NUTRIENT_KEYS, RECIPES, YIELDS, mainProtein, mealsOf, nutrientsOf, rawOf, recipeTags, servingOf, shopName, totals, baseName } from './recipes.js';
 import { renderMethod } from './recipe-method.js';
 import { dietProfiles } from './diet-icd.js';
-import { FLAVOR_PAIRS, NO_LOSE, adultRules, childSummaryFor, childWhyItems, choosePattern, habitPairs, monitoringPairs, patternConflicts, summaryFor, weeklyPairs, whyItems } from './diet-advice.js';
+import { DIARY_WEEKS, FLAVOR_PAIRS, FOLLOW_CHECKS, NO_LOSE, adultRules, childSummaryFor, childWhyItems, choosePattern, diaryFor, followUpFor, habitPairs, monitoringPairs, patternConflicts, summaryFor, weeklyPairs, whyItems } from './diet-advice.js';
 import { CONTRACEPTION, cycleStats, phaseOn, phasesFrom } from './cycle.js';
 import { activityFromTraining, trainingNutrition, trainingPlan } from './training.js';
 import { CHILD_ACTIVITY, childDiagnoses, childEnergyNote, childFoodRules, childGuidance, childMilk, childTargets, percentileText } from './child-nutrition.js';
@@ -213,7 +213,7 @@ const KCAL_PER_KG_DAY = 24;
 /**
  * @param {object} input
  *   sex, age, weight, height, waist, activity, goal, pace, targetWeight, pattern,
- *   mealsPerDay (3|4|5), days (1|7|28), quick, strength, preferences: [], allergies: [],
+ *   mealsPerDay (3|4|5), days (1|7|28), quick, batch (вечерята е и обяд на другия ден), strength, preferences: [], allergies: [],
  *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf,
  *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly,
  *   cycle: { periods, lastPeriod, length, bleed, contraception, menopause } — менструалният цикъл,
@@ -266,6 +266,8 @@ function planFor(input) {
   const mealsPerDay = [3, 4, 5].includes(Number(input.mealsPerDay)) ? Number(input.mealsPerDay) : 5;
   // Меню за 1 ден (с два варианта), за седмица или за месец от 4 седмици.
   const days = MENU_DAYS.includes(Number(input.days)) ? Number(input.days) : 1;
+  // „Готвене веднъж на ден“ (версия 4.18) — само при меню за седмица или месец.
+  const batch = !!input.batch && days > 1;
   let strength = !isChild && !!input.strength;
 
   // Детето расте: без отслабване и покачване — енергията е за растежа по неговата крива.
@@ -562,6 +564,8 @@ function planFor(input) {
     // Без „пийте около … л“ в писмото и при възрастта: при СН и диализа течностите са ограничени,
     // а при нисък натрий количеството зависи от причината.
     fluidsRestricted: !isChild && (cond.has('hf') || dialysis || dx.keys.has('hypona')), ageNoLose,
+    // Показателите от досието (версия 4.18): налягане, HbA1c, LDL… с датата и целта; без досие — null.
+    ind: !isChild && input.indicators && typeof input.indicators === 'object' ? input.indicators : null, asOf,
     weeklyKg: projection?.weeklyKg ?? 0, targetWeight: projection?.targetWeight ?? null, weeks: projection?.weeks ?? null,
     dx: dx.considered.map(c => ({ code: c.code, name: c.name, keys: c.keys })),
     child: isChild ? { years: ct.years, status: ct.bmi.status, weightUsed: ct.weightUsed } : null,
@@ -704,8 +708,19 @@ function planFor(input) {
   // Седмично меню — по едно ястие за всяко хранене, с ритъм за седмицата.
   let week = null;
   if (days > 1) {
-    const plannedDays = planDays(slots, pools, variant, days, dayFocus);
+    const plannedDays = planDays(slots, pools, variant, days, dayFocus, { batch });
     swapPicks(plannedDays, slots, pools, swaps, dayFocus);
+    if (batch) relinkLeftovers(plannedDays, slots, swaps);
+    // Кое ястие се готви двойно (cook) и кое е от снощи (left).
+    const same = (a, b2) => !!a && !!b2 && a.r.name === b2.r.name;
+    const li = slots.findIndex(s => s.meal === 'lunch');
+    const di = slots.findIndex(s => s.meal === 'dinner');
+    const batchOf = (d, i) => {
+      if (!batch || li < 0 || di < li) return null;
+      if (i === li && d % 7 > 0 && same(plannedDays[d][li], plannedDays[d - 1][di])) return 'left';
+      if (i === di && d % 7 < 6 && d + 1 < days && same(plannedDays[d + 1][li], plannedDays[d][di])) return 'cook';
+      return null;
+    };
     week = plannedDays.map((picks, d) => {
       const date = addDays(start, d);
       return {
@@ -713,7 +728,7 @@ function planFor(input) {
         cycle: sync?.applied ? sync.days[d] : null,
         training: dayTraining(d),
         meals: slots.map((slot, i) => (slot.meal === 'milk' ? { ...slot, kcal: Math.round(milkKcal), option: milkOption() }
-          : { ...slot, ...meal(slot, picks[i], dayKcal(d)) })),
+          : { ...slot, ...meal(slot, picks[i], dayKcal(d)), ...(batchOf(d, i) ? { batch: batchOf(d, i) } : {}) })),
       };
     });
   }
@@ -763,7 +778,7 @@ function planFor(input) {
   if (week) {
     for (const d of week) {
       const opts = tuneDay(d.meals.map(m => m.option), d.meals.map(m => m.kcal), d.meals.map(m => m.meal));
-      d.meals.forEach((m, i) => { m.option = opts[i]; });
+      d.meals.forEach((m, i) => { m.option = opts[i]; if (m.batch && m.option) m.option.batch = m.batch; });
       d.totals = dayTotals(opts);
     }
   }
@@ -775,8 +790,15 @@ function planFor(input) {
     o.method = o.fixed ? '' : renderMethod(o.template, o.items, { swaps: o.swaps });
     const cut = SCALE.small && !o.fixed ? chokeCut(o) : null;
     if (cut) { o.cut = cut; o.method += ' ' + cutText(cut); }
+    // Готвене веднъж на ден: вечерята — с напомняне за втората порция; обядът от снощи — само затопляне.
+    if (o.batch === 'cook') o.method += ' ' + BATCH_NOTES.cook[0];
+    if (o.batch === 'left') { o.method = BATCH_NOTES.left[0] + (cut ? ' ' + cutText(cut) : ''); o.time = 5; }
   }
   for (const o of options) delete o.template;
+  if (batch && week?.some(d => d.meals.some(m => m.batch === 'left'))) {
+    put('notes', 'Втората порция охладете и приберете в хладилника до 2 часа след готвенето. На другия ден я затоплете, докато стане гореща.',
+      'Cool the second portion and put it in the fridge within 2 hours of cooking. The next day, reheat it until piping hot.');
+  }
 
   const day = dayTotals(meals.map(m => m.options[0]));
 
@@ -853,6 +875,15 @@ function planFor(input) {
   const [summaryBg, summaryEn] = isChild ? childSummaryFor(F) : summaryFor(F);
   const lists = isChild ? { weekly: guide.weekly, habits: guide.habits, flavor: FLAVOR_PAIRS, monitoring: guide.monitoring }
     : { weekly: weeklyPairs(F), habits: habitPairs(F), flavor: FLAVOR_PAIRS, monitoring: monitoringPairs(F) };
+  // Дневникът на пациента и контролният преглед (версия 4.18) — само за възрастни.
+  const diary = isChild ? null : diaryFor(F);
+  const follow = isChild ? null : followUpFor(F);
+  const diaryIn = (i) => ({
+    weeks: DIARY_WEEKS, intro: diary.intro[i],
+    rows: diary.rows.map(r => ({ key: r.key, kind: r.kind, label: r.label[i], hint: r.hint[i] })),
+    fields: diary.fields.map(f => ({ key: f.key, label: f.label[i], weeks: f.weeks })),
+  });
+  const followIn = (i) => ({ weeks: follow.weeks, keys: follow.keys, checks: follow.keys.map(k => FOLLOW_CHECKS[k][i]) });
   const first = (k) => G[k].map(x => x[0]);
   const second = (k) => G[k].map(x => x[1]);
   const srcEn = (src) => String(src || '').replace(/СЗО/g, 'WHO').replace(/КХП/g, 'SmPC');
@@ -861,7 +892,7 @@ function planFor(input) {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
       goal, pace, targetWeight: projection?.targetWeight ?? null, pattern: patternId, mealsPerDay, days,
-      quick: !!input.quick, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
+      quick: !!input.quick, batch, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
       dislikes: [...dislikes], swaps, kcalAdjust,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
       startDate: start, cycleSync: !!input.cycleSync, training: training ? training.input : null,
@@ -886,6 +917,8 @@ function planFor(input) {
     summary: summaryBg,
     why: why.map(w => ({ key: w.key, kind: w.kind, codes: w.codes, title: w.title[0], text: w.text[0], src: w.src })),
     clinician: first('clinician'),
+    diary: diary ? diaryIn(0) : null,
+    followUp: follow ? followIn(0) : null,
     // Английският на текстовете, които режимът пише сам; null — по речника (plan-en.js).
     advice: {
       en: {
@@ -893,6 +926,7 @@ function planFor(input) {
         warnings: second('warnings'), clinician: second('clinician'), summary: summaryEn,
         why: why.map(w => ({ key: w.key, kind: w.kind, codes: w.codes, title: w.title[1], text: w.text[1], src: srcEn(w.src) })),
         ...Object.fromEntries(Object.entries(lists).map(([k, v]) => [k, v.map(p => p[1])])),
+        ...(diary ? { diary: diaryIn(1), followUp: followIn(1) } : {}),
       },
     },
     // Дете (версия 4.16): ИТМ за възрастта, активността, напитките до 5 г. и седмицата с движение.
@@ -1137,6 +1171,21 @@ function swapPicks(days, slots, pools, swaps, focusOf) {
   }
 }
 
+/**
+ * „Готвене веднъж на ден“ след „Друго ястие“: ако вечерята е сменена, утрешният обяд следва
+ * новата; ако е сменен самият обяд, остава избраното от човека.
+ */
+function relinkLeftovers(days, slots, swaps) {
+  const li = slots.findIndex(s => s.meal === 'lunch');
+  const di = slots.findIndex(s => s.meal === 'dinner');
+  if (li < 0 || di < li) return;
+  for (let d = 1; d < days.length; d++) {
+    if (d % 7 === 0 || swaps[`${d}.${li}.0`] || !swaps[`${d - 1}.${di}.0`]) continue;
+    const prev = days[d - 1][di];
+    if (prev && keepsWell(prev.r)) days[d][li] = prev;
+  }
+}
+
 function hash(text, seed) {
   let h = 2166136261 ^ seed;
   for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
@@ -1262,8 +1311,22 @@ export function weekChunks(days) {
  * само ако няма друго подходящо. Всяка седмица: риба поне 2 пъти, бобови поне
  * 3 пъти, червено месо до 2 пъти; основният белтък на обяда и вечерята е различен.
  */
-function planDays(slots, pools, variant, n, focusOf = () => []) {
+/* „Готвене веднъж на ден“ (версия 4.18): вечерята се готви двойно и е обяд на следващия ден.
+ * Става с ястия, които се готвят и издържат до другия ден: без салати, яйца на тиган,
+ * сандвичи и морски дарове. */
+const NOT_FOR_TOMORROW = /салата|омлет|яйца на очи|бъркани яйца|сандвич|тост|брускет|капрезе|таратор|студена|скариди|октопод|миди|калмари|снежанка/i;
+export const keepsWell = (r) => r.time >= 20 && !NOT_FOR_TOMORROW.test(r.name);
+export const BATCH_NOTES = {
+  cook: ['Сгответе наведнъж и порцията за утрешния обяд: количествата за нея са при обяда утре.',
+    'Cook tomorrow’s lunch portion at the same time: its quantities are listed under tomorrow’s lunch.'],
+  left: ['Порцията е сготвена снощи заедно с вечерята. Затоплете я добре, докато стане гореща.',
+    'This portion was cooked last night together with dinner. Reheat it well, until piping hot.'],
+};
+
+function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false } = {}) {
   const lastUsed = new Map();
+  const li = slots.findIndex(s => s.meal === 'lunch');
+  const di = slots.findIndex(s => s.meal === 'dinner');
   let counts = { fish: 0, legume: 0, redmeat: 0 };
   const out = [];
   for (let d = 0; d < n; d++) {
@@ -1277,6 +1340,15 @@ function planDays(slots, pools, variant, n, focusOf = () => []) {
       const pool = pools[slot.meal];
       if (!pool.length) { picks.push(null); continue; }
       const main = slot.meal === 'lunch' || slot.meal === 'dinner';
+      // Обядът е вчерашната вечеря — в рамките на седмицата, за да е вярно и пазаруването за нея.
+      const prev = batch && slot.meal === 'lunch' && dw > 0 && di > li ? out[d - 1][di] : null;
+      if (prev && keepsWell(prev.r)) {
+        picks.push(prev);
+        lastUsed.set(prev.r.name, d);
+        proteinsToday.add(prev.protein);
+        for (const k of Object.keys(counts)) if (prev.tags.has(k)) counts[k]++;
+        continue;
+      }
       let best = null;
       let bestW = -Infinity;
       for (const x of pool) {
@@ -1292,6 +1364,8 @@ function planDays(slots, pools, variant, n, focusOf = () => []) {
           if (x.tags.has('redmeat') && counts.redmeat >= 2) w -= 20;
           if (proteinsToday.has(x.protein)) w -= 3;
         }
+        // Вечерята, която ще е и утрешен обяд, да е ястие, което издържа до другия ден.
+        if (batch && slot.meal === 'dinner' && dw < 6 && d + 1 < n && keepsWell(x.r)) w += 6;
         if (focus.length) w += focusBonus(x, focus);
         w += hash(`${x.r.name}|${d}`, variant) * 0.9;
         if (w > bestW) { bestW = w; best = x; }

@@ -153,6 +153,7 @@ function clientEditor(client, { onSaved, onClose, draft = null, remount = null }
     onPdf: () => downloadNutritionPdf(person(who), plan),
     onPdfEn: () => downloadNutritionPdf(person(who), plan, { lang: 'en' }),
     onPdfShopping: () => downloadNutritionPdf(person(who), plan, { only: 'shopping' }),
+    onPdfDiary: () => downloadNutritionPdf(person(who), plan, { only: 'diary' }),
   }));
 
   const last = c.plans?.length ? c.plans[c.plans.length - 1].plan.input : {};

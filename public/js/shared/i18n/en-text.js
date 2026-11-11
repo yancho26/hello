@@ -803,6 +803,23 @@ export const EN_TEXT = {
   'Меню за месец': 'Menu for one month',
   'Меню за {0} дни': 'Menu for {0} days',
   'ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ': 'PERSONAL PLAN · SHOPPING',
+  // Дневникът на пациента (версия 4.18).
+  'ЛИЧЕН ПЛАН · ДНЕВНИК': 'PERSONAL PLAN · DIARY',
+  'Дневник към хранителния режим': 'Diary for your nutrition plan',
+  'Дневник за {0} седмици': 'Diary for {0} weeks',
+  'Пн': 'Mon', 'Вт': 'Tue', 'Ср': 'Wed', 'Чт': 'Thu', 'Пт': 'Fri', 'Сб': 'Sat', 'Нд': 'Sun',
+  'от': 'from', 'до': 'to', 'Бележки:': 'Notes:',
+  'Контролен преглед след {0} седмици': 'Follow-up visit in {0} weeks',
+  // Готвене веднъж на ден (версия 4.18).
+  'от снощи': 'from last night', 'гответе двойно': 'cook double',
+  'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.':
+    'Dinner is cooked in a double quantity and is the next day’s lunch, so you cook once a day; fish at least twice, legumes at least 3 times, red meat up to twice a week. Click a day or “Preparation”.',
+  'Четири седмици, всяка със свой списък за пазаруване. Вечерята се готви в двойно количество и е обяд на следващия ден; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.':
+    'Four weeks, each with its own shopping list. Dinner is cooked in a double quantity and is the next day’s lunch; every week fish at least twice, legumes at least 3 times, red meat up to twice. Click a day or “Preparation”.',
+  'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.':
+    'Dinner is cooked in a double quantity and is the next day’s lunch, so you cook once a day; fish at least twice, legumes at least 3 times, red meat up to twice. Portions are calculated for the daily energy.',
+  'На прегледа: ': 'At the visit: ',
+  'В дневника пациентът записва: ': 'In the diary the patient records: ',
   'ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ': 'PERSONAL PLAN · NUTRITION AND TRAINING',
   'ЛИЧЕН ПЛАН · ХРАНЕНЕ': 'PERSONAL PLAN · NUTRITION',
   'изготвен {0}': 'prepared {0}',

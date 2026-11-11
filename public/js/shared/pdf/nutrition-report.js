@@ -47,13 +47,14 @@ const SECTION = {
   training: { color: C.coral, soft: C.coralSoft, icon: '▲' },
   menu: { color: C.teal, soft: C.tealSoft, icon: '★' },
   shop: { color: C.amber, soft: C.amberSoft, icon: '☑' },
+  diary: { color: C.sky, soft: C.skySoft, icon: '☐' },
   sources: { color: C.slate, soft: C.slateSoft, icon: '►' },
 };
 
 /**
  * PDF файл (Uint8Array). plan — изготвеният режим; person — { name, birthDate, age, sex };
  * practice — { name, phone }; doctor — { name }; fonts — { regular, semibold, bold, symbols } (байтове).
- * only: 'shopping' — само списъците за пазаруване.
+ * only: 'shopping' — само списъците за пазаруване; 'diary' — само дневникът на пациента.
  */
 export async function nutritionReport(args) {
   return withPlanLang(args.plan, () => report(args));
@@ -61,7 +62,7 @@ export async function nutritionReport(args) {
 
 function report({ plan, person = {}, practice = {}, doctor = null, fonts, version = '', date = today(), only = null }) {
   const training = only ? null : plan.training;
-  const title = only === 'shopping' ? ui('Списък за пазаруване') : training ? ui('Хранене и тренировки') : plan.child ? ui('Хранене и движение') : ui('Личен хранителен режим');
+  const title = only === 'shopping' ? ui('Списък за пазаруване') : only === 'diary' ? ui('Дневник към хранителния режим') : training ? ui('Хранене и тренировки') : plan.child ? ui('Хранене и движение') : ui('Личен хранителен режим');
   const doc = new PDFDocument({
     title: `${title} — ${person.name || ''}`.trim(), author: doctor?.name || practice.name || 'DocUp', subject: title,
     creator: 'DocUp', producer: `DocUp ${version}`.trim(), lang: plan.lang === 'en' ? 'en-GB' : 'bg-BG',
@@ -83,6 +84,10 @@ function report({ plan, person = {}, practice = {}, doctor = null, fonts, versio
     flow.newPage({ first: true });
     cover(ctx, { compact: true });
     shoppingWeeks(plan).forEach((sh, i, all) => shopping(ctx, sh, all.length > 1 ? ui(`Пазаруване за седмица ${sh.week}`) : ui('Списък за пазаруване'), i > 0));
+  } else if (only === 'diary') {
+    flow.newPage({ first: true });
+    cover(ctx, { compact: true, kicker: ui('ЛИЧЕН ПЛАН · ДНЕВНИК'), sub: ui(`изготвен ${formatDate(date)}`) });
+    diarySection(ctx, { newPage: false });
   } else {
     flow.newPage({ first: true });
     cover(ctx);
@@ -93,6 +98,7 @@ function report({ plan, person = {}, practice = {}, doctor = null, fonts, versio
     if (training) trainingSection(ctx, training);
     if (plan.child?.movement) movementSection(ctx, plan.child.movement);
     menu(ctx);
+    diarySection(ctx);
     sources(ctx);
   }
   footers(ctx);
@@ -163,7 +169,7 @@ function menuKind(plan) {
 
 /* ----------------------------------- корица ----------------------------------- */
 
-function cover(ctx, { compact = false } = {}) {
+function cover(ctx, { compact = false, kicker: kick = null, sub = null } = {}) {
   const { flow, plan, person, practice, doctor, date, title } = ctx;
   const { page } = flow;
   const H = compact ? 118 : 158;
@@ -171,13 +177,13 @@ function cover(ctx, { compact = false } = {}) {
   page.circle(page.w - 70, 18, 86, { fill: C.white, opacity: 0.07 });
   page.circle(page.w - 190, H - 6, 40, { fill: C.white, opacity: 0.06 });
   page.circle(64, H + 6, 26, { fill: C.white, opacity: 0.05 });
-  const kicker = compact ? ui('ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ') : plan.training ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ')
-    : plan.child ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ДВИЖЕНИЕ') : ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ');
+  const kicker = kick || (compact ? ui('ЛИЧЕН ПЛАН · ПАЗАРУВАНЕ') : plan.training ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ТРЕНИРОВКИ')
+    : plan.child ? ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ И ДВИЖЕНИЕ') : ui('ЛИЧЕН ПЛАН · ХРАНЕНЕ'));
   page.text(kicker, 40, 40, { font: 'semibold', size: 7.5, color: C.white, opacity: 0.85, spacing: 1.1 });
   page.text(title, 40, compact ? 70 : 76, { font: 'bold', size: compact ? 22 : 27, color: C.white });
   page.text(person.name || '', 40, compact ? 92 : 104, { font: 'semibold', size: 14, color: C.white });
   if (!compact) page.text([...personFacts(ctx), ui(`изготвен ${formatDate(date)}`)].join('  ·  '), 40, 124, { size: 9, color: C.white, opacity: 0.92 });
-  page.text(menuKind(plan), 40, compact ? 108 : 142, { size: 8.5, color: C.white, opacity: 0.85 });
+  page.text(sub || menuKind(plan), 40, compact ? 108 : 142, { size: 8.5, color: C.white, opacity: 0.85 });
   let ry = 40;
   for (const [text, font, size] of [[practice.name, 'semibold', 9], [doctor?.name, 'regular', 8.5], [practice.phone ? ui(`тел. ${practice.phone}`) : '', 'regular', 8]]) {
     if (!text) continue;
@@ -872,7 +878,9 @@ function menu(ctx) {
   const month = plan.week.length > 7;
   const weeks = month ? weekChunks(plan.week) : [plan.week];
   heading(ctx, 'menu', month ? ui('Меню за месеца') : ui('Меню за седмицата'),
-    ui('Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'),
+    ui(plan.input?.batch
+      ? 'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'
+      : 'Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'),
     { newPage: true });
   weeks.forEach((days, w) => {
     if (month) {
@@ -973,7 +981,9 @@ function recipeBlock(ctx, o, { meal, label, time, kcal } = {}) {
   const w = flow.width - leftW - 8;
   if (!o) return textBlock(doc, ui('Няма подходящо ястие при избраните ограничения.'), w, { size: 8, color: C.ink3 });
   const parts = [
-    textBlock(doc, [{ text: o.name, font: 'bold' }, { text: o.time ? '  ' + ui(`${o.time} мин`) : '', color: C.ink3 }], w, { size: 9.2 }),
+    textBlock(doc, [{ text: o.name, font: 'bold' }, { text: o.time ? '  ' + ui(`${o.time} мин`) : '', color: C.ink3 },
+      // Готвене веднъж на ден (версия 4.18).
+      ...(o.batch ? [{ text: '  ' + ui(o.batch === 'left' ? 'от снощи' : 'гответе двойно'), font: 'semibold', color: C.teal }] : [])], w, { size: 9.2 }),
     textBlock(doc, o.items.map(x => x.text.replace(/^\+ /, '+ ')).join(' · '), w, { size: 7.9, color: C.ink2 }),
   ];
   if (o.method) parts.push(textBlock(doc, [{ text: o.method }, ...(o.flavor?.length ? [{ text: ui(` За вкус: ${o.flavor.join(', ')}.`), color: C.ink2 }] : [])], w, { size: 7.8 }));
@@ -1064,6 +1074,92 @@ function shopping(ctx, sh, titleText, newPage = false) {
     if (pending.length) flow.newPage();
   }
   if (sh.spices?.length) flow.text([{ text: ui('Подправки и билки: '), font: 'semibold' }, { text: sh.spices.join(', '), color: C.ink2 }], { size: 8, after: 8 });
+}
+
+/* ----------------------------------- дневник ----------------------------------- */
+
+/**
+ * Дневникът на пациента (версия 4.18): по една таблица за всяка седмица до контролния преглед.
+ * Редовете идват от режима (diet-advice.js) — според заболяванията, лекарствата и целта:
+ * число (тегло, минути), две числа на ден (сутрин и вечер), отметка „спазих го“ или кръгче
+ * „имаше оплакване“. Под таблицата са теглото за седмицата, талията и бележките.
+ */
+function diarySection(ctx, { newPage = true } = {}) {
+  const { doc, flow, plan } = ctx;
+  const d = plan.diary;
+  if (!d?.rows?.length) return;
+  const s = SECTION.diary;
+  const weeks = d.weeks || 4;
+  heading(ctx, 'diary', ui(`Дневник за ${weeks} седмици`), d.intro, { newPage });
+  const labelW = 184;
+  const dayW = (flow.width - labelW) / 7;
+  const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'].map(x => ui(x));
+  const rows = d.rows.map(r => {
+    const label = wrap(doc, [{ text: r.label, font: 'semibold' }], labelW - 12, 8);
+    const hint = r.hint ? wrap(doc, r.hint, labelW - 12, 6.6, { color: C.ink3 }) : [];
+    const textH = label.length * 8 * 1.28 + hint.length * 6.6 * 1.3;
+    return { ...r, label, hint, textH, h: Math.max(r.kind === 'two' ? 24 : 15.5, textH + 5) };
+  });
+  const headH = 15;
+  const tableH = headH + rows.reduce((a, r) => a + r.h, 0);
+  const blockH = 18 + tableH + 23;
+  const field = (page, text, x, y, lineW) => {
+    page.text(text, x, y, { size: 8, color: C.ink2 });
+    const from = x + doc.width(text, 'regular', 8) + 4;
+    page.line(from, y + 1.5, from + lineW, y + 1.5, { color: C.ink3, width: 0.5 });
+    return from + lineW + 12;
+  };
+  for (let w = 1; w <= weeks; w++) {
+    flow.need(blockH);
+    const { page } = flow;
+    const x = flow.x;
+    const right = x + flow.width;
+    let y = flow.y;
+    page.text(ui(`Седмица ${w}`), x, y + 10, { font: 'bold', size: 9.5, color: s.color });
+    // „от … до …“ — датите се попълват на ръка, за да важи дневникът и когато се разпечата по-късно.
+    const to = ui('до');
+    const from = ui('от');
+    const lineW = 62;
+    const x2 = right - lineW - 4 - doc.width(to, 'regular', 8);
+    const x1 = x2 - 12 - lineW - 4 - doc.width(from, 'regular', 8);
+    field(page, from, x1, y + 10, lineW);
+    field(page, to, x2, y + 10, lineW);
+    y += 18;
+
+    page.rect(x, y, flow.width, headH, { fill: s.soft, radius: [5, 5, 0, 0] });
+    days.forEach((name, i) => page.text(name, x + labelW + dayW * (i + 0.5), y + 10.3, { font: 'semibold', size: 7.5, color: i >= 5 ? s.color : C.ink2, align: 'center' }));
+    let ry = y + headH;
+    for (const r of rows) {
+      // Оплакванията са на светъл фон — там отметката значи „имаше“, не „спазих“.
+      if (r.kind === 'mark') page.rect(x, ry, flow.width, r.h, { fill: C.bg });
+      page.line(x, ry, right, ry, { color: C.line, width: 0.5 });
+      const ty = ry + (r.h - r.textH) / 2;
+      drawLines(page, r.label, x + 6, ty, 8, { lh: 1.28 });
+      if (r.hint.length) drawLines(page, r.hint, x + 6, ty + r.label.length * 8 * 1.28, 6.6, { lh: 1.3 });
+      for (let i = 0; i < 7; i++) {
+        const cx = x + labelW + dayW * (i + 0.5);
+        const cy = ry + r.h / 2;
+        if (r.kind === 'check') checkbox(page, cx - 4, cy - 4, 8, C.ink3);
+        else if (r.kind === 'mark') page.circle(cx, cy, 4, { stroke: C.ink3, lineWidth: 0.7 });
+        else if (r.kind === 'two') page.line(cx - dayW / 2 + 5, cy, cx + dayW / 2 - 5, cy, { color: C.ink3, width: 0.4, dash: [1.5, 2] });
+      }
+      ry += r.h;
+    }
+    for (let i = 0; i < 7; i++) page.line(x + labelW + dayW * i, y, x + labelW + dayW * i, ry, { color: C.line, width: 0.5 });
+    page.rect(x, y, flow.width, tableH, { stroke: C.line, lineWidth: 0.7, radius: 5 });
+
+    // Под таблицата: теглото за седмицата, талията (в първата и в последната) и бележките.
+    let fx = x + 2;
+    const fy = ry + 13.5;
+    for (const f of d.fields || []) {
+      if (f.weeks === 'ends' && w !== 1 && w !== weeks) continue;
+      fx = field(page, `${f.label}:`, fx, fy, 46);
+    }
+    const notes = ui('Бележки:');
+    page.text(notes, fx, fy, { size: 8, color: C.ink2 });
+    page.line(fx + doc.width(notes, 'regular', 8) + 4, fy + 1.5, right, fy + 1.5, { color: C.ink3, width: 0.5 });
+    flow.y = ry + 23;
+  }
 }
 
 /* ---------------------------------- източници ---------------------------------- */

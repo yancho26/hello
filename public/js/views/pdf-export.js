@@ -22,7 +22,7 @@ function loadFonts() {
 
 const safeName = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-/** Изготвя и изтегля PDF. person — { name, birthDate, age, sex }; only: 'shopping' — само пазаруването;
+/** Изготвя и изтегля PDF. person — { name, birthDate, age, sex }; only: 'shopping' — само пазаруването, 'diary' — само дневникът;
  *  lang: 'en' — същият режим на английски, без да се изготвя наново (версия 4.15.1). */
 export async function downloadNutritionPdf(person, source, { only = null, lang = null } = {}) {
   if (typeof CompressionStream === 'undefined') {
@@ -38,8 +38,8 @@ export async function downloadNutritionPdf(person, source, { only = null, lang =
       version: state.server?.version || '', date: today(),
     });
     const kind = plan.lang === 'en'
-      ? (only === 'shopping' ? 'Shopping' : plan.training ? 'Nutrition and training' : plan.child ? 'Nutrition and activity' : 'Nutrition plan')
-      : (only === 'shopping' ? 'Пазаруване' : plan.training ? 'Хранене и тренировки' : plan.child ? 'Хранене и движение' : 'Хранителен режим');
+      ? (only === 'shopping' ? 'Shopping' : only === 'diary' ? 'Diary' : plan.training ? 'Nutrition and training' : plan.child ? 'Nutrition and activity' : 'Nutrition plan')
+      : (only === 'shopping' ? 'Пазаруване' : only === 'diary' ? 'Дневник' : plan.training ? 'Хранене и тренировки' : plan.child ? 'Хранене и движение' : 'Хранителен режим');
     const name = `${safeName(`${kind} - ${person.name || ''} - ${formatDate(today()).replace(/ г\.$/, '')}`)}.pdf`;
     const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
     const a = document.createElement('a');

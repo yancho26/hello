@@ -4,9 +4,10 @@
  * Формата и показването са общи за досието и за външен човек (nutrition-page.js). */
 
 import { api } from '../api.js';
-import { badge, card, decimalFields, empty, field, h, numberInput, select, toast, mount } from '../ui/components.js';
+import { badge, card, confirmDialog, decimalFields, empty, field, h, numberInput, select, toast, mount } from '../ui/components.js';
 import { trendChart } from '../ui/trend-chart.js';
 import { addDays, daysBetween, formatDate, today } from '../shared/dates.js';
+import { FOLLOW_CHECKS } from '../shared/diet-advice.js';
 import { ACTIVITY, FOODS, GOALS, PACES, PATTERNS, PREFERENCES, allergyPreferences, expectedWeight, planProgress, weekChunks } from '../shared/nutrition.js';
 import { shopName } from '../shared/recipes.js';
 import { enBaseName } from '../shared/i18n/en-foods.js';
@@ -57,6 +58,10 @@ export function nutritionTab(ctx) {
     onPdf: () => downloadNutritionPdf(p, plan),
     onPdfEn: () => downloadNutritionPdf(p, plan, { lang: 'en' }),
     onPdfShopping: () => downloadNutritionPdf(p, plan, { only: 'shopping' }),
+    onPdfDiary: () => downloadNutritionPdf(p, plan, { only: 'diary' }),
+    onFollowUp: async () => {
+      try { if (await addFollowUp(p, plan)) await reload(); } catch (err) { toast(err.message, 'error'); }
+    },
   }));
 
   const saved = [...(p.nutritionPlans || [])].sort((x, y) => (x.date < y.date ? 1 : -1));
@@ -84,6 +89,8 @@ export function nutritionTab(ctx) {
         drafts.set(p.id, { plan: res.plan, variant, swaps, form: body });
         if (save) {
           toast('Режимът е запазен в досието.', 'ok');
+          // Напомняне за контролния преглед — пита се само ако още няма такова (версия 4.18).
+          try { await addFollowUp(p, res.plan, { ask: true }); } catch (err) { toast(err.message, 'error'); }
           await reload();
           return;
         }
@@ -122,6 +129,33 @@ export function nutritionTab(ctx) {
       pdfEn: (n) => downloadNutritionPdf(p, n.plan, { lang: 'en' }),
       remove: (n) => deleteWithConfirm('Запазеният режим ще бъде изтрит.', () => api.deleteNutrition(p.id, n.id), reload),
     }));
+}
+
+/* ------------------- контролен преглед (версия 4.18) ------------------- */
+
+const FOLLOW_PREFIX = 'Контролен преглед по хранителния режим';
+
+/**
+ * Добавя в досието напомняне за контролния преглед по режима: след колко седмици и какво да се
+ * провери — от самия режим (plan.followUp). ask — пита преди това и не предлага второ, докато
+ * има неизпълнено напомняне за контрола. Връща true, ако е добавено.
+ */
+async function addFollowUp(p, plan, { ask = false } = {}) {
+  const f = plan.followUp;
+  if (!f) return false;
+  const date = addDays(today(), f.weeks * 7);
+  const open = (p.reminders || []).some(r => !r.done && String(r.text || '').startsWith(FOLLOW_PREFIX) && r.date >= today());
+  if (ask && open) return false;
+  if (ask && !(await confirmDialog({
+    title: 'Напомняне за контролен преглед',
+    message: `Да добавя ли напомняне за контролен преглед по режима на ${formatDate(date)} (след ${f.weeks} седмици)?`,
+    confirmLabel: 'Добави напомняне',
+  }))) return false;
+  // Напомнянето е за лекаря — на български и когато режимът е на английски.
+  const checks = (f.keys || []).map(k => FOLLOW_CHECKS[k]?.[0]).filter(Boolean);
+  await api.addReminder(p.id, { date, text: `${FOLLOW_PREFIX}: ${(checks.length ? checks : f.checks).join(', ')}`.slice(0, 300) });
+  toast(`Напомнянето е добавено за ${formatDate(date)}.`, 'ok');
+  return true;
 }
 
 /* ------------------------- напредък (версия 4.14) ------------------------- */
@@ -255,6 +289,7 @@ export function planForm(cfg) {
     { value: 'en', label: 'английски (English)', selected: last.lang === 'en' },
   ], { name: 'lang' });
   const quick = h('input', { type: 'checkbox', name: 'quick', checked: !!last.quick });
+  const batch = h('input', { type: 'checkbox', name: 'batch', checked: !!last.batch });
   const strength = h('input', { type: 'checkbox', name: 'strength', checked: !!last.strength });
   const sourced = h('input', { type: 'checkbox', name: 'sourcedOnly', checked: !!last.sourcedOnly });
   const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || [], { week: last.pregnancyWeek });
@@ -299,7 +334,7 @@ export function planForm(cfg) {
       pace: d.pace || 'standard', targetWeight: goalValue() === 'maintain' ? '' : d.targetWeight,
       kcalAdjust: Number.isFinite(kcalAdjust) ? Math.max(-600, Math.min(600, Math.round(kcalAdjust))) : 0,
       pattern: d.pattern, mealsPerDay: Number(d.mealsPerDay), days: Number(d.days),
-      quick: quick.checked, strength: strength.checked, sourcedOnly: sourced.checked,
+      quick: quick.checked, batch: batch.checked, strength: strength.checked, sourcedOnly: sourced.checked,
       preferences: fd.getAll('pref'), dislikes: dislikes.value(), diagnoses: dx.value(), pregnancyWeek: dx.week(),
       ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
       training: tr.read(),
@@ -344,6 +379,7 @@ export function planForm(cfg) {
         h('div', null, field('Език на режима', lang, 'Менюто, рецептите, съветите и PDF отчетът.'))),
       h('div.q-opts', { style: { marginTop: '10px' } },
         h('label.opt', null, quick, h('span', null, 'бързи рецепти, до 20 минути')),
+        h('label.opt', { title: 'При меню за седмица или месец: вечерята се готви в двойно количество и е обяд на следващия ден' }, batch, h('span', null, 'готвене веднъж на ден: вечерята е и обяд на другия ден')),
         h('label.opt', null, strength, h('span', null, 'силови тренировки — повече белтък')),
         h('label.opt', null, sourced, h('span', null, 'само рецепти с публикуван източник (NHLBI)')))),
     tr.el,
@@ -498,6 +534,8 @@ function recipeCard(o, { label = null, open = false, swap = null } = {}) {
     h('div.recipe-head', null,
       label ? badge('', label) : null,
       h('strong', null, o.name),
+      // Готвене веднъж на ден (версия 4.18).
+      o.batch ? badge(o.batch === 'left' ? 'done' : 'soon', L(o.batch === 'left' ? 'от снощи' : 'гответе двойно')) : null,
       o.time ? h('span.tiny.dim', null, L(`⏱ ${o.time} мин`)) : null,
       swap && !o.fixed ? h('button.btn.xs.ghost.recipe-swap.no-print', { type: 'button', title: 'Друго ястие на това място — останалото меню не се променя', onclick: swap }, '↻ Друго') : null),
     h('div.small.muted', null, o.items.map(x => x.text).join(' · ')),
@@ -559,6 +597,20 @@ function clinicianBlock(plan) {
     h('ul', null, plan.clinician.map(t => h('li', null, t))));
 }
 
+/** Дневникът и контролният преглед (версия 4.18): какво записва пациентът и какво се проверява на контролата. */
+function followBlock(plan, onFollowUp) {
+  const f = plan.followUp;
+  if (!f || !plan.diary) return null;
+  const low = (s) => (/^[A-ZА-Я][a-zа-я]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s);
+  return h('div.nut-clin.nut-follow', null,
+    h('div.row.tight', { style: { flexWrap: 'wrap' } },
+      h('div.small.grow', null, h('strong', null, L(`Контролен преглед след ${f.weeks} седмици`)), h('span.dim', null, ` · ${fd(addDays(today(), f.weeks * 7))}`)),
+      onFollowUp ? h('button.btn.xs', { onclick: onFollowUp, title: 'Добавя напомняне в досието за датата на контролния преглед' }, '🔔 Добави напомняне') : null),
+    h('ul', null,
+      h('li', null, L('На прегледа: ') + f.checks.join(', ') + '.'),
+      h('li', null, L('В дневника пациентът записва: ') + plan.diary.rows.map(r => low(r.label)).join('; ') + '.')));
+}
+
 /** Как е взета предвид всяка диагноза. */
 function diagnosesBlock(plan) {
   const dx = plan.diagnoses || [];
@@ -599,7 +651,7 @@ function projectionChart(plan) {
     h('div.tiny.muted', null, L('Прогнозата отчита, че с теглото се променя и разходът на енергия — промяната се забавя с времето (Hall 2011).')));
 }
 
-function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSwap, saveLabel = 'Запази' } = {}) {
+function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onPdfDiary, onFollowUp, onSwap, saveLabel = 'Запази' } = {}) {
   const t = plan.targets;
   const num = (v) => (plan.lang === 'en' ? String(v) : dec(v));
   const tile = (label, value, unit, sub) => h('div.tile', null, h('div.tiny.dim', null, label),
@@ -656,6 +708,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
         // Същият режим на английски — без смяна на езика и ново изготвяне (версия 4.15.1).
         onPdfEn && plan.lang !== 'en' ? h('button.btn.sm', { onclick: busy(onPdfEn), title: 'Същият режим като PDF на английски — менюто, рецептите, съветите, тренировките и пазаруването' }, '📄 PDF на английски') : null,
         onPdfShopping && (plan.shopping || plan.shoppingWeeks) ? h('button.btn.sm', { onclick: busy(onPdfShopping), title: 'Само списъците за пазаруване като PDF' }, '🛒 PDF пазаруване') : null,
+        onPdfDiary && plan.diary ? h('button.btn.sm', { onclick: busy(onPdfDiary), title: 'Дневник за 4 седмици според заболяванията — пациентът го попълва и го носи на контролния преглед' }, '📋 PDF дневник') : null,
         onSave ? h('button.btn.sm.primary', { onclick: onSave }, saveLabel) : null,
       ],
     },
@@ -703,7 +756,8 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
       list(L('Навици'), plan.habits),
       list(L('Вкус без много сол'), plan.flavor),
       list(plan.child ? L('Растеж') : L('Контрол на теглото'), plan.monitoring)),
-    list(L('Бележки'), plan.notes)),
+    list(L('Бележки'), plan.notes),
+    followBlock(plan, onFollowUp)),
 
     plan.child ? movementCard(plan) : trainingCard(plan),
 
@@ -711,9 +765,13 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onSw
       icon: '🍽',
     },
     h('p.small.muted', { style: { marginTop: 0 } }, month
-      ? L('Четири седмици, всяка със свой списък за пазаруване. В рамките на седмицата обядите и вечерите не се повтарят; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.')
+      ? L(plan.input.batch
+        ? 'Четири седмици, всяка със свой списък за пазаруване. Вечерята се готви в двойно количество и е обяд на следващия ден; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.'
+        : 'Четири седмици, всяка със свой списък за пазаруване. В рамките на седмицата обядите и вечерите не се повтарят; всяка седмица риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Щракнете върху ден или „Приготвяне“.')
       : plan.week
-      ? L('Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.')
+      ? L(plan.input.batch
+        ? 'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.'
+        : 'Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.')
       : L(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`),
     sourcedCount ? L(` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.`) : ''),
     plan.trainingToday ? h('div.row.tight', { style: { flexWrap: 'wrap', marginBottom: '8px' } }, h('strong.small', null, L('Тренировка днес: ')),
