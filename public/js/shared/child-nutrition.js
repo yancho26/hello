@@ -200,7 +200,7 @@ export function childTargets({ sex, ageMonths, weight, height, activity, gestWee
 /* ----------------------------- храни и рецепти ----------------------------- */
 
 /* До 4 г. — без цели ядки, семки и пуканки (задавяне — най-често до 3 г., AAP 2010). Пастите от ядки остават. */
-const CHOKING = ['walnuts', 'almonds', 'hazelnuts', 'cashews', 'pistachios', 'peanuts', 'brazilnuts', 'pumpkinseeds', 'sunflower', 'popcorn'];
+const CHOKING = ['walnuts', 'almonds', 'hazelnuts', 'cashews', 'pistachios', 'peanuts', 'brazilnuts', 'pumpkinseeds', 'sunflower', 'popcorn', 'chestnuts'];
 /* До 2 г. — без мед и добавена захар (ESPGHAN 2017: колкото е възможно по-малко свободни захари). */
 const ADDED_SUGAR = ['honey', 'sugar', 'jam', 'darkchoc'];
 

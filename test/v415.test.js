@@ -36,9 +36,9 @@ const moves = (t) => t.days.flatMap(d => [...d.sessions.flatMap(s => s.blocks.fl
 
 /* ------------------------------------ храни ------------------------------------ */
 
-test('храните: 233 със състава по USDA, новите вещества и английско име', () => {
+test('храните: 233 със състава по USDA (245 от версия 4.19), новите вещества и английско име', () => {
   const ids = Object.keys(FOODS);
-  assert.equal(ids.length, 233);
+  assert.equal(ids.length, 245);
   for (const id of ids) {
     const f = FOODS[id];
     assert.ok(EN_FOODS[id], `${id}: английско име`);
@@ -149,9 +149,10 @@ test('безопасност: черен дроб — не при бременн
 
 /* ----------------------------------- рецепти ----------------------------------- */
 
-test('рецептите: 325, от тях 66 нови с новите храни, всяка с превод със същите маркери', () => {
-  assert.equal(RECIPES.length, 325);
-  const fresh = RECIPES.slice(-66);
+test('рецептите: 325 във версия 4.15, от тях 66 нови с новите храни, всяка с превод със същите маркери', () => {
+  assert.equal(RECIPES.length, 400);
+  // Рецептите от 4.15 са последните 66 преди българските от 4.19.
+  const fresh = RECIPES.slice(325 - 66, 325);
   const used = new Set(fresh.flatMap(r => r.items.map(([food]) => food)));
   for (const id of ['millet', 'skyr', 'chia', 'okra', 'nettle', 'sorrel', 'anchovy', 'mussels', 'squid', 'carp', 'herring', 'rabbit', 'favabeans', 'splitpeas', 'tempeh']) {
     assert.ok(used.has(id), id);

@@ -867,7 +867,7 @@ function trainingDetails(ctx, tp) {
 function menu(ctx) {
   const { flow, plan } = ctx;
   if (!plan.week) {
-    heading(ctx, 'menu', ui('Примерно меню за деня'), ui(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`), { newPage: true });
+    heading(ctx, 'menu', ui('Примерно меню за деня'), ui(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`) + (plan.input?.bulgarian ? ' ' + ui('Менюто е от български ястия.') : ''), { newPage: true });
     for (const m of plan.meals) {
       subheading(ctx, `${m.label}${m.time ? ` · ${m.time}` : ''} · ≈${m.kcal} kcal`, MEAL_COLOR[m.meal] || C.brand);
       m.options.forEach((o, i) => recipe(ctx, o, { meal: m.meal, label: ui(`вариант ${i + 1}`) }));
@@ -880,7 +880,8 @@ function menu(ctx) {
   heading(ctx, 'menu', month ? ui('Меню за месеца') : ui('Меню за седмицата'),
     ui(plan.input?.batch
       ? 'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'
-      : 'Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.'),
+      : 'Обядите и вечерите не се повтарят в седмицата; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти. Порциите са пресметнати за дневната енергия.')
+      + (plan.input?.bulgarian ? ' ' + ui('Менюто е от български ястия.') : ''),
     { newPage: true });
   weeks.forEach((days, w) => {
     if (month) {

@@ -31,7 +31,7 @@
 import { bmi as bmiOf } from './clinical.js';
 import { table } from './table.js';
 import { addDays, daysBetween, today } from './dates.js';
-import { FOODS, FOOD_CATS, LIQUIDS, NUTRIENT_KEYS, RECIPES, YIELDS, mainProtein, mealsOf, nutrientsOf, rawOf, recipeTags, servingOf, shopName, totals, baseName } from './recipes.js';
+import { FOODS, FOOD_CATS, LIQUIDS, NUTRIENT_KEYS, RECIPES, YIELDS, isBulgarian, mainProtein, mealsOf, nutrientsOf, rawOf, recipeTags, servingOf, shopName, totals, baseName } from './recipes.js';
 import { renderMethod } from './recipe-method.js';
 import { dietProfiles } from './diet-icd.js';
 import { DIARY_WEEKS, FLAVOR_PAIRS, FOLLOW_CHECKS, NO_LOSE, adultRules, childSummaryFor, childWhyItems, choosePattern, diaryFor, followUpFor, habitPairs, monitoringPairs, patternConflicts, summaryFor, weeklyPairs, whyItems } from './diet-advice.js';
@@ -177,7 +177,7 @@ const PLANT_YOGURT_NAME = [[/[Цц]едено кисело мляко/g, 'рас
 const TOFU_NAME = [[/със сирене/g, 'с тофу'], [/със извара/g, 'с тофу'], [/[Сс]ирене/g, 'тофу'], [/[Ии]звара/g, 'тофу']];
 const RENAME = {
   'oats>buckwheat': [[/Овесена каша/, 'Каша от елда'], [/овесени ядки/g, 'елда'], [/Палачинки от овесени ядки/, 'Палачинки от елда']],
-  'bulgur>buckwheat': [[/булгур/g, 'елда']],
+  'bulgur>buckwheat': [[/булгур/g, 'елда'], [/Булгур/g, 'Елда']],
   'couscous>quinoa': [[/кус-кус/g, 'киноа']],
   'pasta>rice': [[/Пълнозърнести макарони/, 'Кафяв ориз'], [/пълнозърнеста паста/g, 'кафяв ориз'], [/[Пп]аста/g, 'ориз']],
   'bread>gfbread': [[/[Пп]ълнозърнест хляб/g, 'безглутенов хляб']],
@@ -213,7 +213,8 @@ const KCAL_PER_KG_DAY = 24;
 /**
  * @param {object} input
  *   sex, age, weight, height, waist, activity, goal, pace, targetWeight, pattern,
- *   mealsPerDay (3|4|5), days (1|7|28), quick, batch (вечерята е и обяд на другия ден), strength, preferences: [], allergies: [],
+ *   mealsPerDay (3|4|5), days (1|7|28), quick, batch (вечерята е и обяд на другия ден), bulgarian (меню от
+ *   български ястия), strength, preferences: [], allergies: [],
  *   conditions: Set, egfr, potassium, classes: Set, medNotes: [], variant, asOf,
  *   diagnoses: [{code, name}] — всички диагнози по МКБ-10, pregnancyWeek, sourcedOnly,
  *   cycle: { periods, lastPeriod, length, bleed, contraception, menopause } — менструалният цикъл,
@@ -268,6 +269,9 @@ function planFor(input) {
   const days = MENU_DAYS.includes(Number(input.days)) ? Number(input.days) : 1;
   // „Готвене веднъж на ден“ (версия 4.18) — само при меню за седмица или месец.
   const batch = !!input.batch && days > 1;
+  // „Българска кухня“ (версия 4.19): менюто е от български ястия; тогава „само с източник“ не важи,
+  // защото рецептите с източник са на NHLBI.
+  const bulgarian = !!input.bulgarian;
   let strength = !isChild && !!input.strength;
 
   // Детето расте: без отслабване и покачване — енергията е за растежа по неговата крива.
@@ -612,7 +616,7 @@ function planFor(input) {
   // Рецептите, които стават за човека, с оценка за подходящост.
   const ctx = {
     prefs, cond, diabetes, cardio, ckd, limitK, lowSalt, patternId, goal, quick: !!input.quick,
-    sourcedOnly: !!input.sourcedOnly, proteinShare: (protein * 4) / target,
+    sourcedOnly: !!input.sourcedOnly && !bulgarian, bulgarian, proteinShare: (protein * 4) / target,
     exclude, penalize, dislikes, youngChild: isChild && ct.years < 4,
   };
   const lowerCarb = diabetes || patternId === 'lowcarb';
@@ -708,7 +712,7 @@ function planFor(input) {
   // Седмично меню — по едно ястие за всяко хранене, с ритъм за седмицата.
   let week = null;
   if (days > 1) {
-    const plannedDays = planDays(slots, pools, variant, days, dayFocus, { batch });
+    const plannedDays = planDays(slots, pools, variant, days, dayFocus, { batch, balanced: bulgarian });
     swapPicks(plannedDays, slots, pools, swaps, dayFocus);
     if (batch) relinkLeftovers(plannedDays, slots, swaps);
     // Кое ястие се готви двойно (cook) и кое е от снощи (left).
@@ -795,6 +799,11 @@ function planFor(input) {
     if (o.batch === 'left') { o.method = BATCH_NOTES.left[0] + (cut ? ' ' + cutText(cut) : ''); o.time = 5; }
   }
   for (const o of options) delete o.template;
+  // „Българска кухня“: ако при ограниченията българските ястия не са стигнали и в менюто има и други — за лекаря.
+  if (bulgarian && options.some(o => !o.fixed && !BG_NAMES.has(o.key))) {
+    put('clinician', 'При тези ограничения българските ястия не стигат за всички хранения — менюто е допълнено и с други рецепти.',
+      'With these restrictions there are not enough Bulgarian dishes for every meal, so the menu also includes other recipes.');
+  }
   if (batch && week?.some(d => d.meals.some(m => m.batch === 'left'))) {
     put('notes', 'Втората порция охладете и приберете в хладилника до 2 часа след готвенето. На другия ден я затоплете, докато стане гореща.',
       'Cool the second portion and put it in the fridge within 2 hours of cooking. The next day, reheat it until piping hot.');
@@ -892,7 +901,7 @@ function planFor(input) {
     input: {
       sex, age, weight, height, waist: input.waist || null, activity: input.activity || 'sedentary',
       goal, pace, targetWeight: projection?.targetWeight ?? null, pattern: patternId, mealsPerDay, days,
-      quick: !!input.quick, batch, sourcedOnly: !!input.sourcedOnly, strength, preferences: [...prefs], egfr: input.egfr || null,
+      quick: !!input.quick, batch, bulgarian, sourcedOnly: !!input.sourcedOnly && !bulgarian, strength, preferences: [...prefs], egfr: input.egfr || null,
       dislikes: [...dislikes], swaps, kcalAdjust,
       diagnoses: dx.considered.map(c => ({ code: c.code, name: c.name })), pregnancyWeek: Number(input.pregnancyWeek) || null,
       startDate: start, cycleSync: !!input.cycleSync, training: training ? training.input : null,
@@ -1087,6 +1096,14 @@ function cycleSyncFor(input, { start, days, stats, dx, target, floor, strength }
 /* Ястия, които не се дават до 4 г. и с нарязване: замразените цели зърна грозде са твърди и кръгли (AAP 2010). */
 const NOT_UNDER_4 = new Set(['Замразено грозде на шишчета']);
 
+/* Имената на българските ястия — за бележката, когато менюто е допълнено с други рецепти. */
+const BG_NAMES = new Set(RECIPES.filter(isBulgarian).map(r => r.name));
+/* Съставки, които са в почти всяко ястие и не го определят — не се броят за „основни“. */
+const COMMON_BASE = new Set(['onion', 'tomato', 'tomatosauce', 'cannedtomato', 'tomatopaste', 'garlic', 'oil', 'sunoil', 'butter', 'bread', 'ryebread',
+  'gfbread', 'yogurt', 'lfyogurt', 'soyyogurt', 'carrot', 'pepper', 'parsley', 'dill', 'lemonjuice', 'flour', 'egg', 'milk', 'whitecheese']);
+/* Колко български ястия за едно хранене стигат, за да е менюто само от тях (версия 4.19). */
+const BG_MIN = { breakfast: 5, snack: 5, lunch: 8, dinner: 8, milk: 0 };
+
 /** Рецептите за едно хранене, които стават за човека, подредени по подходящост. */
 function poolFor(kind, ctx, variant) {
   const collect = (c) => {
@@ -1102,6 +1119,8 @@ function poolFor(kind, ctx, variant) {
       out.push({
         r, tags, s: score(r, items, tags, ctx), i, protein: mainProtein(r),
         fe: t.kcal ? (t.fe / t.kcal) * 1000 : 0, ca: t.kcal ? (t.ca / t.kcal) * 1000 : 0,
+        // Двете основни съставки — за да не идва грах или картофи няколко дни подред (версия 4.19).
+        keys: items.filter(it => !COMMON_BASE.has(it.food)).sort((a, b2) => b2.grams - a.grams).slice(0, 2).map(it => it.food),
       });
     });
     return out;
@@ -1127,6 +1146,17 @@ function poolFor(kind, ctx, variant) {
     scored = collect({ ...ctx, ...soft });
     relaxed = scored.length > 0;
   }
+  // „Българска кухня“: само българските ястия, ако стигат за седмица без повторение; иначе те са
+  // най-отпред, а менюто се допълва с останалите.
+  let mixed = false;
+  if (ctx.bulgarian) {
+    const own = scored.filter(x => isBulgarian(x.r));
+    if (own.length >= BG_MIN[kind]) scored = own;
+    else {
+      mixed = scored.length > own.length;
+      for (const x of own) x.s += 6;
+    }
+  }
   let pool = scored;
   if (ctx.quick) {
     const fast = scored.filter(x => x.tags.has('quick'));
@@ -1135,6 +1165,7 @@ function poolFor(kind, ctx, variant) {
   // Вариантът разбърква равните по оценка, без да сваля по-подходящите надолу.
   pool.sort((a, b) => b.s - a.s || hash(a.r.name, variant) - hash(b.r.name, variant));
   pool.relaxed = relaxed;
+  pool.mixed = mixed;
   pool.unsourced = unsourced;
   pool.disliked = disliked;
   return pool;
@@ -1194,6 +1225,11 @@ function hash(text, seed) {
 
 /* Ястия, в които млечното е същността — без него не се правят. */
 const NO_SWAP = new Set(['Диня със сирене', 'Извара с горски плодове и канела']);
+/* Български ястия, в които сиренето е самото ястие (версия 4.19): то не се заменя с тофу — без млечни
+ * ястието просто отпада. Останалите замени (без лактоза, пълномаслено мляко за малки деца) важат. */
+const KEEP_CHEESE = new Set(['Баница със сирене и кисело мляко', 'Зелник със спанак и сирене', 'Качамак със сирене и кисело мляко',
+  'Яйца по панагюрски', 'Принцеса с яйце и сирене', 'Юфка със сирене на фурна', 'Сирене по шопски',
+  'Катък с печена чушка и ръжен хляб', 'Айрян и филия със сирене и домат', 'Варена царевица със сирене', 'Пататник']);
 
 function substituted(r, prefs) {
   if (NO_SWAP.has(r.name)) return { name: r.name, items: r.items.map(([food, grams]) => ({ food, grams, orig: food })), swaps: [] };
@@ -1203,6 +1239,7 @@ function substituted(r, prefs) {
     let food = id;
     for (const [pref, map] of Object.entries(SUBSTITUTES)) {
       if (prefs.has(pref) && map[food]) {
+        if (map[food] === 'tofu' && KEEP_CHEESE.has(r.name)) continue;
         for (const [from, to] of RENAME[`${food}>${map[food]}`] || []) name = name.replace(from, to);
         food = map[food];
       }
@@ -1314,7 +1351,7 @@ export function weekChunks(days) {
 /* „Готвене веднъж на ден“ (версия 4.18): вечерята се готви двойно и е обяд на следващия ден.
  * Става с ястия, които се готвят и издържат до другия ден: без салати, яйца на тиган,
  * сандвичи и морски дарове. */
-const NOT_FOR_TOMORROW = /салата|омлет|яйца на очи|бъркани яйца|сандвич|тост|брускет|капрезе|таратор|студена|скариди|октопод|миди|калмари|снежанка/i;
+const NOT_FOR_TOMORROW = /салата|омлет|яйца на очи|бъркани яйца|яйца по|сандвич|тост|брускет|капрезе|таратор|студена|скариди|октопод|миди|калмари|снежанка|принцеса|на скара/i;
 export const keepsWell = (r) => r.time >= 20 && !NOT_FOR_TOMORROW.test(r.name);
 export const BATCH_NOTES = {
   cook: ['Сгответе наведнъж и порцията за утрешния обяд: количествата за нея са при обяда утре.',
@@ -1323,18 +1360,27 @@ export const BATCH_NOTES = {
     'This portion was cooked last night together with dinner. Reheat it well, until piping hot.'],
 };
 
-function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false } = {}) {
+function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false, balanced = false } = {}) {
   const lastUsed = new Map();
   const li = slots.findIndex(s => s.meal === 'lunch');
   const di = slots.findIndex(s => s.meal === 'dinner');
-  let counts = { fish: 0, legume: 0, redmeat: 0 };
+  const mainsPerDay = slots.filter(s => s.meal === 'lunch' || s.meal === 'dinner').length;
+  let counts = { fish: 0, legume: 0, redmeat: 0, poultry: 0 };
+  // Птичето (и заешкото) месо се брои по основната белтъчна храна на ястието.
+  const count = (x) => {
+    for (const k of ['fish', 'legume', 'redmeat']) if (x.tags.has(k)) counts[k]++;
+    if (x.protein === 'meat') counts.poultry++;
+  };
   const out = [];
+  // Основните съставки на последните четири обяда и вечери.
+  const recent = [];
   for (let d = 0; d < n; d++) {
     const dw = d % 7;
     const weekStart = d - dw;
-    if (dw === 0) counts = { fish: 0, legume: 0, redmeat: 0 };
+    if (dw === 0) counts = { fish: 0, legume: 0, redmeat: 0, poultry: 0 };
     const picks = [];
     const proteinsToday = new Set();
+    let mainsToday = 0;
     const focus = focusOf(d);
     for (const slot of slots) {
       const pool = pools[slot.meal];
@@ -1346,7 +1392,8 @@ function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false 
         picks.push(prev);
         lastUsed.set(prev.r.name, d);
         proteinsToday.add(prev.protein);
-        for (const k of Object.keys(counts)) if (prev.tags.has(k)) counts[k]++;
+        count(prev);
+        mainsToday++;
         continue;
       }
       let best = null;
@@ -1363,6 +1410,22 @@ function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false 
           if (x.tags.has('legume') && counts.legume < 3) w += 3;
           if (x.tags.has('redmeat') && counts.redmeat >= 2) w -= 20;
           if (proteinsToday.has(x.protein)) w -= 3;
+          // Седмичният ритъм на българската кухня (версия 4.19): риба 2–3 пъти, а не всеки ден; птиче месо
+          // поне 2 пъти; едно ястие с червено месо — така влизат и мусаката, кюфтетата и сармите.
+          if (balanced) {
+            if (x.tags.has('fish') && counts.fish >= 3) w -= 6;
+            if (x.protein === 'meat' && counts.poultry < 2) w += 3;
+            if (x.tags.has('redmeat') && counts.redmeat < 1) w += 4.5;
+            // Бобовите се разпределят през месеца: до 4 на седмица, за да стигнат и за следващите.
+            if (x.tags.has('legume') && counts.legume >= 4) w -= 6;
+            // Към края на седмицата рибата (поне 2 пъти) и бобовите (поне 3 пъти) са с предимство и пред
+            // „не се повтаря“ — иначе в третата и четвъртата седмица на месеца бобовите не достигат.
+            const left = (7 - dw) * mainsPerDay - mainsToday;
+            if (x.tags.has('legume') && counts.legume < 3 && left <= (3 - counts.legume) * 2 + 1) w += 16;
+            if (x.tags.has('fish') && counts.fish < 2 && left <= (2 - counts.fish) * 2 + 1) w += 16;
+            // Без една и съща основна съставка в поредни ястия: грах, картофи, ориз…
+            w -= 3 * Math.min(2, recent.filter(keys => x.keys.some(k => keys.includes(k))).length);
+          }
         }
         // Вечерята, която ще е и утрешен обяд, да е ястие, което издържа до другия ден.
         if (batch && slot.meal === 'dinner' && dw < 6 && d + 1 < n && keepsWell(x.r)) w += 6;
@@ -1374,7 +1437,10 @@ function planDays(slots, pools, variant, n, focusOf = () => [], { batch = false 
       lastUsed.set(best.r.name, d);
       if (main) {
         proteinsToday.add(best.protein);
-        for (const k of Object.keys(counts)) if (best.tags.has(k)) counts[k]++;
+        count(best);
+        recent.push(best.keys || []);
+        if (recent.length > 4) recent.shift();
+        mainsToday++;
       }
     }
     out.push(picks);
@@ -1411,6 +1477,8 @@ const MAX_BY_FOOD = {
   cottage: 250, avocado: 100, olives: 50, honey: 20, darkchoc: 30, driedfruit: 60, watermelon: 500, hummus: 120,
   tahini: 30, peanutbutter: 30, tomatosauce: 250, lettuce: 150, arugula: 80, spinach: 250,
   cheddar: 50, turkeysausage: 100, phyllo: 120, corntortilla: 150, tortilla: 150,
+  // Версия 4.19: сухите зърнени (царевично брашно, грис, жито) са в сухо тегло.
+  cornmeal: 100, semolina: 80, wheat: 90, vineleaves: 120, chestnuts: 150,
 };
 const maxGrams = (food) => MAX_BY_FOOD[food] ?? MAX_BY_CAT[FOODS[food].cat] ?? 400;
 
@@ -1435,9 +1503,11 @@ function resize(it, grams, maxPieces = 3) {
 }
 
 /* Нишестени храни — при диабет и по-малко въглехидрати порциите им се намаляват. */
-const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli', 'buckwheat', 'quinoa', 'rice', 'whiterice',
+export const STARCH = new Set(['bread', 'ryebread', 'gfbread', 'pita', 'oats', 'muesli', 'buckwheat', 'quinoa', 'rice', 'whiterice',
   'bulgur', 'couscous', 'pasta', 'potato', 'sweetpotato', 'lentils', 'beans', 'chickpeas', 'peas', 'tortilla', 'corntortilla', 'phyllo',
-  'barley', 'millet', 'spelt', 'whitepasta', 'crispbread', 'ricecakes', 'oatbran', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas']);
+  'barley', 'millet', 'spelt', 'whitepasta', 'crispbread', 'ricecakes', 'oatbran', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas',
+  // Версия 4.19.
+  'cornmeal', 'semolina', 'wheat', 'noodles', 'vermicelli', 'chestnuts']);
 
 /* На брой се води съставка от поне половин плод или яйце; по-малкото се мащабира в грамове. */
 const isPiece = (it) => !it.loose && FOODS[it.food].unit?.name === 'бр.' && it.grams >= FOODS[it.food].unit.grams * 0.5;
@@ -1481,7 +1551,7 @@ function buildMeal(r, kcal, prefs, { lowerCarb = false, strict = false } = {}) {
   };
 }
 
-const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince', 'beef', 'beefmince', 'pork', 'hake', 'trout',
+export const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince', 'beef', 'beefmince', 'pork', 'hake', 'trout',
   'mackerel', 'salmon', 'sardines', 'tuna', 'shrimp', 'egg', 'cottage', 'whitecheese', 'kashkaval', 'mozzarella', 'tofu',
   'lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'yogurt', 'lfyogurt', 'greekyogurt', 'kefir', 'milk', 'lfmilk', 'soyyogurt',
   'whitefish', 'tunasteak', 'eggwhite', 'parmesan', 'evapmilk', 'cheddar', 'turkeysausage', 'edamame',
@@ -1489,7 +1559,9 @@ const PROTEIN_FOODS = new Set(['chicken', 'chickenthigh', 'turkey', 'turkeymince
   'chickenliver', 'beefliver', 'rabbit', 'lamb', 'veal', 'porkchop', 'herring', 'seabass', 'seabream', 'carp', 'catfish', 'tilapia',
   'anchovy', 'cannedsalmon', 'squid', 'mussels', 'octopus', 'quailegg', 'tempeh', 'soybeans', 'blackbeans', 'whitebeans', 'favabeans',
   'splitpeas', 'wholemilk', 'skimmilk', 'buttermilk', 'sheepmilk', 'goatmilk', 'wholeyogurt', 'skyr', 'skimcottage', 'ricotta',
-  'goatcheese', 'emmental', 'soymilk', 'whey']);
+  'goatcheese', 'emmental', 'soymilk', 'whey',
+  // Версия 4.19.
+  'mullet', 'turbot', 'bluefish', 'porkleg']);
 
 const LEGUMES = new Set(['lentils', 'beans', 'chickpeas', 'peas', 'hummus', 'edamame', 'blackbeans', 'whitebeans', 'favabeans', 'splitpeas', 'soybeans']);
 

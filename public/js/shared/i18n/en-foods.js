@@ -72,6 +72,11 @@ export const EN_FOODS = {
   blackberries: ['blackberries'], lemonjuice: ['lemon juice'], applesauce: ['unsweetened applesauce'],
   raisins: ['raisins'], dates: ['dates'], driedapricots: ['dried apricots'], cocoa: ['cocoa powder, unsweetened'],
   jam: ['jam'],
+  // Версия 4.19.
+  vineleaves: ['vine leaves'], cornmeal: ['cornmeal (whole-grain)'], dock: ['patience dock'], semolina: ['semolina'],
+  wheat: ['wheat berries'], chestnuts: ['chestnuts', 'roasted'], mullet: ['grey mullet', 'baked'],
+  turbot: ['turbot', 'baked'], bluefish: ['bluefish', 'baked'], porkleg: ['lean pork leg', 'roasted'],
+  noodles: ['egg noodles', 'cooked'], vermicelli: ['vermicelli', 'cooked'],
 };
 
 /** Пълното име: „brown rice, cooked“. */
@@ -104,4 +109,6 @@ export const EN_FLAVOR = {
   'халапеньо': 'jalapeño', 'червен винен оцет': 'red wine vinegar', 'червен лук': 'red onion', 'червен пипер': 'paprika',
   'червено вино': 'red wine', 'черен пипер': 'black pepper', 'чесън': 'garlic', 'чесън на прах': 'garlic powder', 'чили': 'chili',
   'чубрица': 'savory', 'ябълков оцет': 'cider vinegar',
+  // Версия 4.19.
+  'девесил': 'lovage',
 };

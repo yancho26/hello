@@ -144,6 +144,9 @@ export function childPlanForm(cfg) {
     { value: 'en', label: 'английски (English)', selected: last.lang === 'en' },
   ], { name: 'lang' });
 
+  // „Българска кухня“ (версия 4.19) — отбелязана по подразбиране.
+  const bulgarian = h('input', { type: 'checkbox', name: 'bulgarian', checked: last.bulgarian ?? prev.bulgarian ?? true });
+
   const allergy = allergyPreferences(cfg.allergies || []);
   const prefChosen = new Set(last.preferences || [...(prev.preferences || []).filter(x => PREFERENCES[x]), ...allergy.prefs]);
   const prefBoxes = Object.entries(PREFERENCES).map(([k, label]) => h('label.opt', null,
@@ -159,7 +162,7 @@ export function childPlanForm(cfg) {
       weight: d.weight, height: d.height, childActivity: activity.value,
       sports: sportBoxes.map(l => l.querySelector('input')).filter(i => i.checked).map(i => i.value),
       breastfed: years < 3 && breastfed.checked,
-      mealsPerDay: Number(d.mealsPerDay), days: Number(d.days), lang: d.lang || 'bg',
+      mealsPerDay: Number(d.mealsPerDay), days: Number(d.days), lang: d.lang || 'bg', bulgarian: bulgarian.checked,
       preferences: fd.getAll('pref'), dislikes: dislikes.value(), diagnoses: dx.value(),
     };
   };
@@ -187,6 +190,8 @@ export function childPlanForm(cfg) {
         h('div', null, field('Хранения на ден', meals, '3 основни и 1–2 закуски — обичайното за деца')),
         h('div', null, field('Меню', days)),
         h('div', null, field('Език на режима', lang, 'Менюто, рецептите, съветите и PDF за родителя.'))),
+      h('div.q-opts', { style: { marginTop: '10px' } },
+        h('label.opt', { title: 'Менюто се съставя от български ястия. Без отметката влизат и рецептите на NHLBI.' }, bulgarian, h('span', null, 'българска кухня: менюто е от български ястия'))),
       h('div.nut-sec-sub', null, 'Ограничения и предпочитания'),
       h('div.q-opts', null, prefBoxes),
       allergy.matched.length ? h('div.field-hint', null, `Отбелязани са според алергиите: ${allergy.matched.join(', ')}.`) : null,

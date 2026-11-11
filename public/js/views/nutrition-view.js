@@ -292,6 +292,11 @@ export function planForm(cfg) {
   const batch = h('input', { type: 'checkbox', name: 'batch', checked: !!last.batch });
   const strength = h('input', { type: 'checkbox', name: 'strength', checked: !!last.strength });
   const sourced = h('input', { type: 'checkbox', name: 'sourcedOnly', checked: !!last.sourcedOnly });
+  // „Българска кухня“ (версия 4.19) е отбелязана по подразбиране; двата избора се изключват взаимно,
+  // защото рецептите с публикуван източник са на NHLBI.
+  const bulgarian = h('input', { type: 'checkbox', name: 'bulgarian', checked: last.bulgarian ?? !last.sourcedOnly });
+  bulgarian.addEventListener('change', () => { if (bulgarian.checked) sourced.checked = false; });
+  sourced.addEventListener('change', () => { if (sourced.checked) bulgarian.checked = false; });
   const dx = diagnosesEditor(last.diagnoses || cfg.diagnoses || [], { week: last.pregnancyWeek });
   const cyc = cfg.cycle ? cycleFields({ cycle: cfg.cycle.stored, last, age: cfg.cycle.age, hint: cfg.cycle.hint }) : null;
   if (cyc && cfg.cycle.hidden) cyc.el.style.display = 'none';
@@ -334,7 +339,7 @@ export function planForm(cfg) {
       pace: d.pace || 'standard', targetWeight: goalValue() === 'maintain' ? '' : d.targetWeight,
       kcalAdjust: Number.isFinite(kcalAdjust) ? Math.max(-600, Math.min(600, Math.round(kcalAdjust))) : 0,
       pattern: d.pattern, mealsPerDay: Number(d.mealsPerDay), days: Number(d.days),
-      quick: quick.checked, batch: batch.checked, strength: strength.checked, sourcedOnly: sourced.checked,
+      quick: quick.checked, batch: batch.checked, bulgarian: bulgarian.checked, strength: strength.checked, sourcedOnly: sourced.checked,
       preferences: fd.getAll('pref'), dislikes: dislikes.value(), diagnoses: dx.value(), pregnancyWeek: dx.week(),
       ...(cyc && cyc.el.style.display !== 'none' ? cyc.read() : {}),
       training: tr.read(),
@@ -378,6 +383,7 @@ export function planForm(cfg) {
         h('div', null, field('Меню', days)),
         h('div', null, field('Език на режима', lang, 'Менюто, рецептите, съветите и PDF отчетът.'))),
       h('div.q-opts', { style: { marginTop: '10px' } },
+        h('label.opt', { title: 'Менюто се съставя от български ястия: баница, боб, леща, яхнии, сарми, пълнени чушки, риба на скара. Без отметката влизат и рецептите на NHLBI.' }, bulgarian, h('span', null, 'българска кухня: менюто е от български ястия')),
         h('label.opt', null, quick, h('span', null, 'бързи рецепти, до 20 минути')),
         h('label.opt', { title: 'При меню за седмица или месец: вечерята се готви в двойно количество и е обяд на следващия ден' }, batch, h('span', null, 'готвене веднъж на ден: вечерята е и обяд на другия ден')),
         h('label.opt', null, strength, h('span', null, 'силови тренировки — повече белтък')),
@@ -773,6 +779,7 @@ function planBody(plan, { onVariant, onSave, onPdf, onPdfEn, onPdfShopping, onPd
         ? 'Вечерята се готви в двойно количество и е обяд на следващия ден, така че се готви веднъж на ден; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.'
         : 'Обядите и вечерите не се повтарят; риба поне 2 пъти, бобови поне 3 пъти, червено месо до 2 пъти седмично. Щракнете върху ден или „Приготвяне“.')
       : L(`Около ${plan.day.kcal} kcal, белтък ${plan.day.protein} г, фибри ${plan.day.fiber} г — изберете по един вариант за всяко хранене.`),
+    plan.input.bulgarian ? L(' Менюто е от български ястия.') : '',
     sourcedCount ? L(` С публикуван източник (NHLBI): ${sourcedCount} от ${options.filter(Boolean).length} ястия.`) : ''),
     plan.trainingToday ? h('div.row.tight', { style: { flexWrap: 'wrap', marginBottom: '8px' } }, h('strong.small', null, L('Тренировка днес: ')),
       trainingChip(plan.trainingToday) || h('span.small.dim', null, L('почивка')), trainingTips(plan.trainingToday)) : null,

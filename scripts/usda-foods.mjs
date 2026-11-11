@@ -52,7 +52,7 @@ export const EXISTING = {
   cereal: [173884, { nofort: ['vd', 'vc', 'b12'] }], cornflakes: [174648, { nofort: ['vd', 'vc', 'b12'] }], cornbread: 175002,
 };
 
-/* Новите храни (версия 4.15): [id, име, група, FDC ID, флагове, мярка, английско име, състояние, опции]. */
+/* Новите храни (версия 4.15 и 4.19): [id, име, група, FDC ID, флагове, мярка, английско име, състояние, опции]. */
 export const NEW = [
   // Зърнени.
   ['oatbran', 'овесени трици', 'grain', 168872, 'gluten', null, 'oat bran'],
@@ -168,6 +168,20 @@ export const NEW = [
   // Други.
   ['cocoa', 'какао на прах', 'other', 169593, '', null, 'cocoa powder, unsweetened'],
   ['jam', 'конфитюр', 'other', 169641, 'sweet highgi', null, 'jam'],
+  // Версия 4.19 — за българските ястия: лозови листа, царевично брашно за качамак, лапад, грис, жито,
+  // кестени, черноморски риби (кефал, калкан, лефер), свинско бутче, юфка и фиде.
+  ['vineleaves', 'лозови листа', 'veg', 168575, '', null, 'vine leaves'],
+  ['cornmeal', 'царевично брашно', 'grain', 169697, 'highgi', null, 'cornmeal (whole-grain)'],
+  ['dock', 'лапад', 'veg', 170076, '', null, 'patience dock'],
+  ['semolina', 'грис', 'grain', 168933, 'gluten', null, 'semolina'],
+  ['wheat', 'жито (пшеница на зърна)', 'grain', 168890, 'gluten', null, 'wheat berries'],
+  ['chestnuts', 'кестени, печени', 'fruit', 170190, 'nuts', null, 'chestnuts', 'roasted'],
+  ['mullet', 'кефал, печен', 'protein', 175124, 'fish', null, 'grey mullet', 'baked', { raw: 175123, fill: [175123, 'vd', 'sug'] }],
+  ['turbot', 'калкан, печен', 'protein', 174245, 'fish', null, 'turbot', 'baked', { raw: 173710, fill: [173710, 'sfa'] }],
+  ['bluefish', 'лефер, печен', 'protein', 174229, 'fish', null, 'bluefish', 'baked', { raw: 171949 }],
+  ['porkleg', 'свинско бутче (постно), печено', 'protein', 168225, 'meat redmeat pork', null, 'lean pork leg', 'roasted', { raw: 168224 }],
+  ['noodles', 'юфка, сварена', 'grain', 168926, 'gluten egg', null, 'egg noodles', 'cooked', { dry: 169755 }],
+  ['vermicelli', 'фиде, сварено', 'grain', 168928, 'gluten', null, 'vermicelli', 'cooked', { dry: 168927 }],
 ];
 
 const NUT = {
@@ -284,6 +298,8 @@ ${lines.join('\n')}
     console.log('\n// recipes.js — YIELDS');
     for (const [id, , , fdc, , , , , opts = {}] of NEW) {
       if (opts.dry) console.log(`  ${id}: { dry: ${r2(db[opts.dry].kcal / db[fdc].kcal)} },   // ${opts.dry} / ${fdc}`);
+      // Месо и риба: готовото тегло като дял от суровото — по енергията на 100 г суров и готов продукт.
+      if (opts.raw) console.log(`  ${id}: { raw: ${r2(db[opts.raw].kcal / db[fdc].kcal)} },   // ${opts.raw} / ${fdc}`);
     }
     console.log('\n// LIQUIDS: ' + NEW.filter(n => n[8]?.liquid).map(n => `'${n[0]}'`).join(', '));
     console.log('\n// en-foods.js');
