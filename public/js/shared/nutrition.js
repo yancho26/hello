@@ -1479,6 +1479,8 @@ const MAX_BY_FOOD = {
   cheddar: 50, turkeysausage: 100, phyllo: 120, corntortilla: 150, tortilla: 150,
   // Версия 4.19: сухите зърнени (царевично брашно, грис, жито) са в сухо тегло.
   cornmeal: 100, semolina: 80, wheat: 90, vineleaves: 120, chestnuts: 150,
+  // Копривата е с 481 мг калций на 100 г: с повече от 150 г на порция денят лесно минава горната граница от 2500 мг (EFSA).
+  nettle: 150,
 };
 const maxGrams = (food) => MAX_BY_FOOD[food] ?? MAX_BY_CAT[FOODS[food].cat] ?? 400;
 

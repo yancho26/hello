@@ -206,6 +206,26 @@ test('4.19: големите порции не вдигат белтъка — �
   }
 });
 
+test('4.19: копривата е до 150 г на порция — ястията с нея не вдигат калция над горната граница', () => {
+  // Копривата е с 481 мг калций на 100 г. Преди ограничението голямата порция копривена каша беше с 400 г
+  // коприва и над 2000 мг калций, а денят стигаше 4200 мг при горна граница 2500 мг (EFSA).
+  const nettle = RECIPES.filter(r => r.items.some(([food]) => food === 'nettle'));
+  assert.ok(nettle.length >= 2 && nettle.some(r => r.bg), 'има ястия с коприва, едното е ново');
+  for (const r of nettle) assert.ok(r.items.find(([food]) => food === 'nettle')[1] <= 150, r.name);
+  let seen = 0;
+  for (const variant of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
+    const big = nutritionPlan({ sex: 'm', age: 30, weight: 105, height: 192, activity: 'active', goal: 'gain', mealsPerDay: 3, days: 28, variant, asOf: '2026-11-10', bulgarian: true });
+    for (const o of options(big)) {
+      const it = o.items.find(x => x.food === 'nettle');
+      if (!it) continue;
+      seen++;
+      assert.ok(it.grams <= 150, `${o.name}: коприва ${it.grams} г`);
+      assert.ok(o.ca < 1500, `${o.name}: калций ${Math.round(o.ca)} мг в едно ястие`);
+    }
+  }
+  assert.ok(seen > 0, 'ястията с коприва влизат в менюто');
+});
+
 test('4.19: когато българските ястия не стигат, менюто се допълва и лекарят го вижда', () => {
   // Веган без глутен, соя и ядки: за закуска и междинно българските са малко.
   const strict = plan({ bulgarian: true, preferences: ['vegan', 'glutenFree', 'noSoy', 'noNuts'], days: 28 });
