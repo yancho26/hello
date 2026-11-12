@@ -3,7 +3,7 @@
 import { api } from '../api.js';
 import { state } from '../app.js';
 import {
-  badge, card, decimalFields, downloadFile, empty, field, h, input, modal, mount,
+  badge, card, decimalFields, downloadFile, empty, field, h, icon, input, modal, mount,
   numberInput, select, table, toast,
 } from '../ui/components.js';
 import { makeXlsx } from '../shared/xlsx-writer.js';
@@ -34,10 +34,11 @@ function readQueryFromHash() {
   if (m) view.q = decodeURIComponent(m[1]);
 }
 
+let searchTimer = null;
+let keepSearchFocus = false;
+
 export async function renderPatients(host) {
   readQueryFromHash();
-  const box = document.getElementById('globalSearch');
-  if (box && view.q && box.value !== view.q) box.value = view.q;
 
   const data = await api.patients({
     q: view.q,
@@ -81,8 +82,21 @@ export async function renderPatients(host) {
     }, label, count !== undefined ? h('span.count', null, `(${count})`) : null);
   }
 
-  // Търсенето идва от полето в заглавната лента.
-  state.searchHandler = (q) => { view.q = q; renderPatients(host); };
+  // Търсене в списъка: филтрира, докато се пише. (Бързото търсене с „/“ отваря направо досието.)
+  const applySearch = (q) => {
+    view.q = q;
+    if (/[?&]q=/.test(location.hash)) history.replaceState(null, '', '#/patients');
+    keepSearchFocus = true;
+    renderPatients(host);
+  };
+  const searchBox = h('input', {
+    type: 'search', value: view.q, placeholder: 'Търсене по име, ЕГН или телефон', 'aria-label': 'Търсене в списъка с пациенти',
+    oninput: (e) => { const q = e.target.value; clearTimeout(searchTimer); searchTimer = setTimeout(() => applySearch(q), 200); },
+    onkeydown: (e) => {
+      if (e.key === 'Enter') { clearTimeout(searchTimer); applySearch(e.target.value.trim()); }
+      if (e.key === 'Escape' && e.target.value) { e.stopPropagation(); clearTimeout(searchTimer); applySearch(''); }
+    },
+  });
 
   const sortSelect = select([
     { value: 'name', label: 'по име', selected: view.sort === 'name' },
@@ -98,7 +112,9 @@ export async function renderPatients(host) {
       h('div.titles', null,
         h('h1', null, view.archived ? 'Архив' : 'Пациенти'),
         h('div.muted.small', null, plural(list.length, 'пациент', 'пациенти'))),
-      h('div.row.no-print', { style: { flexWrap: 'wrap', justifyContent: 'flex-end' } }, sortSelect,
+      h('div.row.no-print', { style: { flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 420px' } },
+        h('div.search-field', null, icon('search', { size: 17 }), searchBox),
+        sortSelect,
         h('button.btn', {
           title: 'Внасяне на списък от Excel, LibreOffice, CSV или друга програма',
           onclick: () => openImportDialog({ onDone: () => renderPatients(host) }),
@@ -123,6 +139,14 @@ export async function renderPatients(host) {
           h('p.muted', null, 'Имате списък в друга програма или в Excel? Внесете го наведнъж.'),
           h('button.btn.primary', { onclick: () => openImportDialog({ onDone: () => renderPatients(host) }) }, '⭳ Внасяне на списък с пациенти'))
         : null));
+
+  // След филтриране курсорът остава в полето за търсене, в края на текста.
+  if (keepSearchFocus) {
+    keepSearchFocus = false;
+    searchBox.focus();
+    const end = searchBox.value.length;
+    try { searchBox.setSelectionRange(end, end); } catch { /* някои браузъри не позволяват при type=search */ }
+  }
 }
 
 /** Списъкът, както е на екрана, като файл .xlsx. */

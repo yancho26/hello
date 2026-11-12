@@ -1,7 +1,10 @@
 /* Начало на приложението: вписване, навигация, общо състояние. */
 
 import { api, setUnauthorizedHandler } from './api.js';
-import { avatar, card, confirmDialog, field, h, input, loading, modal, mount, toast } from './ui/components.js';
+import { avatar, card, confirmDialog, field, h, icon, input, loading, modal, mount, toast } from './ui/components.js';
+import { canChooseNav, currentNav, cycleTheme, getPrefs, onPrefsChange, setPrefs, toggleNav, applyPrefs } from './ui/theme.js';
+import { THEME_LABELS } from './shared/ui-prefs.js';
+import { forgetRecent, openPalette } from './ui/palette.js';
 import { showStoppedScreen } from './connection.js';
 import { startIdleLogout } from './idle.js';
 import { maybeShowWhatsNew } from './whats-new.js';
@@ -21,9 +24,6 @@ import { MODULES } from './shared/specialty.js';
 
 export const state = {
   doctor: null,
-  /* Изгледът, който показва списък, може да поеме глобалното търсене —
-     така в интерфейса има само едно поле за търсене, а не две. */
-  searchHandler: null,
   practice: { name: 'Практика' },
   doctors: [],
   schedule: [],
@@ -40,22 +40,22 @@ export const state = {
 /* Практиката на ОПЛ и практиката за СИМП имат различни табла, календар и справки. */
 const VIEWS_BY_KIND = {
   gp: [
-    { path: 'dashboard', label: 'Табло', render: renderDashboard },
-    { path: 'patients', label: 'Пациенти', render: renderPatients },
-    { path: 'calendar', label: 'Календар', render: renderCalendar },
-    { path: 'assistant', label: 'Асистент', render: renderAssistant },
-    { path: 'nutrition', label: 'Хранене', render: renderNutritionPage },
-    { path: 'reports', label: 'Справки', render: renderReports },
-    { path: 'settings', label: 'Настройки', render: renderSettings },
+    { path: 'dashboard', label: 'Табло', icon: 'dashboard', render: renderDashboard },
+    { path: 'patients', label: 'Пациенти', icon: 'patients', render: renderPatients },
+    { path: 'calendar', label: 'Календар', icon: 'calendar', keywords: 'имунизации ваксини профилактика', render: renderCalendar },
+    { path: 'assistant', label: 'Асистент', icon: 'assistant', keywords: 'подсказки сигнали', render: renderAssistant },
+    { path: 'nutrition', label: 'Хранене', icon: 'nutrition', keywords: 'режим диета храни каталог', render: renderNutritionPage },
+    { path: 'reports', label: 'Справки', icon: 'reports', keywords: 'отчет статистика обхват', render: renderReports },
+    { path: 'settings', label: 'Настройки', icon: 'settings', keywords: 'потребители копие сигурност изглед тема', render: renderSettings },
   ],
   simp: [
-    { path: 'dashboard', label: 'Табло', render: renderSimpDashboard },
-    { path: 'agenda', label: 'График', render: renderAgenda },
-    { path: 'patients', label: 'Пациенти', render: renderPatients },
-    { path: 'assistant', label: 'Асистент', render: renderAssistant },
-    { path: 'nutrition', label: 'Хранене', render: renderNutritionPage },
-    { path: 'reports', label: 'Справки', render: renderSimpReports },
-    { path: 'settings', label: 'Настройки', render: renderSettings },
+    { path: 'dashboard', label: 'Табло', icon: 'dashboard', render: renderSimpDashboard },
+    { path: 'agenda', label: 'График', icon: 'agenda', keywords: 'часове записване', render: renderAgenda },
+    { path: 'patients', label: 'Пациенти', icon: 'patients', render: renderPatients },
+    { path: 'assistant', label: 'Асистент', icon: 'assistant', keywords: 'подсказки сигнали', render: renderAssistant },
+    { path: 'nutrition', label: 'Хранене', icon: 'nutrition', keywords: 'режим диета храни каталог', render: renderNutritionPage },
+    { path: 'reports', label: 'Справки', icon: 'reports', keywords: 'отчет статистика', render: renderSimpReports },
+    { path: 'settings', label: 'Настройки', icon: 'settings', keywords: 'потребители копие сигурност изглед тема', render: renderSettings },
   ],
 };
 const views = () => VIEWS_BY_KIND[state.kind] || VIEWS_BY_KIND.gp;
@@ -81,31 +81,57 @@ function currentRoute() {
   return { head, rest };
 }
 
+/* Докъде е превъртян всеки списък — за да се върне лекарят на същото място, след като
+ * затвори досие, отворено от него. */
+const scrollMemory = new Map();
+let lastRoute = null;
+
 async function route() {
   const { head, rest } = currentRoute();
   const host = document.getElementById('view');
   if (!host) return;
 
-  for (const link of document.querySelectorAll('nav.main a')) {
-    const target = head === 'patient' ? 'patients' : head;
-    link.classList.toggle('active', link.dataset.path === target);
-  }
+  const key = head === 'patient' ? 'patient/' + String(rest[0] || '').split('?')[0] : head;
+  const changed = !lastRoute || lastRoute.key !== key;
+  if (lastRoute && changed) scrollMemory.set(lastRoute.key, window.scrollY);
+  const backFromDossier = !!lastRoute && lastRoute.head === 'patient' && head !== 'patient';
+  lastRoute = { key, head };
 
-  state.searchHandler = null;
-  mount(host, loading());
+  const target = head === 'patient' ? 'patients' : head;
+  for (const link of document.querySelectorAll('nav.main a, .bottom-nav a')) {
+    const on = link.dataset.path === target;
+    link.classList.toggle('active', on);
+    if (on) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+  }
+  const more = document.querySelector('.bottom-nav button[data-more]');
+  if (more) more.classList.toggle('active', more.dataset.more.split(' ').includes(target));
+
+  // Екранът за зареждане се показва само ако данните се бавят — иначе старият екран остава,
+  // докато новият е готов, и няма мигане при всяко щракване.
+  const progress = document.querySelector('.route-progress');
+  const slow = setTimeout(() => { mount(host, loading()); progress?.classList.add('on'); }, 220);
   try {
     if (head === 'patient' && rest[0]) {
       // „#/patient/ид?exam=час“ — преглед, започнат от записан час в графика.
       const [id, query = ''] = rest[0].split('?');
       await renderPatient(host, id, new URLSearchParams(query));
-      return;
+    } else {
+      const view = views().find(v => v.path === head) || views()[0];
+      await view.render(host);
     }
-    const view = views().find(v => v.path === head) || views()[0];
-    await view.render(host);
   } catch (err) {
     mount(host, card('Възникна грешка', {},
       h('p', null, err.message),
       h('button.btn', { onclick: () => route() }, 'Опитай отново')));
+  } finally {
+    clearTimeout(slow);
+    progress?.classList.remove('on');
+  }
+  if (changed) {
+    const y = backFromDossier ? scrollMemory.get(key) || 0 : 0;
+    window.scrollTo(0, y);
+    host.classList.add('enter');
+    setTimeout(() => host.classList.remove('enter'), 240);
   }
 }
 
@@ -119,67 +145,110 @@ export function restart() {
 
 /* --------------------------------- обвивка ----------------------------------- */
 
-function shell() {
-  let searchTimer = null;
-  const searchInput = h('input', {
-    type: 'search',
-    placeholder: 'Търсене…',
-    title: 'Търсене по име, ЕГН или телефон (клавиш /)',
-    'aria-label': 'Търсене на пациент',
-    oninput: (e) => {
-      const q = e.target.value;
-      clearTimeout(searchTimer);
-      // На екрана с пациентите филтрираме на живо; отвсякъде другаде
-      // изчакваме Enter, за да не прескачаме изгледа при всяко натискане.
-      if (currentRoute().head === 'patients' && state.searchHandler) {
-        searchTimer = setTimeout(() => state.searchHandler(q), 180);
-      }
-    },
-    onkeydown: (e) => {
-      if (e.key === 'Enter') {
-        const q = e.target.value.trim();
-        if (currentRoute().head === 'patients') {
-          if (state.searchHandler) state.searchHandler(q);
-        } else {
-          location.hash = '#/patients' + (q ? '?q=' + encodeURIComponent(q) : '');
-        }
-      }
-      if (e.key === 'Escape') {
-        e.target.value = '';
-        if (currentRoute().head === 'patients' && state.searchHandler) state.searchHandler('');
-        e.target.blur();
-      }
-    },
+const newPatient = () => import('./views/patients.js').then(m => m.openPatientForm());
+
+/** Прозорецът за бързо търсене: пациенти, действия и страници. */
+function openSearch(initial = '') {
+  openPalette({
+    kind: state.kind,
+    initial,
+    pages: views().map(v => ({ label: v.label, path: v.path, icon: v.icon, keywords: v.keywords })),
+    actions: [
+      { label: 'Нов пациент', icon: 'plus', keywords: 'добави запиши досие', hint: 'N', run: newPatient },
+      { label: 'Смени темата: светла, тъмна или като на компютъра', icon: 'moon', keywords: 'изглед тъмен нощен режим', run: () => { cycleTheme(); toast('Тема: ' + THEME_LABELS[getPrefs().theme] + '.'); } },
+      { label: 'Клавишни комбинации', icon: 'keyboard', keywords: 'клавиатура бързи клавиши помощ', hint: '?', run: shortcutsDialog },
+      { label: 'Смени практиката', icon: 'swap', keywords: 'опл симп вход', run: switchPractice },
+    ],
   });
-  searchInput.id = 'globalSearch';
+}
 
-  const header = h('header.app', null,
-    h('div.brand', null,
-      h('img.wordmark', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 72, height: 26 }),
-      h('div.sub', { title: `${KINDS[state.kind].about}: ${state.practice.name}` },
-        h('span.kind-chip.' + state.kind, null, KINDS[state.kind].short), state.practice.name)),
-    h('nav.main', null, views().map(v =>
-      h('a', { href: '#/' + v.path, dataset: { path: v.path } }, v.label))),
-    h('div.search-wrap', null,
-      h('span.icon', null, '⌕'),
-      searchInput,
-      h('kbd', null, '/')),
-    h('button.btn.primary.sm.no-print', {
-      onclick: () => import('./views/patients.js').then(m => m.openPatientForm()),
-      title: 'Нов пациент (N)',
-    }, '＋', h('span.lbl', null, ' Нов пациент')),
-    h('button.user-chip', { onclick: userMenu, title: state.doctor ? state.doctor.name : 'Вход' },
-      avatar(state.doctor ? state.doctor.name : '?'),
-      h('span.uname', null, state.doctor ? state.doctor.name : 'Вход')),
-    canStopHere()
-      ? h('button.btn.icon.power.no-print', {
-        onclick: stopProgram,
-        title: 'Спиране на програмата',
-        'aria-label': 'Спиране на програмата',
-      }, powerIcon())
-      : null);
+async function switchPractice() {
+  forgetRecent();
+  await api.chooseWorkspace(null);
+  restart();
+}
 
-  mount(root, header, h('main', null, h('div#view')));
+const THEME_ICON = { auto: 'monitor', light: 'sun', dark: 'moon' };
+
+function shell() {
+  const k = KINDS[state.kind];
+  const who = state.doctor ? state.doctor.name : 'Вход';
+
+  const themeBtn = h('button.tool-btn', { type: 'button', onclick: () => cycleTheme() });
+  const collapseBtn = h('button.tool-btn', { type: 'button', onclick: () => toggleNav() }, icon('sidebar', { size: 19 }));
+  const syncTools = () => {
+    const theme = getPrefs().theme;
+    themeBtn.replaceChildren(icon(THEME_ICON[theme], { size: 19 }));
+    const label = `Тема: ${THEME_LABELS[theme]}`;
+    themeBtn.title = label + ' — щракнете за смяна';
+    themeBtn.setAttribute('aria-label', label);
+    themeBtn.dataset.tip = label;
+    const full = currentNav() === 'full';
+    collapseBtn.hidden = !canChooseNav();
+    collapseBtn.title = full ? 'Свий менюто до иконки' : 'Разгъни менюто';
+    collapseBtn.setAttribute('aria-label', collapseBtn.title);
+    collapseBtn.dataset.tip = collapseBtn.title;
+  };
+
+  const side = h('aside.side.no-print', { 'aria-label': 'Меню' },
+    h('div.side-head', null,
+      h('a.side-logo', { href: '#/dashboard', title: 'DocUp — към таблото' },
+        h('img.wordmark', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 78, height: 28 }),
+        h('img.mark', { src: '/favicon.svg', alt: 'DocUp', width: 36, height: 36 }))),
+    h('div.practice-tag', { title: `${k.about}: ${state.practice.name}`, dataset: { tip: `${k.short} · ${state.practice.name}` } },
+      h('span.kind-chip.' + state.kind, null, k.short),
+      h('span.pname', null, state.practice.name)),
+    h('button.side-search', {
+      type: 'button', onclick: () => openSearch(), 'aria-label': 'Търсене на пациент', 'aria-keyshortcuts': '/',
+      title: 'Търсене по име, ЕГН или телефон (клавиш /)', dataset: { tip: 'Търсене ( / )' },
+    }, icon('search', { size: 18 }), h('span.ph', null, 'Търсене на пациент…'), h('kbd', null, '/')),
+    h('button.btn.primary.side-new', {
+      type: 'button', onclick: newPatient, title: 'Нов пациент (клавиш N)', 'aria-label': 'Нов пациент', dataset: { tip: 'Нов пациент ( N )' },
+    }, icon('plus', { size: 17 }), h('span.lbl', null, 'Нов пациент')),
+    h('nav.main', { 'aria-label': 'Основно меню' }, views().map(v =>
+      h('a', { href: '#/' + v.path, dataset: { path: v.path, tip: v.label } }, icon(v.icon), h('span.lbl', null, v.label)))),
+    h('div.side-foot', null,
+      h('div.side-tools', null,
+        themeBtn,
+        h('button.tool-btn', { type: 'button', onclick: shortcutsDialog, title: 'Клавишни комбинации (клавиш ?)', 'aria-label': 'Клавишни комбинации', dataset: { tip: 'Клавишни комбинации ( ? )' } },
+          icon('keyboard', { size: 19 })),
+        collapseBtn,
+        h('span.grow'),
+        canStopHere()
+          ? h('button.tool-btn.power', { type: 'button', onclick: stopProgram, title: 'Спиране на програмата', 'aria-label': 'Спиране на програмата', dataset: { tip: 'Спиране на програмата' } },
+            icon('power', { size: 19 }))
+          : null),
+      h('button.user-chip', { type: 'button', onclick: () => userMenu(), title: who, dataset: { tip: who } },
+        avatar(state.doctor ? state.doctor.name : '?'),
+        h('span.who', null,
+          h('span.uname', null, who),
+          h('span.urole', null, (state.doctor && state.doctor.role) || k.about)))));
+
+  // Телефон: лента горе и меню отдолу; на компютър са скрити от стиловете.
+  const primary = views().slice(0, 4);
+  const rest = views().slice(4);
+  const topbar = h('header.topbar.no-print', null,
+    h('img.wordmark', { src: '/img/docup-logo.svg', alt: 'DocUp', width: 67, height: 24 }),
+    h('span.kind-chip.' + state.kind, { title: state.practice.name }, k.short),
+    h('span.grow'),
+    h('button.tool-btn', { type: 'button', onclick: () => openSearch(), 'aria-label': 'Търсене на пациент' }, icon('search', { size: 22 })),
+    h('button.tool-btn.new', { type: 'button', onclick: newPatient, 'aria-label': 'Нов пациент' }, icon('plus', { size: 22 })),
+    h('button.tool-btn', { type: 'button', onclick: () => userMenu(), 'aria-label': 'Меню на потребителя: ' + who }, avatar(state.doctor ? state.doctor.name : '?')));
+  const bottom = h('nav.bottom-nav.no-print', { 'aria-label': 'Меню' },
+    primary.map(v => h('a', { href: '#/' + v.path, dataset: { path: v.path } }, icon(v.icon, { size: 22 }), h('span.lbl', null, v.label))),
+    h('button', { type: 'button', dataset: { more: rest.map(v => v.path).join(' ') }, onclick: () => userMenu(rest) },
+      icon('more', { size: 22 }), h('span.lbl', null, 'Още')));
+
+  mount(root,
+    h('a.skip-link', { href: '#view', onclick: (e) => { e.preventDefault(); const v = document.getElementById('view'); v.tabIndex = -1; v.focus(); } }, 'Към съдържанието'),
+    h('div.app-shell', { dataset: { nav: currentNav() } },
+      side,
+      h('div.app-main', null, topbar, h('main', null, h('div#view'))),
+      bottom),
+    h('div.route-progress', { 'aria-hidden': 'true' }));
+  syncTools();
+  onPrefsChange(syncTools);
+  applyPrefs();
 }
 
 /* ------------------------------ спиране на програмата ------------------------ */
@@ -223,38 +292,92 @@ export async function stopProgram() {
   }
 }
 
-function userMenu() {
-  modal({
-    title: state.doctor ? state.doctor.name : 'Потребител',
+/** Избор от няколко възможности — за темата и плътността. */
+function choiceRow(options, current, onPick) {
+  const row = h('div.choice-row', { role: 'radiogroup' });
+  const draw = (value) => mount(row, options.map(o =>
+    h('button.choice' + (o.value === value ? '.active' : ''), {
+      type: 'button', role: 'radio', 'aria-checked': String(o.value === value),
+      onclick: () => { onPick(o.value); draw(o.value); },
+    }, o.icon ? icon(o.icon, { size: 17 }) : null, o.label)));
+  draw(current);
+  return row;
+}
+
+/** Изборът на тема и плътност — в менюто на потребителя и в „Настройки → Изглед“. */
+export function appearanceControls() {
+  const prefs = getPrefs();
+  return h('div.stack', null,
+    h('div', null,
+      h('div.field-lbl', null, 'Тема'),
+      choiceRow([
+        { value: 'auto', label: 'Като на компютъра', icon: 'monitor' },
+        { value: 'light', label: 'Светла', icon: 'sun' },
+        { value: 'dark', label: 'Тъмна', icon: 'moon' },
+      ], prefs.theme, (theme) => setPrefs({ theme }))),
+    h('div', null,
+      h('div.field-lbl', null, 'Плътност на редовете'),
+      choiceRow([
+        { value: 'normal', label: 'Нормална' },
+        { value: 'compact', label: 'Сбита — повече на един екран' },
+      ], prefs.density, (density) => setPrefs({ density }))));
+}
+
+/** Менюто на потребителя. На телефон показва и страниците, които не са в лентата отдолу. */
+function userMenu(pages = []) {
+  const k = KINDS[state.kind];
+  const item = (ico, label, onPick, opts = {}) => h('button.menu-item' + (opts.danger ? '.danger' : ''), {
+    type: 'button', title: opts.title, onclick: () => { ctl.close(); onPick(); },
+  }, icon(ico, { size: 19 }), label, opts.hint ? h('span.hint', null, opts.hint) : null);
+
+  const ctl = modal({
+    title: h('span', { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
+      avatar(state.doctor ? state.doctor.name : '?'),
+      h('span', null,
+        h('span', { style: { display: 'block' } }, state.doctor ? state.doctor.name : 'Потребител'),
+        h('span.small.muted', { style: { display: 'block', fontWeight: '500' } }, (state.doctor && state.doctor.role) || k.about))),
     body: h('div.stack', null,
-      h('div.muted.small', null, state.doctor ? state.doctor.role : ''),
+      pages.length ? h('div.menu-list', null, pages.map(v => item(v.icon, v.label, () => go(v.path)))) : null,
+      pages.length ? h('hr', { style: { margin: '2px 0', width: '100%' } }) : null,
       h('dl.kv', null,
-        h('dt', null, 'Практика'), h('dd', null, state.practice.name),
-        h('dt', null, 'Вид'), h('dd', null, KINDS[state.kind].about),
+        h('dt', null, 'Практика'), h('dd', null, h('span.kind-chip.' + state.kind, null, k.short), state.practice.name),
         h('dt', null, 'Колеги'), h('dd', null, state.doctors.filter(d => d.active).length)),
-      h('div.row', null,
-        h('button.btn', { onclick: () => { location.hash = '#/settings'; document.querySelector('.overlay').remove(); } },
-          'Настройки'),
-        h('button.btn', {
-          title: 'Към екрана за вход с двете практики — ОПЛ и СИМП. Вписването тук остава.',
-          onclick: async () => { await api.chooseWorkspace(null); restart(); },
-        }, '⇄ Смени практиката')),
-      state.server && state.server.canStop
-        ? h('div.menu-section', null,
-          h('div.lbl', null, 'Програмата'),
-          canStopHere()
-            ? h('button.btn.danger', {
-              onclick: () => { document.querySelector('.overlay').remove(); stopProgram(); },
-            }, '⏻ Спри програмата')
-            : h('p.small.muted', { style: { margin: 0 } },
-              'Програмата работи на друг компютър в кабинета и може да бъде спряна само от него.'))
+      h('div.menu-section', null, appearanceControls()),
+      h('div.menu-section', null, h('div.menu-list', null,
+        pages.some(v => v.path === 'settings') ? null : item('settings', 'Настройки', () => go('settings')),
+        item('keyboard', 'Клавишни комбинации', shortcutsDialog, { hint: '?' }),
+        item('swap', 'Смени практиката', switchPractice, { title: 'Към екрана за вход с двете практики — ОПЛ и СИМП. Вписването тук остава.' }),
+        canStopHere() ? item('power', 'Спри програмата', stopProgram, { danger: true }) : null,
+        item('logout', 'Изход', async () => { forgetRecent(); await api.logout(); restart(); }, { danger: true }))),
+      state.server && state.server.canStop && !canStopHere()
+        ? h('p.small.muted', { style: { margin: 0 } }, 'Програмата работи на друг компютър в кабинета и може да бъде спряна само от него.')
         : null),
-    actions: (close) => [
-      h('button.btn', { onclick: () => close() }, 'Затвори'),
-      h('button.btn.danger', {
-        onclick: async () => { await api.logout(); restart(); },
-      }, 'Изход'),
-    ],
+    actions: (close) => [h('button.btn', { onclick: () => close() }, 'Затвори')],
+  });
+}
+
+/** Клавишните комбинации — отваря се с „?“. */
+function shortcutsDialog() {
+  const key = (...keys) => keys.map(x => h('kbd', null, x));
+  const rows = [
+    [key('/'), 'Търсене на пациент, страница или действие'],
+    [key('Ctrl', 'K'), 'Същото търсене, и докато пишете в поле'],
+    [key('N'), 'Нов пациент'],
+    [key('G', 'D'), 'Към таблото'],
+    [key('G', 'P'), 'Към пациентите'],
+    [key('G', 'K'), state.kind === 'simp' ? 'Към графика' : 'Към календара'],
+    [key('G', 'A'), 'Към асистента'],
+    [key('G', 'R'), 'Към справките'],
+    [key('G', 'S'), 'Към настройките'],
+    [key('Esc'), 'Затваря прозореца; с въведени данни — второ натискане'],
+    [key('?'), 'Този списък'],
+  ];
+  modal({
+    title: 'Клавишни комбинации',
+    body: h('div', null,
+      h('dl.keys-list', null, rows.map(([keys, text]) => [h('dt', null, keys), h('dd', null, text)])),
+      h('p.small.muted', { style: { margin: '14px 0 0' } }, 'Комбинациите с една буква важат, когато не пишете в поле.')),
+    actions: (close) => [h('button.btn.primary', { onclick: () => close() }, 'Разбрах')],
   });
 }
 
@@ -387,6 +510,8 @@ function brandBlock() {
  * специализирана извънболнична помощ (СИМП). Всяка има свои потребители и ПИН.
  */
 function entryScreen(info) {
+  // На екрана за вход няма вписан потребител: списъкът „последно отворени“ се изчиства.
+  forgetRecent();
   const enter = async (ws) => {
     try {
       await api.chooseWorkspace(ws);
@@ -457,7 +582,16 @@ function entryScreen(info) {
     brandBlock(),
     h('h1.entry-title', null, 'Вход в DocUp'),
     h('p.muted.center', { style: { marginTop: 0 } }, 'Изберете практиката, в която ще работите.'),
-    h('div.entry-grid', null, (info.workspaces || []).map(option)))));
+    h('div.entry-grid', null, (info.workspaces || []).map(option)),
+    themeFoot())));
+}
+
+/** Малък бутон за темата под екраните за вход и настройка. */
+function themeFoot() {
+  const btn = h('button.btn.ghost.sm', { type: 'button', onclick: () => { cycleTheme(); draw(); } });
+  const draw = () => mount(btn, icon(THEME_ICON[getPrefs().theme], { size: 16 }), 'Тема: ' + THEME_LABELS[getPrefs().theme]);
+  draw();
+  return h('div.entry-foot', null, btn);
 }
 
 /* -------------------------------- клавиши ------------------------------------ */
@@ -466,29 +600,32 @@ function keyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     const tag = (e.target.tagName || '').toLowerCase();
     const typing = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-    if (typing || e.metaKey || e.altKey) {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        const box = document.getElementById('globalSearch');
-        if (box) { box.focus(); box.select(); }
-      }
+    // Ctrl+K отваря търсенето отвсякъде, и докато се пише в поле.
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K' || e.key === 'к' || e.key === 'К')) {
+      e.preventDefault();
+      openSearch();
       return;
     }
-    if (e.ctrlKey && e.key !== 'k') return;
+    if (typing || e.metaKey || e.altKey || e.ctrlKey) return;
+    // Под отворен прозорец буквите не правят нищо.
+    if (document.querySelector('.overlay, .palette-overlay')) return;
 
-    if (e.key === '/' || (e.ctrlKey && e.key === 'k')) {
+    if (e.key === '/') {
       e.preventDefault();
-      const box = document.getElementById('globalSearch');
-      if (box) { box.focus(); box.select(); }
+      openSearch();
+    } else if (e.key === '?') {
+      e.preventDefault();
+      shortcutsDialog();
     } else if (e.key === 'n' || e.key === 'N') {
       e.preventDefault();
-      import('./views/patients.js').then(m => m.openPatientForm());
-    } else if (e.key === 'g') {
-      // g после d/p/s — бърз преход между изгледите
+      newPatient();
+    } else if (e.key === 'g' || e.key === 'G') {
+      // g после d/p/k/a/r/s — бърз преход между изгледите
       const once = (ev) => {
         document.removeEventListener('keydown', once, true);
-        const map = { d: 'dashboard', p: 'patients', k: state.kind === 'simp' ? 'agenda' : 'calendar', s: 'settings', r: 'reports' };
-        if (map[ev.key]) { ev.preventDefault(); go(map[ev.key]); }
+        const map = { d: 'dashboard', p: 'patients', k: state.kind === 'simp' ? 'agenda' : 'calendar', a: 'assistant', s: 'settings', r: 'reports' };
+        const to = map[String(ev.key).toLowerCase()];
+        if (to) { ev.preventDefault(); go(to); }
       };
       document.addEventListener('keydown', once, true);
       setTimeout(() => document.removeEventListener('keydown', once, true), 1500);
@@ -502,7 +639,7 @@ async function start() {
   mount(root, h('main', null, loading('Свързване с данните на практиката…')));
   setUnauthorizedHandler(() => {
     // Сесията е изтекла: връщаме към екрана за вход, без да губим адреса.
-    if (!document.querySelector('.entry-grid')) location.reload();
+    if (!document.querySelector('.entry-grid')) { forgetRecent(); location.reload(); }
   });
 
   let info;

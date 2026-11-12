@@ -4,6 +4,8 @@
  * така имена, бележки и диагнози на пациенти не могат да се тълкуват като
  * код, каквото и да е въведено в тях. */
 
+import { icon, splitGlyph } from './icons.js';
+
 /**
  * h('div.card', { onclick }, дете, дете…)
  * Селекторът поддържа таг, .класове и #идентификатор.
@@ -34,7 +36,21 @@ export function h(selector, props, ...children) {
   }
 
   append(el, children);
+  if (el.classList.contains('btn')) iconizeButton(el);
   return el;
+}
+
+/* Надписите на бутоните започват с малък знак („＋ Нов пациент“, „🖨 Печат“). Знакът се заменя с
+ * иконка от общия комплект (ui/icons.js), за да изглежда бутонът еднакво на всеки компютър:
+ * системните емоджита са различни в Windows 10, Windows 11 и на телефон. */
+function iconizeButton(el) {
+  const first = el.firstChild;
+  if (!first || first.nodeType !== 3) return;
+  const hit = splitGlyph(first.nodeValue);
+  if (!hit) return;
+  el.insertBefore(icon(hit.name, { size: 16 }), first);
+  if (hit.rest) first.nodeValue = hit.rest;
+  else first.remove();
 }
 
 function append(el, children) {

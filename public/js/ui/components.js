@@ -1,6 +1,7 @@
 /* Повтарящи се части от интерфейса: карти, таблици, прозорци, известия. */
 
 import { clear, h, initials, mount, svg } from './dom.js';
+import { icon } from './icons.js';
 import { STATUS_LABELS } from '../shared/schedule.js';
 import { durationText, formatDate, relativeDays } from '../shared/dates.js';
 
@@ -13,7 +14,9 @@ export function toast(message, kind = '') {
     toastHost = h('div.toasts');
     document.body.appendChild(toastHost);
   }
-  const el = h('div.toast' + (kind ? '.' + kind : ''), message);
+  const el = h('div.toast' + (kind ? '.' + kind : ''), { role: kind === 'error' ? 'alert' : 'status' },
+    icon(kind === 'ok' ? 'check' : kind === 'error' || kind === 'warn' ? 'alert' : 'info', { size: 17 }),
+    h('div', null, message));
   toastHost.appendChild(el);
   setTimeout(() => {
     el.style.transition = 'opacity .2s';
@@ -34,18 +37,33 @@ export function modal({ title, body, actions, wide = false, onClose }) {
    * а Esc иска второ натискане — за да не се губят попълнени данни. */
   let dirty = false;
   let escArmed = 0;
+  const opener = document.activeElement;
   const close = (result) => {
     overlay.remove();
     document.removeEventListener('keydown', onKey);
+    // Фокусът се връща там, откъдето е отворен прозорецът — клавиатурата не губи мястото си.
+    if (opener && opener.isConnected && typeof opener.focus === 'function' && !document.querySelector('.overlay')) opener.focus();
     if (onClose) onClose(result);
   };
   const warn = h('div.unsaved-warn', { hidden: true },
     'Има въведени данни. Натиснете Esc още веднъж, за да затворите без запис.');
   const onKey = (e) => {
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' && e.key !== 'Tab') return;
     // Само най-горният прозорец реагира.
     const overlays = document.querySelectorAll('.overlay');
     if (overlays[overlays.length - 1] !== overlay) return;
+    if (e.key === 'Tab') {
+      // Tab обикаля само в прозореца, не под него.
+      const items = [...box.querySelectorAll('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+        .filter(el => !el.disabled && el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!box.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      return;
+    }
     e.stopPropagation();
     if (dirty && Date.now() - escArmed > 3000) {
       escArmed = Date.now();
@@ -56,10 +74,10 @@ export function modal({ title, body, actions, wide = false, onClose }) {
     close();
   };
 
-  const box = h('div.modal' + (wide === 'x' ? '.wide.xwide' : wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true' },
+  const box = h('div.modal' + (wide === 'x' ? '.wide.xwide' : wide ? '.wide' : ''), { role: 'dialog', 'aria-modal': 'true', 'aria-label': typeof title === 'string' ? title : null },
     h('header', null,
       h('h2', null, title),
-      h('button.icon-btn', { onclick: () => close(), title: 'Затваряне', type: 'button' }, '✕')),
+      h('button.icon-btn', { onclick: () => close(), title: 'Затваряне (Esc)', 'aria-label': 'Затваряне', type: 'button' }, icon('x', { size: 18 }))),
     h('div.body', null, typeof body === 'function' ? body(close) : body),
     warn,
     actions ? h('footer', null, actions(close)) : null);
@@ -204,7 +222,7 @@ export function statusBadge(entry) {
 export function card(title, opts = {}, ...children) {
   return h('section.card', null,
     title ? h('header', null,
-      h('h2', null, opts.icon ? h('span', null, opts.icon) : null, title),
+      h('h2', null, opts.icon ? h('span.card-ico', { 'aria-hidden': 'true' }, opts.icon) : null, title),
       opts.actions ? h('div.row.tight', null, opts.actions) : null) : null,
     h('div.body' + (opts.tight ? '.tight' : ''), null, ...children));
 }
@@ -225,11 +243,107 @@ export function loading(message = 'Зареждане…') {
   return h('div.loading', null, h('div.spinner'), message);
 }
 
-/** Таблица с шапка и редове; `columns` са низове или {label, class}. */
-export function table(columns, rows) {
+/**
+ * Таблица с шапка и редове; `columns` са низове или {label, class}.
+ * На телефон всеки ред става картичка, а пред стойността стои името на колоната (стиловете са
+ * в app.css, „table.stack-sm“). За широки числови таблици: table(колони, редове, { stack: false }).
+ */
+export function table(columns, rows, opts = {}) {
+  const labels = columns.map(c => (typeof c === 'string' ? c : c.label) || '');
   const thead = h('thead', null, h('tr', null,
     columns.map(c => h('th', typeof c === 'string' ? null : { class: c.class }, typeof c === 'string' ? c : c.label))));
-  return h('div.table-wrap', null, h('table', null, thead, h('tbody', null, rows)));
+  const tbody = h('tbody', null, rows);
+  labelCells(tbody, labels);
+  // Редовете, добавени по-късно („Покажи още“), също получават имената на колоните.
+  if (typeof MutationObserver !== 'undefined') {
+    new MutationObserver(() => labelCells(tbody, labels)).observe(tbody, { childList: true });
+  }
+  return h('div.table-wrap', null, h('table' + (opts.stack === false ? '' : '.stack-sm'), null, thead, tbody));
+}
+
+function labelCells(tbody, labels) {
+  for (const tr of tbody.children) {
+    if (tr.dataset.labelled) continue;
+    tr.dataset.labelled = '1';
+    let i = 0;
+    for (const td of tr.children) {
+      const span = td.colSpan || 1;
+      if (span === 1 && labels[i] && !td.classList.contains('name-cell') && !td.classList.contains('actions')) td.dataset.label = labels[i];
+      i += span;
+    }
+  }
+}
+
+/**
+ * Ред с раздели, който се превърта, когато не се побира на екрана: отстрани излизат стрелки,
+ * а избраният раздел винаги е видим. `tabs` е готовият елемент .tabs с бутоните.
+ */
+export function tabStrip(tabs) {
+  const step = (dir) => () => tabs.scrollBy({ left: dir * Math.max(160, tabs.clientWidth * 0.6), behavior: 'smooth' });
+  const left = h('button.tab-arrow.left', { type: 'button', tabindex: -1, 'aria-hidden': 'true', onclick: step(-1) }, icon('chevronLeft', { size: 18 }));
+  const right = h('button.tab-arrow.right', { type: 'button', tabindex: -1, 'aria-hidden': 'true', onclick: step(1) }, icon('chevronRight', { size: 18 }));
+  const wrap = h('div.tabstrip.no-print', null, left, tabs, right);
+  const update = () => {
+    wrap.classList.toggle('can-left', tabs.scrollLeft > 4);
+    wrap.classList.toggle('can-right', tabs.scrollLeft + tabs.clientWidth < tabs.scrollWidth - 4);
+  };
+  // Избраният раздел идва на екрана, без да се мести страницата.
+  const reveal = () => {
+    const a = tabs.querySelector('.active');
+    if (a) {
+      const pad = 48;
+      if (a.offsetLeft < tabs.scrollLeft + pad) tabs.scrollLeft = Math.max(0, a.offsetLeft - pad);
+      else if (a.offsetLeft + a.offsetWidth > tabs.scrollLeft + tabs.clientWidth - pad) tabs.scrollLeft = a.offsetLeft + a.offsetWidth - tabs.clientWidth + pad;
+    }
+    update();
+  };
+  tabs.addEventListener('scroll', update, { passive: true });
+  tabs.addEventListener('click', () => setTimeout(reveal, 0));
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(update).observe(tabs);
+  setTimeout(reveal, 0);
+  return wrap;
+}
+
+/**
+ * Лентата с разделите на досието. Остава горе при превъртане и тогава показва и кой е пациентът
+ * (име, възраст, алергии) — за да не се бърка досието, докато се чете надолу.
+ * Връща елементите за поставяне: [маркер, лента].
+ */
+export function dossierNav({ name, age, alert }, tabs) {
+  const sentinel = h('div.dossier-sentinel', { 'aria-hidden': 'true' });
+  const nav = h('div.dossier-nav.no-print', null,
+    h('div.dossier-id', null,
+      h('span.p-avatar.sm', { 'aria-hidden': 'true' }, initials(name)),
+      h('span.nm', null, name),
+      age ? h('span.ag', null, age) : null,
+      alert ? h('span.badge.alert', { title: alert }, alert) : null),
+    tabStrip(tabs));
+  if (typeof IntersectionObserver !== 'undefined') {
+    new IntersectionObserver(([e]) => {
+      nav.classList.toggle('stuck', !e.isIntersecting && e.boundingClientRect.top < 0);
+    }, { threshold: 0 }).observe(sentinel);
+  }
+  return [sentinel, nav];
+}
+
+/**
+ * Превключвател от съседни бутони: items = [{ id, label, count, tone }], active — избраният id.
+ * onChange(id) се извиква при избор. Връща елемента; изборът се сменя с el.select(id).
+ */
+export function segmented(items, active, onChange, props = {}) {
+  const el = h('div.seg', { role: 'tablist', ...props }, items.map(it =>
+    h('button' + (it.id === active ? '.active' : ''), {
+      type: 'button', role: 'tab', 'aria-selected': String(it.id === active), dataset: { id: it.id },
+      onclick: () => { el.select(it.id); onChange(it.id); },
+    }, it.label, it.count !== undefined && it.count !== null ? h('span.n' + (it.tone ? '.' + it.tone : ''), null, it.count) : null)));
+  el.select = (id) => {
+    for (const b of el.children) {
+      const on = b.dataset.id === String(id);
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    }
+  };
+  return el;
 }
 
 /** Пръстен с процент — обхват на имунизациите или на профилактиката. */
@@ -267,7 +381,7 @@ export function downloadFile(bytes, filename, type = 'application/vnd.openxmlfor
 }
 
 export function avatar(name) {
-  return h('span.avatar', null, initials(name));
+  return h('span.avatar', { 'aria-hidden': 'true' }, initials(name));
 }
 
-export { clear, h, mount };
+export { clear, h, icon, initials, mount };

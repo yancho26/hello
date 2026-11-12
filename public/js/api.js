@@ -62,6 +62,8 @@ export const api = {
   bootstrap: () => request('GET', '/api/bootstrap'),
 
   patients: (params) => request('GET', '/api/patients' + qs(params)),
+  /** Бързо търсене: най-добрите съвпадения по име, ЕГН или телефон — само данните за показване. */
+  search: (q, limit) => request('GET', '/api/search' + qs({ q, limit })),
   patient: (id, params) => request('GET', `/api/patients/${id}` + qs(params)),
   createPatient: (data) => request('POST', '/api/patients', data),
   updatePatient: (id, data) => request('PATCH', `/api/patients/${id}`, data),
