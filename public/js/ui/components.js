@@ -228,8 +228,13 @@ export function card(title, opts = {}, ...children) {
 }
 
 export function stat(value, label, opts = {}) {
+  // Брояч, който води някъде, е бутон и за клавиатурата: Tab стига до него, Enter го натиска.
+  const act = opts.onclick ? {
+    onclick: opts.onclick, role: 'button', tabindex: 0,
+    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onclick(e); } },
+  } : {};
   return h('div.stat' + (opts.kind ? '.' + opts.kind : '') + (opts.onclick ? '.clickable' : ''),
-    { onclick: opts.onclick },
+    act,
     h('div.value', null, value),
     h('div.label', null, label),
     opts.foot ? h('div.foot', null, opts.foot) : null);
@@ -265,6 +270,11 @@ function labelCells(tbody, labels) {
   for (const tr of tbody.children) {
     if (tr.dataset.labelled) continue;
     tr.dataset.labelled = '1';
+    // Ред, който се отваря с щракване, се отваря и с Enter от клавиатурата.
+    if (tr.classList.contains('clickable') && !tr.hasAttribute('tabindex')) {
+      tr.tabIndex = 0;
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === tr) tr.click(); });
+    }
     let i = 0;
     for (const td of tr.children) {
       const span = td.colSpan || 1;

@@ -44,7 +44,7 @@
   --info-soft: var(--brand-soft);
   --blue: #245f9e;
   --blue-soft: #e6effa;
-  --teal: #0b7a94;
+  --teal: #0a6f87;
   --teal-soft: #e1f2f5;
   --amber: #d9a400;
   --muted-soft: #eceef5;
@@ -58,7 +58,7 @@
   --cell-x: 14px;
   --cell-y: 11px;
   --ctl-h: 38px;
-  --side-w: 248px;
+  --side-w: 240px;
   --rail-w: 68px;
   --bar-h: 54px;
   --tabbar-h: 62px;
@@ -455,7 +455,8 @@ th {
 td { padding: var(--cell-y) var(--cell-x); border-bottom: 1px solid var(--line); vertical-align: middle; }
 tbody tr:last-child td { border-bottom: 0; }
 tr.clickable { cursor: pointer; }
-tr.clickable:hover td { background: var(--surface-2); }
+tr.clickable:hover td, tr.clickable:focus-visible td { background: var(--surface-2); }
+tr.clickable:focus-visible { outline: 2px solid var(--brand-fill); outline-offset: -2px; }
 tr.clickable:hover td:first-child { box-shadow: inset 3px 0 0 var(--brand-fill); }
 tr.attention td:first-child, tr.clickable.attention:hover td:first-child { box-shadow: inset 3px 0 0 var(--danger-fill); }
 td.actions { text-align: right; white-space: nowrap; }
@@ -1260,9 +1261,9 @@ table.portions td:first-child { width: 42px; font-variant-numeric: tabular-nums;
 tr.selected td { background: var(--brand-soft); }
 
 /* Менструален цикъл (версия 4.5): фази, лента с дните, етикети в менюто. */
-.ph-menstrual { --ph: #c94a5b; --ph-soft: #fbe6e9; }
-.ph-follicular { --ph: #2f8a5b; --ph-soft: #e3f3ea; }
-.ph-ovulation { --ph: #b7791f; --ph-soft: #fdf0d9; }
+.ph-menstrual { --ph: #b23a4b; --ph-soft: #fbe6e9; }
+.ph-follicular { --ph: #23754b; --ph-soft: #e3f3ea; }
+.ph-ovulation { --ph: #8f5b10; --ph-soft: #fdf0d9; }
 .ph-luteal { --ph: #6159c4; --ph-soft: #efeefb; }
 .ph-premenstrual { --ph: #5d6b85; --ph-soft: #e9edf3; }
 .cycle-now { display: flex; gap: 12px; align-items: flex-start; }
@@ -1493,6 +1494,14 @@ tr.food-detail td { background: var(--surface-2); }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
 
+/* --------------------------------- таблет ------------------------------------ */
+
+@media (max-width: 1099px) and (min-width: 721px) {
+  :root { --cell-x: 10px; --pad: 15px; }
+  main { padding: 22px 20px 56px; }
+  .dossier-nav { margin-left: -20px; margin-right: -20px; padding: 0 20px; }
+}
+
 /* --------------------------------- телефон ----------------------------------- */
 
 /* Таблиците, направени с table(), на тесен екран стават картички: всеки ред е карта,
@@ -1510,7 +1519,8 @@ tr.food-detail td { background: var(--surface-2); }
     content: attr(data-label); grid-column: 1; grid-row: 1 / span 6;
     font-size: 11px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); padding-top: 2px;
   }
-  table.stack-sm td[data-label] > * { grid-column: 2; min-width: 0; }
+  table.stack-sm td[data-label] > * { grid-column: 2; min-width: 0; justify-self: start; max-width: 100%; }
+  table.stack-sm td[data-label] > .pct-bar, table.stack-sm td[data-label] > .table-wrap { justify-self: stretch; }
   table.stack-sm tr { display: flex; flex-direction: column; }
   table.stack-sm td.name-cell { order: -1; font-size: 15.5px; padding-bottom: 4px; }
   table.stack-sm td.actions { text-align: left; padding-top: 6px; }
@@ -1551,10 +1561,14 @@ tr.food-detail td { background: var(--surface-2); }
   h1 { font-size: 21px; }
   .page-head { margin-bottom: 14px; }
   .dossier-nav { margin: 4px -12px 12px; padding: 0 12px; }
-  .patient-head { grid-template-columns: auto minmax(0, 1fr); }
-  .patient-head > .ring-box { grid-column: 1 / -1; }
+  /* На телефон инициалите отпадат, а пръстенът с обхвата застава вдясно от името, по-малък. */
+  .patient-head { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .patient-head > .p-avatar { display: none; }
+  .patient-head .ring { flex-direction: column; gap: 0; align-items: center; text-align: center; }
+  .patient-head .ring svg { width: 46px; height: 46px; }
+  .patient-head .ring .pct { font-size: 15px; line-height: 1.2; margin-top: 2px; }
+  .patient-head .ring .small { font-size: 11px; }
   .patient-head h1 { font-size: 20px; }
-  .p-avatar { width: 44px; height: 44px; border-radius: 13px; font-size: 16px; }
   .facts { gap: 6px 16px; }
   /* Броячите на таблото по два на ред, не един под друг. */
   .grid.cols-4:has(> .stat) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }

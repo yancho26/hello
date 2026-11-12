@@ -106,14 +106,14 @@ export async function decide(patientId, f, status) {
 export function assistantDashboardCard(data, max = 6) {
   if (!data) return null;
   const rows = data.patients.slice(0, max).map(p => h('tr.clickable', { onclick: () => { location.hash = `#/patient/${p.id}?tab=assistant`; } },
-    h('td', null, h('div.name-cell', null, p.name), h('div.tiny.dim', null, p.phone || '')),
+    h('td.name-cell', null, p.name, p.phone ? h('span.sub', null, ' · ' + p.phone) : null),
     h('td.nowrap', null, sevBadge(p.severity)),
     h('td.small', null, p.findings[0]?.title || '', p.count > 1 ? h('span.tiny.dim', null, ` · и още ${p.count - 1}`) : null)));
   return card(data.patients.length ? `Асистент: спешно и скоро (${data.patients.length})` : 'Асистент', {
     icon: '🧭', tight: true,
     actions: h('button.btn.sm', { onclick: () => { location.hash = '#/assistant'; } }, 'Всички'),
   },
-  rows.length ? h('div', null, h('div.table-wrap', null, h('table', null, h('tbody', null, rows))),
+  rows.length ? h('div', null, h('div.table-wrap', null, h('table.stack-sm', null, h('tbody', null, rows))),
     data.patients.length > max ? h('div.body.tiny.muted', null, `Показани са първите ${max} по спешност.`) : null)
     : empty('Асистентът няма спешни подсказки.', '✓'));
 }

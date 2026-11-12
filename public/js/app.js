@@ -115,9 +115,12 @@ async function route() {
     if (head === 'patient' && rest[0]) {
       // „#/patient/ид?exam=час“ — преглед, започнат от записан час в графика.
       const [id, query = ''] = rest[0].split('?');
+      // Името на пациента не се слага в заглавието на раздела: то остава в историята на браузъра.
+      document.title = 'Досие · DocUp';
       await renderPatient(host, id, new URLSearchParams(query));
     } else {
       const view = views().find(v => v.path === head) || views()[0];
+      document.title = `${view.label} · DocUp`;
       await view.render(host);
     }
   } catch (err) {

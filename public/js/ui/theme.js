@@ -81,5 +81,8 @@ window.addEventListener('resize', () => {
 window.addEventListener('storage', (e) => {
   if (e.key === KEY) { prefs = read(); applyPrefs(); }
 });
+// Печатът е винаги на светъл фон, каквато и да е темата на екрана.
+window.addEventListener('beforeprint', () => { document.documentElement.dataset.theme = 'light'; });
+window.addEventListener('afterprint', () => { document.documentElement.dataset.theme = currentTheme(); });
 
 applyPrefs();
