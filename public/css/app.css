@@ -92,12 +92,12 @@
   --brand-dark: #c4c0fb;
   --brand-soft: #262447;
   --brand-fill: #655ede;
-  --brand-fill-hover: #7670e8;
+  --brand-fill-hover: #5750c9;
 
   --danger: #ff958b;
   --danger-soft: #391c1b;
   --danger-line: #6a2b27;
-  --danger-fill: #d24a40;
+  --danger-fill: #c8413a;
   --warn: #f3b860;
   --warn-soft: #35280f;
   --warn-line: #654c1a;
@@ -1561,6 +1561,10 @@ tr.food-detail td { background: var(--surface-2); }
   h1 { font-size: 21px; }
   .page-head { margin-bottom: 14px; }
   .dossier-nav { margin: 4px -12px 12px; padding: 0 12px; }
+  /* В залепената лента на телефон остават името и алергиите — най-важното. */
+  .dossier-id .p-avatar, .dossier-id .ag { display: none; }
+  .dossier-id .nm { flex: 1 1 auto; }
+  .dossier-id .badge { max-width: 54%; }
   /* На телефон инициалите отпадат, а пръстенът с обхвата застава вдясно от името, по-малък. */
   .patient-head { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
   .patient-head > .p-avatar { display: none; }
