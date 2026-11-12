@@ -4,9 +4,10 @@
 import { api } from '../api.js';
 import { state } from '../app.js';
 import {
-  badge, card, confirmDialog, coverageRing, decimalFields, empty, field, h, input, modal, mount,
+  badge, card, confirmDialog, coverageRing, decimalFields, dossierNav, empty, field, h, icon, initials, input, modal, mount,
   numberInput, select, statusBadge, table, toast,
 } from '../ui/components.js';
+import { rememberPatient } from '../ui/palette.js';
 import { growthChart } from '../ui/charts.js';
 import { ageInMonthsExact, formatAge, formatDate, formatDateShort, relativeDays, today } from '../shared/dates.js';
 import { CORRECT_UNTIL_MONTHS, INDICATORS, isPreterm, zText } from '../shared/growth.js';
@@ -50,6 +51,7 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
   }
   const data = await api.patient(id);
   const p = data.patient;
+  rememberPatient(state.kind, p);
   const reload = () => renderPatient(host, id);
   // Всяко досие се отваря на обзора; презареждането на същото запазва раздела.
   if (activeFor !== id) { activeTab = 'overview'; activeFor = id; }
@@ -103,7 +105,12 @@ export async function renderPatient(host, id, params = new URLSearchParams()) {
     mount(content, (views[activeTab] || views.overview)(ctx));
   };
 
-  mount(host, patientHeader(ctx), tabBar, content);
+  mount(host, patientHeader(ctx),
+    dossierNav({
+      name: p.name, age: formatAge(p.birthDate),
+      alert: p.allergies && p.allergies.length ? '⚠ Алергии: ' + p.allergies.join(', ') : '',
+    }, tabBar),
+    content);
   renderTab();
 }
 
@@ -142,13 +149,14 @@ function patientHeader(ctx) {
   }
 
   return h('div', null,
+    h('nav.crumbs.no-print', { 'aria-label': 'Къде сте' },
+      h('a', { href: '#/patients', title: 'Към списъка с пациенти' }, icon('back', { size: 15 }), 'Пациенти'),
+      h('span.sep', null, '/'),
+      h('span.here', null, p.name)),
     h('div.card', null, h('div.body', null,
       h('div.patient-head', null,
+        h('div.p-avatar', { 'aria-hidden': 'true' }, initials(p.name)),
         h('div.who', null,
-          h('button.btn.ghost.sm.no-print', {
-            onclick: () => { location.hash = '#/patients'; },
-            style: { marginBottom: '6px', marginLeft: '-8px' },
-          }, '← Всички пациенти'),
           h('h1', null, p.name,
             h('span.dim', { style: { fontSize: '18px' } }, p.sex === 'f' ? '♀' : p.sex === 'm' ? '♂' : '')),
           h('div.facts', null,
@@ -159,7 +167,7 @@ function patientHeader(ctx) {
             fact('Личен лекар', doctor ? doctor.name : '—'),
             p.birth && isPreterm(Number(p.birth.gestWeeks))
               ? fact('Гестационна възраст', p.birth.gestWeeks + ' с.') : null)),
-        h('div', { title: isAdult ? 'Изпълнени задължителни профилактични дейности (преглед, скрининги, Td)' : 'Поставени задължителни имунизации' },
+        h('div.ring-box', { title: isAdult ? 'Изпълнени задължителни профилактични дейности (преглед, скрининги, Td)' : 'Поставени задължителни имунизации' },
           coverageRing(data.summary.coverage, 62, isAdult ? 'профилактика' : 'обхват')),
         h('div.row.tight.no-print', null,
           h('button.btn.sm.primary', {

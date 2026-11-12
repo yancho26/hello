@@ -5,8 +5,9 @@ import { canStopHere, productKeyField, refreshBootstrap, state, stopProgram } fr
 import { whatsNew } from '../whats-new.js';
 import {
   badge, card, confirmDialog, decimalFields, empty, field, h, input, modal, mount,
-  numberInput, select, table, toast,
+  numberInput, select, table, toast, tabStrip,
 } from '../ui/components.js';
+import { appearanceControls } from '../ui/appearance.js';
 import { formatDate } from '../shared/dates.js';
 import { CALENDAR_VERIFIED, GROUPS } from '../shared/calendar.js';
 import { CV_REGIONS } from '../shared/clinical.js';
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'data', label: 'Данни и копия' },
   { id: 'security', label: 'Сигурност' },
   { id: 'audit', label: 'Журнал' },
+  { id: 'appearance', label: 'Изглед' },
 ];
 
 export async function renderSettings(host) {
@@ -44,15 +46,26 @@ export async function renderSettings(host) {
     h('div.page-head', null, h('div.titles', null,
       h('h1', null, 'Настройки'),
       h('div.muted.small', null, state.practice.name))),
-    bar,
+    tabStrip(bar),
     h('div#settingsBody'));
 
   const body = document.getElementById('settingsBody');
   const views = {
     practice: practiceTab, doctors: doctorsTab, schedule: scheduleTab, assistant: assistantTab,
-    data: dataTab, security: securityTab, audit: auditTab,
+    data: dataTab, security: securityTab, audit: auditTab, appearance: appearanceTab,
   };
   mount(body, await views[tab](rerender));
+}
+
+/* --------------------------------- изглед ------------------------------------ */
+
+/** Тема, плътност и меню. Важат за този браузър, не за цялата практика (версия 5.0). */
+async function appearanceTab() {
+  return card('Изглед на този компютър', { icon: '🎨' },
+    h('p.muted', { style: { marginTop: 0 } },
+      'Изборът се пази в този браузър и не променя екрана на другите компютри в кабинета. '
+      + 'Тъмната тема е удобна вечер и в затъмнен кабинет; печатът и PDF файловете остават светли.'),
+    appearanceControls({ nav: true }));
 }
 
 /* -------------------------------- практика ----------------------------------- */

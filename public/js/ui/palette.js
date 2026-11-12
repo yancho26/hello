@@ -82,7 +82,8 @@ export function openPalette({ kind, pages = [], actions = [], initial = '' }) {
   input.value = initial;
   const list = h('div.palette-list#paletteList', { role: 'listbox' });
   const box = h('div.palette', { role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Бързо търсене' },
-    h('div.palette-input', null, icon('search', { size: 20 }), input, h('kbd', null, 'Esc')),
+    h('div.palette-input', null, icon('search', { size: 20 }), input, h('kbd', null, 'Esc'),
+      h('button.icon-btn', { type: 'button', title: 'Затваряне (Esc)', 'aria-label': 'Затваряне', onclick: () => close() }, icon('x', { size: 18 }))),
     list,
     h('div.palette-foot', null,
       h('span', null, h('kbd', null, '↑'), h('kbd', null, '↓'), 'избор'),

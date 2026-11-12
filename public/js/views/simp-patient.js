@@ -5,7 +5,8 @@
 
 import { api } from '../api.js';
 import { state } from '../app.js';
-import { badge, card, confirmDialog, empty, h, mount, table, toast } from '../ui/components.js';
+import { badge, card, confirmDialog, dossierNav, empty, h, icon, initials, mount, table, toast } from '../ui/components.js';
+import { rememberPatient } from '../ui/palette.js';
 import { formatAge, formatDate, formatDateShort, relativeDays, today, weekdayName } from '../shared/dates.js';
 import { APPT_STATUS, EXAM_TYPES, REFERRAL_PURPOSES } from '../shared/simp.js';
 import { MODULES, enabledModules } from '../shared/specialty.js';
@@ -64,6 +65,7 @@ function tabCount(id, data) {
 export async function renderSimpPatient(host, id, params = new URLSearchParams()) {
   const data = await api.patient(id);
   const p = data.patient;
+  rememberPatient(state.kind, p);
   const reload = () => renderSimpPatient(host, id);
   if (activeFor !== id) { activeTab = 'overview'; activeFor = id; }
   if (params.get('tab')) {
@@ -96,7 +98,12 @@ export async function renderSimpPatient(host, id, params = new URLSearchParams()
     mount(content, (views[activeTab] || overviewTab)(ctx));
   };
 
-  mount(host, header(ctx), tabBar, content);
+  mount(host, header(ctx),
+    dossierNav({
+      name: p.name, age: formatAge(p.birthDate),
+      alert: p.allergies?.length ? '⚠ Алергии: ' + p.allergies.join(', ') : '',
+    }, tabBar),
+    content);
   renderTab();
 
   // Преглед, започнат от записан час в графика.
@@ -121,10 +128,15 @@ function header(ctx) {
   if (p.archived) alerts.push(h('div.alert-strip.warn', null, 'Досието е в архив.', p.archivedReason ? ' ' + p.archivedReason : ''));
   const next = s.nextAppt;
 
-  return h('div.card', null, h('div.body', null,
+  return h('div', null,
+    h('nav.crumbs.no-print', { 'aria-label': 'Къде сте' },
+      h('a', { href: '#/patients', title: 'Към списъка с пациенти' }, icon('back', { size: 15 }), 'Пациенти'),
+      h('span.sep', null, '/'),
+      h('span.here', null, p.name)),
+    h('div.card', null, h('div.body', null,
     h('div.patient-head', null,
+      h('div.p-avatar', { 'aria-hidden': 'true' }, initials(p.name)),
       h('div.who', null,
-        h('button.btn.ghost.sm.no-print', { onclick: () => { location.hash = '#/patients'; }, style: { marginBottom: '6px', marginLeft: '-8px' } }, '← Всички пациенти'),
         h('h1', null, p.name, h('span.dim', { style: { fontSize: '18px' } }, p.sex === 'f' ? '♀' : p.sex === 'm' ? '♂' : '')),
         h('div.facts', null,
           fact('Възраст', formatAge(p.birthDate)),
@@ -153,7 +165,7 @@ function header(ctx) {
           },
         }, p.archived ? 'Върни от архив' : 'Архивирай'))),
     alerts.length ? h('div.stack', { style: { marginTop: '12px' } }, alerts) : null,
-    p.notes ? h('p.small.muted', { style: { marginTop: '10px', marginBottom: 0 } }, h('strong', null, 'Бележки: '), p.notes) : null));
+    p.notes ? h('p.small.muted', { style: { marginTop: '10px', marginBottom: 0 } }, h('strong', null, 'Бележки: '), p.notes) : null)));
 }
 
 const fact = (k, v) => h('div.fact', null, h('div.k', null, k), h('div.v', null, v));

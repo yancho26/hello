@@ -2,7 +2,8 @@
 
 import { api, setUnauthorizedHandler } from './api.js';
 import { avatar, card, confirmDialog, field, h, icon, input, loading, modal, mount, toast } from './ui/components.js';
-import { canChooseNav, currentNav, cycleTheme, getPrefs, onPrefsChange, setPrefs, toggleNav, applyPrefs } from './ui/theme.js';
+import { canChooseNav, currentNav, cycleTheme, getPrefs, onPrefsChange, toggleNav, applyPrefs } from './ui/theme.js';
+import { appearanceControls } from './ui/appearance.js';
 import { THEME_LABELS } from './shared/ui-prefs.js';
 import { forgetRecent, openPalette } from './ui/palette.js';
 import { showStoppedScreen } from './connection.js';
@@ -292,41 +293,10 @@ export async function stopProgram() {
   }
 }
 
-/** Избор от няколко възможности — за темата и плътността. */
-function choiceRow(options, current, onPick) {
-  const row = h('div.choice-row', { role: 'radiogroup' });
-  const draw = (value) => mount(row, options.map(o =>
-    h('button.choice' + (o.value === value ? '.active' : ''), {
-      type: 'button', role: 'radio', 'aria-checked': String(o.value === value),
-      onclick: () => { onPick(o.value); draw(o.value); },
-    }, o.icon ? icon(o.icon, { size: 17 }) : null, o.label)));
-  draw(current);
-  return row;
-}
-
-/** Изборът на тема и плътност — в менюто на потребителя и в „Настройки → Изглед“. */
-export function appearanceControls() {
-  const prefs = getPrefs();
-  return h('div.stack', null,
-    h('div', null,
-      h('div.field-lbl', null, 'Тема'),
-      choiceRow([
-        { value: 'auto', label: 'Като на компютъра', icon: 'monitor' },
-        { value: 'light', label: 'Светла', icon: 'sun' },
-        { value: 'dark', label: 'Тъмна', icon: 'moon' },
-      ], prefs.theme, (theme) => setPrefs({ theme }))),
-    h('div', null,
-      h('div.field-lbl', null, 'Плътност на редовете'),
-      choiceRow([
-        { value: 'normal', label: 'Нормална' },
-        { value: 'compact', label: 'Сбита — повече на един екран' },
-      ], prefs.density, (density) => setPrefs({ density }))));
-}
-
 /** Менюто на потребителя. На телефон показва и страниците, които не са в лентата отдолу. */
 function userMenu(pages = []) {
   const k = KINDS[state.kind];
-  const item = (ico, label, onPick, opts = {}) => h('button.menu-item' + (opts.danger ? '.danger' : ''), {
+  const item = (ico, label, onPick, opts = {}) => h('button.menu-item' + (opts.danger ? '.danger' : '') + (opts.desktop ? '.desktop-only' : ''), {
     type: 'button', title: opts.title, onclick: () => { ctl.close(); onPick(); },
   }, icon(ico, { size: 19 }), label, opts.hint ? h('span.hint', null, opts.hint) : null);
 
@@ -345,7 +315,7 @@ function userMenu(pages = []) {
       h('div.menu-section', null, appearanceControls()),
       h('div.menu-section', null, h('div.menu-list', null,
         pages.some(v => v.path === 'settings') ? null : item('settings', 'Настройки', () => go('settings')),
-        item('keyboard', 'Клавишни комбинации', shortcutsDialog, { hint: '?' }),
+        item('keyboard', 'Клавишни комбинации', shortcutsDialog, { hint: '?', desktop: true }),
         item('swap', 'Смени практиката', switchPractice, { title: 'Към екрана за вход с двете практики — ОПЛ и СИМП. Вписването тук остава.' }),
         canStopHere() ? item('power', 'Спри програмата', stopProgram, { danger: true }) : null,
         item('logout', 'Изход', async () => { forgetRecent(); await api.logout(); restart(); }, { danger: true }))),

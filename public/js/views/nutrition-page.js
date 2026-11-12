@@ -4,7 +4,7 @@
 
 import { api } from '../api.js';
 import { state } from '../app.js';
-import { card, empty, field, h, input, mount, numberInput, select, toast } from '../ui/components.js';
+import { card, empty, field, h, input, mount, numberInput, select, tabStrip, toast } from '../ui/components.js';
 import { ageInMonthsExact, formatDate, today } from '../shared/dates.js';
 import { GOALS } from '../shared/nutrition.js';
 import { searchDrugs, drugName } from '../shared/drugs.js';
@@ -54,9 +54,9 @@ export async function renderNutritionPage(host) {
     : empty('Още няма хора извън пациентската листа. „Нов човек“ започва нов хранителен режим.', '🥗'));
   drawList();
 
-  const tabs = h('div.tabs.no-print', { role: 'tablist' },
+  const tabs = tabStrip(h('div.tabs.no-print', { role: 'tablist' },
     [['people', 'Хора извън листата'], ['foods', `Каталог на храните (${Object.keys(FOODS).length})`]].map(([id, label]) =>
-      h('button' + (view === id ? '.active' : ''), { role: 'tab', 'aria-selected': String(view === id), onclick: () => { view = id; rerender(); } }, label)));
+      h('button' + (view === id ? '.active' : ''), { role: 'tab', 'aria-selected': String(view === id), onclick: () => { view = id; rerender(); } }, label))));
   if (view === 'foods') {
     mount(host,
       h('div.page-head', null,

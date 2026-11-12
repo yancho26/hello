@@ -7,7 +7,7 @@
 import { api } from '../api.js';
 import { assistantDashboardCard } from './assistant-panel.js';
 import { scheduleItem, state } from '../app.js';
-import { badge, card, empty, h, mount, stat, table, toast } from '../ui/components.js';
+import { badge, empty, h, mount, segmented, stat, table, toast } from '../ui/components.js';
 import { durationText, formatAge, formatDate, formatDateShort, relativeDays, today, weekdayName } from '../shared/dates.js';
 import { markDoneDialog } from './record-dialog.js';
 import { visitDialog } from './visit-dialog.js';
@@ -17,6 +17,10 @@ const GROUP_ICON = { vaccine: '💉', checkup: '🩺', screening: '🔬', remind
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 let filters = { horizon: null, onlyMine: false };
+/* Кой от списъците е отворен: 'overdue', 'today', 'soon' или 'deferred'. Помни се, докато програмата е отворена. */
+let worklist = null;
+/* Колко пациенти се показват, преди „Покажи още“. */
+const FIRST_ROWS = 25;
 
 export async function renderDashboard(host) {
   const horizon = filters.horizon ?? state.settings.horizonDays ?? 30;
@@ -35,6 +39,33 @@ export async function renderDashboard(host) {
   const dueToday = groupByChild(buckets.today);
   const soon = groupByChild(buckets.soon);
 
+  // Работният списък: един списък наведнъж, избран от лентата над него (версия 5.0).
+  const lists = [
+    { id: 'overdue', label: 'Просрочени', groups: overdue, tone: 'danger', emptyText: 'Няма просрочени дейности. Отлична работа!' },
+    { id: 'today', label: 'За днес', groups: dueToday, tone: 'warn', emptyText: 'Няма дейности с падеж днес.' },
+    { id: 'soon', label: `Следващите ${horizon} дни`, groups: soon, emptyText: 'Няма предстоящи дейности в този период.' },
+    buckets.deferred.length ? { id: 'deferred', label: 'Активни отводи', groups: groupByChild(buckets.deferred), emptyText: 'Няма активни отводи.' } : null,
+  ].filter(Boolean);
+  if (!lists.some(l => l.id === worklist)) worklist = (lists.find(l => l.groups.length) || lists[0]).id;
+  const listBody = h('div');
+  const listSub = h('span.sub');
+  const drawList = () => {
+    const l = lists.find(x => x.id === worklist);
+    const count = l.groups.reduce((n, g) => n + g.items.length, 0);
+    listSub.textContent = l.groups.length ? `${plural(l.groups.length, 'пациент', 'пациенти')} · ${plural(count, 'дейност', 'дейности')}` : '';
+    mount(listBody, sectionBody(l, reload));
+  };
+  const listTabs = segmented(lists.map(l => ({ id: l.id, label: l.label, count: l.groups.length, tone: l.groups.length ? l.tone : '' })),
+    worklist, (id) => { worklist = id; drawList(); }, { 'aria-label': 'Работен списък' });
+  const listCard = h('section.card', null, h('div.worklist-head', null, listTabs, listSub), listBody);
+  const showList = (id) => () => {
+    worklist = id;
+    listTabs.select(id);
+    drawList();
+    listCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  drawList();
+
   const ad = reports.adults;
   const stats = h('div.grid.cols-4', null,
     stat(reports.totals.patients, 'пациенти в регистъра', {
@@ -45,8 +76,9 @@ export async function renderDashboard(host) {
     stat(overdue.length, 'пациенти с просрочия', {
       kind: overdue.length ? 'danger' : 'ok',
       foot: `${buckets.overdue.length} дейности общо`,
+      onclick: showList('overdue'),
     }),
-    stat(dueToday.length, 'пациенти с дейности за днес', { kind: dueToday.length ? 'warn' : '' }),
+    stat(dueToday.length, 'пациенти с дейности за днес', { kind: dueToday.length ? 'warn' : '', onclick: showList('today') }),
     stat(reports.totals.averageCoverage === null ? '—' : reports.totals.averageCoverage + '%',
       'имунизационен обхват при децата', {
       kind: reports.totals.averageCoverage >= 95 ? 'ok'
@@ -99,18 +131,7 @@ export async function renderDashboard(host) {
     chronicStats,
     h('div', { style: { height: '16px' } }),
     assistant && assistant.patients.length ? [assistantDashboardCard(assistant), h('div', { style: { height: '16px' } })] : null,
-    section('Просрочени', overdue, reload, {
-      icon: '⚠️', emptyText: 'Няма просрочени дейности. Отлична работа!', collapsedAfter: 12,
-    }),
-    section('За днес', dueToday, reload, {
-      icon: '📌', emptyText: 'Няма дейности с падеж днес.',
-    }),
-    section(`Предстоящи — следващите ${horizon} дни`, soon, reload, {
-      icon: '📅', emptyText: 'Няма предстоящи дейности в този период.', collapsedAfter: 12,
-    }),
-    buckets.deferred.length
-      ? section('Активни отводи', groupByChild(buckets.deferred), reload, { icon: '⏸' })
-      : null);
+    listCard);
 }
 
 /** Свива списъка със задачи до по един ред на дете. */
@@ -136,29 +157,24 @@ function groupByChild(tasks) {
   return groups;
 }
 
-function section(title, groups, reload, opts = {}) {
-  if (!groups.length) {
-    return card(title, { icon: opts.icon }, empty(opts.emptyText || 'Няма записи.', '✓'));
-  }
-  const limit = opts.collapsedAfter || groups.length;
+/** Съдържанието на избрания списък: таблица с по един ред на пациент или съобщение, че е празен. */
+function sectionBody(l, reload) {
+  const { groups } = l;
+  if (!groups.length) return empty(l.emptyText || 'Няма записи.', '✓');
   const body = table(
     ['Срок', 'Пациент', 'Възраст', 'Какво предстои', 'Телефон', 'Състояние', { label: '', class: 'right' }],
-    groups.slice(0, limit).map(g => childRow(g, reload)));
-
-  const more = groups.length > limit
+    groups.slice(0, FIRST_ROWS).map(g => childRow(g, reload)));
+  const more = groups.length > FIRST_ROWS
     ? h('div.center', { style: { padding: '10px' } },
       h('button.btn.sm', {
         onclick: (e) => {
-          const tbody = e.target.closest('.body').querySelector('tbody');
-          for (const g of groups.slice(limit)) tbody.appendChild(childRow(g, reload));
-          e.target.remove();
+          const tbody = body.querySelector('tbody');
+          for (const g of groups.slice(FIRST_ROWS)) tbody.appendChild(childRow(g, reload));
+          e.target.closest('div').remove();
         },
-      }, `Покажи още ${plural(groups.length - limit, 'пациент', 'пациенти')}`))
+      }, `Покажи още ${plural(groups.length - FIRST_ROWS, 'пациент', 'пациенти')}`))
     : null;
-
-  const count = groups.reduce((n, g) => n + g.items.length, 0);
-  return card(`${title} — ${plural(groups.length, 'пациент', 'пациенти')} (${count} дейности)`,
-    { icon: opts.icon, tight: true }, body, more);
+  return [body, more];
 }
 
 function childRow(g, reload) {
