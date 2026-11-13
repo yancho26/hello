@@ -86,12 +86,17 @@ function currentRoute() {
  * затвори досие, отворено от него. */
 const scrollMemory = new Map();
 let lastRoute = null;
+/* Поредният номер на прехода: ако по-стар преход свърши след по-нов (бавни данни), екранът
+ * се рисува отново, за да не остане старият изглед върху новия адрес. */
+let routeSeq = 0;
+let routeDone = 0;
 
 async function route() {
   const { head, rest } = currentRoute();
   const host = document.getElementById('view');
   if (!host) return;
 
+  const my = ++routeSeq;
   const key = head === 'patient' ? 'patient/' + String(rest[0] || '').split('?')[0] : head;
   const changed = !lastRoute || lastRoute.key !== key;
   if (lastRoute && changed) scrollMemory.set(lastRoute.key, window.scrollY);
@@ -108,9 +113,14 @@ async function route() {
   if (more) more.classList.toggle('active', more.dataset.more.split(' ').includes(target));
 
   // Екранът за зареждане се показва само ако данните се бавят — иначе старият екран остава,
-  // докато новият е готов, и няма мигане при всяко щракване.
+  // докато новият е готов, и няма мигане при всяко щракване. Ако изгледът вече е сложил част от
+  // себе си (заглавие, раздели) и чака още данни, не се пипа: иначе ще остане само „Зареждане…“.
   const progress = document.querySelector('.route-progress');
-  const slow = setTimeout(() => { mount(host, loading()); progress?.classList.add('on'); }, 220);
+  const before = host.firstChild;
+  const slow = setTimeout(() => {
+    progress?.classList.add('on');
+    if (host.firstChild === before) mount(host, loading());
+  }, 220);
   try {
     if (head === 'patient' && rest[0]) {
       // „#/patient/ид?exam=час“ — преглед, започнат от записан час в графика.
@@ -129,8 +139,14 @@ async function route() {
       h('button.btn', { onclick: () => route() }, 'Опитай отново')));
   } finally {
     clearTimeout(slow);
-    progress?.classList.remove('on');
+    if (my === routeSeq) progress?.classList.remove('on');
   }
+  if (my !== routeSeq) {
+    // Междувременно е започнал по-нов преход. Ако той вече е свършил, този го е препокрил — рисува се наново.
+    if (routeDone === routeSeq) route();
+    return;
+  }
+  routeDone = my;
   if (changed) {
     const y = backFromDossier ? scrollMemory.get(key) || 0 : 0;
     window.scrollTo(0, y);

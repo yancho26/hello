@@ -233,17 +233,20 @@ async function actions(width, practice) {
   expect(await page.locator('tbody tr').count() === all, 'Esc изчиства търсенето');
 
   // Връщане на същото място в списъка след затваряне на досие.
-  await page.evaluate(() => window.scrollTo(0, 900));
-  await page.waitForTimeout(200);
+  // Редът първо се докарва на екрана, за да се знае докъде точно е превъртян списъкът при щракването.
+  const row = page.locator('tbody tr.clickable').nth(Math.min(12, all - 1));
+  await row.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(250);
   const y = await page.evaluate(() => window.scrollY);
-  await page.locator('tbody tr.clickable').nth(Math.min(12, all - 1)).click();
+  await row.click();
   await page.waitForSelector('.patient-head');
   await page.waitForTimeout(500);
   expect((await page.evaluate(() => window.scrollY)) === 0, 'досието се отваря от началото');
   await page.goBack();
   await page.waitForSelector('.search-field');
   await page.waitForTimeout(700);
-  expect(Math.abs((await page.evaluate(() => window.scrollY)) - y) < 40, `връщане на същото място в списъка (${y})`);
+  const back = await page.evaluate(() => window.scrollY);
+  expect(Math.abs(back - y) < 40, `връщане на същото място в списъка (беше ${y}, сега ${back})`);
 
   // Бързо търсене: отваряне, резултати, Enter отваря досието, после е в „последно отворени“.
   const openSearch = async () => { if (phone) await page.locator('.topbar .tool-btn:not(.new)').first().click(); else await page.keyboard.press('/'); await page.waitForSelector('.palette'); };
@@ -282,6 +285,7 @@ async function actions(width, practice) {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.locator('.patient-head button', { hasText: 'Редакция' }).click();
   await page.waitForSelector('.modal');
+  await page.waitForTimeout(350); // прозорецът се появява с кратко движение
   const foot = await page.locator('.modal > footer').boundingBox();
   expect(foot && foot.y + foot.height <= (phone ? 844 : 900) + 1, 'бутоните на прозореца са на екрана');
   await page.keyboard.press('Escape');
@@ -303,6 +307,24 @@ async function actions(width, practice) {
     await page.waitForTimeout(700);
     expect(/#\/patient\//.test(page.url()), 'Enter върху ред отваря досието');
   }
+  // Бавна връзка: данните идват със закъснение. Екранът не бива да остава на „Зареждане…“,
+  // а при бързо щракване през няколко страници накрая трябва да е последната.
+  await page.route('**/api/**', async (r) => { await new Promise(res => setTimeout(res, 450)); await r.continue(); });
+  await page.goto(BASE + '#/settings');
+  await page.waitForSelector('#settingsBody > *', { timeout: 8000 }).catch(() => {});
+  for (const tab of ['Данни и копия', 'Сигурност', 'Журнал']) {
+    await page.locator('.tabs button', { hasText: tab }).click();
+    await page.waitForTimeout(1900);
+    expect(await page.locator('#settingsBody > *').count() > 0 && await page.locator('#view > .loading').count() === 0, `бавни данни: „Настройки → ${tab}“ се показва`);
+  }
+  await page.evaluate(() => { location.hash = '#/reports'; });
+  await page.waitForTimeout(60);
+  await page.evaluate(() => { location.hash = '#/patients'; });
+  await page.waitForTimeout(2600);
+  expect((await page.locator('.page-head h1').innerText().catch(() => '')) === 'Пациенти' || (await page.locator('.page-head h1').innerText().catch(() => '')) === 'Архив', 'бавни данни: накрая е последната избрана страница');
+  expect(await page.locator('#view > .loading').count() === 0, 'бавни данни: няма останал екран за зареждане');
+  await page.unroute('**/api/**');
+
   console.log(`действия ${practice} ${width}px`);
   await ctx.close();
 }
