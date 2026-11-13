@@ -39,10 +39,12 @@ export function resolveTheme(theme, systemDark) {
   return systemDark ? 'dark' : 'light';
 }
 
-/** Следващата тема при натискане на бутона: според компютъра → светла → тъмна → според компютъра. */
-export function nextTheme(theme) {
-  const i = THEMES.indexOf(theme);
-  return THEMES[(i + 1) % THEMES.length];
+/**
+ * Темата след натискане на бутона за бърза смяна: обратната на тази, която се вижда в момента.
+ * Така едно щракване винаги променя екрана; „като на компютъра“ се избира от менюто или настройките.
+ */
+export function oppositeTheme(theme, systemDark) {
+  return resolveTheme(theme, systemDark) === 'dark' ? 'light' : 'dark';
 }
 
 /**

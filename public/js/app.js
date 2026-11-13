@@ -2,7 +2,7 @@
 
 import { api, setUnauthorizedHandler } from './api.js';
 import { avatar, card, confirmDialog, field, h, icon, input, loading, modal, mount, toast } from './ui/components.js';
-import { canChooseNav, currentNav, cycleTheme, getPrefs, onPrefsChange, toggleNav, applyPrefs } from './ui/theme.js';
+import { canChooseNav, currentNav, currentTheme, onPrefsChange, toggleNav, toggleTheme, applyPrefs } from './ui/theme.js';
 import { appearanceControls } from './ui/appearance.js';
 import { THEME_LABELS } from './shared/ui-prefs.js';
 import { forgetRecent, openPalette } from './ui/palette.js';
@@ -175,7 +175,7 @@ function openSearch(initial = '') {
     pages: views().map(v => ({ label: v.label, path: v.path, icon: v.icon, keywords: v.keywords })),
     actions: [
       { label: 'Нов пациент', icon: 'plus', keywords: 'добави запиши досие', hint: 'N', run: newPatient },
-      { label: 'Смени темата: светла, тъмна или като на компютъра', icon: 'moon', keywords: 'изглед тъмен нощен режим', run: () => { cycleTheme(); toast('Тема: ' + THEME_LABELS[getPrefs().theme] + '.'); } },
+      { label: currentTheme() === 'dark' ? 'Светла тема' : 'Тъмна тема', icon: currentTheme() === 'dark' ? 'sun' : 'moon', keywords: 'изглед тема тъмен светъл нощен режим', run: () => { toast('Тема: ' + THEME_LABELS[toggleTheme()] + '.'); } },
       { label: 'Клавишни комбинации', icon: 'keyboard', keywords: 'клавиатура бързи клавиши помощ', hint: '?', run: shortcutsDialog },
       { label: 'Смени практиката', icon: 'swap', keywords: 'опл симп вход', run: switchPractice },
     ],
@@ -188,19 +188,19 @@ async function switchPractice() {
   restart();
 }
 
-const THEME_ICON = { auto: 'monitor', light: 'sun', dark: 'moon' };
 
 function shell() {
   const k = KINDS[state.kind];
   const who = state.doctor ? state.doctor.name : 'Вход';
 
-  const themeBtn = h('button.tool-btn', { type: 'button', onclick: () => cycleTheme() });
+  const themeBtn = h('button.tool-btn', { type: 'button', onclick: () => toggleTheme() });
   const collapseBtn = h('button.tool-btn', { type: 'button', onclick: () => toggleNav() }, icon('sidebar', { size: 19 }));
   const syncTools = () => {
-    const theme = getPrefs().theme;
-    themeBtn.replaceChildren(icon(THEME_ICON[theme], { size: 19 }));
-    const label = `Тема: ${THEME_LABELS[theme]}`;
-    themeBtn.title = label + ' — щракнете за смяна';
+    // Бутонът показва към коя тема води: луна на светъл екран, слънце на тъмен.
+    const toDark = currentTheme() !== 'dark';
+    themeBtn.replaceChildren(icon(toDark ? 'moon' : 'sun', { size: 19 }));
+    const label = toDark ? 'Тъмна тема' : 'Светла тема';
+    themeBtn.title = label;
     themeBtn.setAttribute('aria-label', label);
     themeBtn.dataset.tip = label;
     const full = currentNav() === 'full';
@@ -577,8 +577,8 @@ function entryScreen(info) {
 
 /** Малък бутон за темата под екраните за вход и настройка. */
 function themeFoot() {
-  const btn = h('button.btn.ghost.sm', { type: 'button', onclick: () => { cycleTheme(); draw(); } });
-  const draw = () => mount(btn, icon(THEME_ICON[getPrefs().theme], { size: 16 }), 'Тема: ' + THEME_LABELS[getPrefs().theme]);
+  const btn = h('button.btn.ghost.sm', { type: 'button', onclick: () => { toggleTheme(); draw(); } });
+  const draw = () => mount(btn, icon(currentTheme() === 'dark' ? 'sun' : 'moon', { size: 16 }), currentTheme() === 'dark' ? 'Светла тема' : 'Тъмна тема');
   draw();
   return h('div.entry-foot', null, btn);
 }

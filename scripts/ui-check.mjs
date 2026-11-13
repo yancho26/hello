@@ -191,10 +191,9 @@ async function actions(width, practice) {
       await page.locator('.side-tools .tool-btn').nth(2).click();
       expect((await shell.getAttribute('data-nav')) === before, 'разгъване на менюто');
     } else expect(before === 'rail', 'на тесен екран менюто е лента с иконки');
-    // Тема: бутонът обикаля светла → тъмна → като на компютъра.
+    // Тема: едно щракване сменя светла с тъмна, второто връща.
     await page.locator('.side-tools .tool-btn').first().click();
     expect((await page.evaluate(() => document.documentElement.dataset.theme)) === 'dark', 'смяна към тъмна тема');
-    await page.locator('.side-tools .tool-btn').first().click();
     await page.locator('.side-tools .tool-btn').first().click();
     expect((await page.evaluate(() => document.documentElement.dataset.theme)) === 'light', 'връщане към светла тема');
     // Клавиши: „?“ показва комбинациите, g + p води към пациентите.

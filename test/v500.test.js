@@ -14,7 +14,7 @@ import { Workspaces } from '../lib/workspaces.js';
 import { createAppServer } from '../lib/http.js';
 import { memoryStatic } from '../lib/static.js';
 import {
-  AUTO_FULL_MIN, DEFAULT_PREFS, PHONE_MAX, RAIL_MAX, cleanPrefs, navChoiceAvailable, nextTheme, parsePrefs, resolveNav, resolveTheme,
+  AUTO_FULL_MIN, DEFAULT_PREFS, PHONE_MAX, RAIL_MAX, cleanPrefs, navChoiceAvailable, oppositeTheme, parsePrefs, resolveNav, resolveTheme,
 } from '../public/js/shared/ui-prefs.js';
 import { matchItems, nameScore, normaliseSearch, pushRecent, searchPatients } from '../public/js/shared/quick-search.js';
 import { GLYPH_ICONS, ICONS, splitGlyph } from '../public/js/ui/icons.js';
@@ -42,9 +42,12 @@ test('5.0 изглед: темата следва компютъра, докат
   assert.equal(resolveTheme('light', true), 'light');
   assert.equal(resolveTheme('dark', false), 'dark');
   assert.equal(resolveTheme('друго', true), 'dark');
-  // Бутонът обикаля трите възможности и се връща в началото.
-  assert.deepEqual([nextTheme('auto'), nextTheme('light'), nextTheme('dark')], ['light', 'dark', 'auto']);
-  assert.equal(nextTheme('непознато'), 'auto');
+  // Бутонът за бърза смяна винаги променя това, което се вижда: едно щракване, една смяна.
+  assert.equal(oppositeTheme('light', false), 'dark');
+  assert.equal(oppositeTheme('dark', false), 'light');
+  assert.equal(oppositeTheme('auto', false), 'dark', 'компютърът е със светла тема');
+  assert.equal(oppositeTheme('auto', true), 'light', 'компютърът е с тъмна тема');
+  assert.equal(oppositeTheme('light', true), 'dark');
 });
 
 test('5.0 изглед: менюто е лента отдолу на телефон, иконки на таблет и по избор на широк екран', () => {

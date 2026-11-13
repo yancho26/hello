@@ -1,7 +1,7 @@
 /* Изгледът в този браузър (версия 5.0): светла или тъмна тема, плътност, вид на менюто.
  * Логиката е в shared/ui-prefs.js; тук е връзката с браузъра. */
 
-import { cleanPrefs, navChoiceAvailable, nextTheme, parsePrefs, resolveNav, resolveTheme } from '../shared/ui-prefs.js';
+import { cleanPrefs, navChoiceAvailable, oppositeTheme, parsePrefs, resolveNav, resolveTheme } from '../shared/ui-prefs.js';
 
 const KEY = 'docup.ui';
 const dark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
@@ -51,8 +51,9 @@ export function setPrefs(patch) {
   applyPrefs();
 }
 
-export function cycleTheme() {
-  setPrefs({ theme: nextTheme(prefs.theme) });
+/** Бърза смяна: от светла към тъмна и обратно. Връща новата тема. */
+export function toggleTheme() {
+  setPrefs({ theme: oppositeTheme(prefs.theme, !!(dark && dark.matches)) });
   return prefs.theme;
 }
 
